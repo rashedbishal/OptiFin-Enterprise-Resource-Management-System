@@ -79,6 +79,40 @@ class Lead extends Model
     }
 
     /**
+     * Maps this lead's raw Facebook Lead Ads `field_data` payload (as Meta's
+     * Graph API returns it: `[{name, values: [...]}, ...]`) into a flat
+     * `name => first value` array, for rendering the per-source spreadsheet
+     * view's dynamic columns. Not derived from `name`/`email`/`phone`
+     * because those are this app's best-effort mapping of a few known field
+     * name variants (see `LeadWebhookController::mapLeadgenFieldData()`),
+     * while the spreadsheet needs every field the form actually asked,
+     * under its own name.
+     *
+     * @return array<string, string>
+     */
+    public function leadAdFieldValues(): array
+    {
+        $fieldData = $this->source_data['field_data'] ?? null;
+
+        if (! is_array($fieldData)) {
+            return [];
+        }
+
+        $values = [];
+
+        foreach ($fieldData as $field) {
+            $name = $field['name'] ?? null;
+            $value = $field['values'][0] ?? null;
+
+            if (is_string($name) && $name !== '' && is_string($value)) {
+                $values[$name] = $value;
+            }
+        }
+
+        return $values;
+    }
+
+    /**
      * @return HasMany<LeadAttachment, $this>
      */
     public function attachments(): HasMany

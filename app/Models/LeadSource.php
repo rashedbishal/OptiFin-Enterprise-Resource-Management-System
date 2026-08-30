@@ -22,10 +22,16 @@ use Illuminate\Support\Carbon;
  * @property array<string, mixed>|null $config
  * @property bool $is_active
  * @property Carbon|null $last_synced_at
+ * @property Carbon|null $last_signature_rejection_at
+ * @property string|null $last_signature_rejection_reason
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ * @property-read Tenant $tenant
  */
-#[Fillable(['tenant_id', 'type', 'name', 'config', 'is_active', 'last_synced_at'])]
+#[Fillable([
+    'tenant_id', 'type', 'name', 'config', 'is_active', 'last_synced_at',
+    'last_signature_rejection_at', 'last_signature_rejection_reason',
+])]
 class LeadSource extends Model
 {
     /** @use HasFactory<LeadSourceFactory> */
@@ -41,6 +47,7 @@ class LeadSource extends Model
             'config' => 'encrypted:array',
             'is_active' => 'boolean',
             'last_synced_at' => 'datetime',
+            'last_signature_rejection_at' => 'datetime',
         ];
     }
 
@@ -62,7 +69,10 @@ class LeadSource extends Model
     public function webhookUrl(): ?string
     {
         $routeName = match ($this->type) {
-            LeadSourceType::FacebookMessenger => 'api.webhook.facebook',
+            // Lead Ads shares Messenger's webhook URL: Meta delivers both
+            // `messaging` events and `leadgen` change events to the same
+            // Page-level webhook subscription, not separate URLs.
+            LeadSourceType::FacebookMessenger, LeadSourceType::FacebookLeadAds => 'api.webhook.facebook',
             LeadSourceType::Whatsapp => 'api.webhook.whatsapp',
             LeadSourceType::Instagram => 'api.webhook.instagram',
             LeadSourceType::WebsiteForm => 'api.webhook.website-form',

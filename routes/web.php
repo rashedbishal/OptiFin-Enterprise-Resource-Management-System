@@ -4,6 +4,7 @@ use App\Http\Controllers\LeadAttachmentController;
 use App\Livewire\Tenant\Dashboard;
 use App\Livewire\Tenant\Leads\Index as LeadsIndex;
 use App\Livewire\Tenant\Leads\Show as LeadsShow;
+use App\Livewire\Tenant\Leads\SourceLeads as LeadsSourceLeads;
 use App\Livewire\Tenant\LeadSources\Index as LeadSourcesIndex;
 use App\Livewire\Tenant\ModulePlaceholder;
 use App\Livewire\Tenant\Roles\Index as RolesIndex;
@@ -21,6 +22,7 @@ Route::middleware(['auth', 'verified', 'tenant.identify', 'tenant.active'])->gro
     Route::middleware('module:lead-management')->group(function () {
         Route::livewire('lead-sources', LeadSourcesIndex::class)->name('tenant-lead-sources.index');
         Route::livewire('leads', LeadsIndex::class)->name('tenant-leads.index');
+        Route::livewire('leads/sources/{leadSource}', LeadsSourceLeads::class)->name('tenant-leads.source');
         Route::livewire('leads/{lead}', LeadsShow::class)->name('tenant-leads.show');
         Route::get('leads/{lead}/attachments/{attachment}', [LeadAttachmentController::class, 'download'])->name('tenant-leads.attachment.download');
     });

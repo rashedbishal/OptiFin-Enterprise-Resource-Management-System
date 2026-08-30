@@ -46,6 +46,37 @@ class LeadSources extends Component
         Gate::forUser(Auth::guard('platform')->user())->authorize('update', $tenant);
 
         $this->tenant = $tenant;
+
+        $this->flashSignatureRejections();
+    }
+
+    /**
+     * Surfaces any webhook signature rejections recorded since this page
+     * was last opened. Meta's request that triggered the rejection has no
+     * admin browser session attached — there's nothing to show a live toast
+     * to at the moment it happens — so this is the next-best thing: shown
+     * once, here, then cleared, rather than a banner that lingers forever.
+     */
+    private function flashSignatureRejections(): void
+    {
+        $rejected = $this->tenant->leadSources()->whereNotNull('last_signature_rejection_at')->get();
+
+        foreach ($rejected as $source) {
+            Flux::toast(
+                variant: 'danger',
+                text: __(':name (:type): :reason', [
+                    'name' => $source->name,
+                    'type' => $source->type->label(),
+                    'reason' => $source->last_signature_rejection_reason,
+                ]),
+            );
+        }
+
+        if ($rejected->isNotEmpty()) {
+            $this->tenant->leadSources()
+                ->whereNotNull('last_signature_rejection_at')
+                ->update(['last_signature_rejection_at' => null, 'last_signature_rejection_reason' => null]);
+        }
     }
 
     #[Computed]
@@ -155,6 +186,7 @@ class LeadSources extends Component
         $result = match ($source->type) {
             LeadSourceType::Email => $this->testEmailConnection($source),
             LeadSourceType::FacebookMessenger => $this->testFacebookConnection($source),
+            LeadSourceType::FacebookLeadAds => $this->testFacebookLeadAdsConnection($source),
             LeadSourceType::Whatsapp => $this->testWhatsappConnection($source),
             LeadSourceType::Instagram => $this->testInstagramConnection($source),
             LeadSourceType::WebsiteForm => [
@@ -266,7 +298,7 @@ class LeadSources extends Component
 
         $pageName = $response->json('name') ?? $pageId;
 
-        $subscription = $this->subscribeFacebookPageToApp($pageId, $accessToken);
+        $subscription = $this->subscribeFacebookPageToApp($pageId, $accessToken, 'messages,messaging_postbacks');
 
         if (! $subscription['success']) {
             return ['success' => false, 'message' => __('Connected to Facebook Page ":name", but subscribing it to receive messages failed: :error', [
@@ -281,19 +313,72 @@ class LeadSources extends Component
     }
 
     /**
+     * Facebook Lead Ads (Instant Forms) delivers `leadgen` change events to
+     * the same Page-level webhook subscription as Messenger — this only
+     * differs from testFacebookConnection() in which field it subscribes.
+     * A tenant can configure Lead Ads without Messenger (and vice versa),
+     * so each keeps its own Page ID/token entry rather than sharing one.
+     *
+     * @return array{success: bool, message: string}
+     */
+    private function testFacebookLeadAdsConnection(LeadSource $source): array
+    {
+        $config = $source->config ?? [];
+        $pageId = $config['page_id'] ?? null;
+        $accessToken = $config['page_access_token'] ?? null;
+
+        if (! $pageId || ! $accessToken) {
+            return ['success' => false, 'message' => __('Page ID and Page Access Token must both be set.')];
+        }
+
+        try {
+            $response = Http::timeout(10)->get("https://graph.facebook.com/{$pageId}", [
+                'fields' => 'id,name',
+                'access_token' => $accessToken,
+            ]);
+        } catch (ConnectionException) {
+            return ['success' => false, 'message' => __('Could not reach the Facebook Graph API.')];
+        }
+
+        if (! $response->successful()) {
+            return ['success' => false, 'message' => __('Facebook rejected the request: :error', [
+                'error' => $response->json('error.message') ?? __('unknown error'),
+            ])];
+        }
+
+        $pageName = $response->json('name') ?? $pageId;
+
+        $subscription = $this->subscribeFacebookPageToApp($pageId, $accessToken, 'leadgen');
+
+        if (! $subscription['success']) {
+            return ['success' => false, 'message' => __('Connected to Facebook Page ":name", but subscribing it to receive lead ads failed: :error', [
+                'name' => $pageName,
+                'error' => $subscription['error'],
+            ])];
+        }
+
+        return ['success' => true, 'message' => __('Connected to Facebook Page ":name" and subscribed it to receive lead ad submissions.', [
+            'name' => $pageName,
+        ])];
+    }
+
+    /**
      * Subscribe this app to the given Facebook Page's webhook events via
      * `POST /{page-id}/subscribed_apps`. A valid Page Access Token alone does
      * not make Meta deliver events to our webhook URL — the page must also
      * be explicitly subscribed, so this runs every time the connection is
-     * tested (the call is idempotent).
+     * tested (the call is idempotent). Per Meta's docs this call is additive
+     * — subscribing `leadgen` doesn't drop an existing `messages` subscription
+     * on the same page — but that's Meta's documented behavior, not something
+     * this app can independently verify from here.
      *
      * @return array{success: bool, error: ?string}
      */
-    private function subscribeFacebookPageToApp(string $pageId, string $accessToken): array
+    private function subscribeFacebookPageToApp(string $pageId, string $accessToken, string $subscribedFields): array
     {
         try {
             $response = Http::asForm()->timeout(10)->post("https://graph.facebook.com/{$pageId}/subscribed_apps", [
-                'subscribed_fields' => 'messages,messaging_postbacks',
+                'subscribed_fields' => $subscribedFields,
                 'access_token' => $accessToken,
             ]);
         } catch (ConnectionException) {

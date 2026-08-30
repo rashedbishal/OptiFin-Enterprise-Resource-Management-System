@@ -47,6 +47,33 @@
             <flux:table.column></flux:table.column>
         </flux:table.columns>
         <flux:table.rows>
+            @foreach ($this->facebookLeadAdsSources as $source)
+                <flux:table.row wire:key="fb-lead-ads-source-{{ $source->id }}">
+                    <flux:table.cell>
+                        <div class="flex flex-col">
+                            <span>{{ $source->name }}</span>
+                            <flux:text size="sm" variant="subtle">
+                                {{ $source->leads_max_created_at ? __('Last submission :time', ['time' => \Illuminate\Support\Carbon::parse($source->leads_max_created_at)->diffForHumans()]) : __('No submissions yet') }}
+                            </flux:text>
+                        </div>
+                    </flux:table.cell>
+                    <flux:table.cell><flux:badge size="sm" icon="{{ $source->type->icon() }}">{{ $source->type->label() }}</flux:badge></flux:table.cell>
+                    <flux:table.cell><flux:badge size="sm" color="zinc">{{ trans_choice(':count lead|:count leads', $source->leads_count, ['count' => $source->leads_count]) }}</flux:badge></flux:table.cell>
+                    <flux:table.cell>—</flux:table.cell>
+                    <flux:table.cell>—</flux:table.cell>
+                    <flux:table.cell>
+                        <div class="flex justify-end gap-2">
+                            @if ($source->leads_count > 0)
+                                <flux:button size="sm" :href="route('tenant-leads.source', $source)" wire:navigate>{{ __('View All') }}</flux:button>
+                            @elseif ($this->isClientAdmin)
+                                <flux:button size="sm" variant="danger" wire:click="deleteSource('{{ $source->id }}')" wire:confirm="{{ __('Delete this lead source?') }}">
+                                    {{ __('Delete') }}
+                                </flux:button>
+                            @endif
+                        </div>
+                    </flux:table.cell>
+                </flux:table.row>
+            @endforeach
             @forelse ($this->leads as $lead)
                 <flux:table.row wire:key="lead-{{ $lead->id }}">
                     <flux:table.cell>
@@ -73,9 +100,11 @@
                     </flux:table.cell>
                 </flux:table.row>
             @empty
-                <flux:table.row>
-                    <flux:table.cell colspan="6">{{ __('No leads yet.') }}</flux:table.cell>
-                </flux:table.row>
+                @if ($this->facebookLeadAdsSources->isEmpty())
+                    <flux:table.row>
+                        <flux:table.cell colspan="6">{{ __('No leads yet.') }}</flux:table.cell>
+                    </flux:table.row>
+                @endif
             @endforelse
         </flux:table.rows>
     </flux:table>

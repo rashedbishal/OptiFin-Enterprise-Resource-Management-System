@@ -5,6 +5,7 @@ namespace App\Enums;
 enum LeadSourceType: string
 {
     case FacebookMessenger = 'facebook_messenger';
+    case FacebookLeadAds = 'facebook_lead_ads';
     case Whatsapp = 'whatsapp';
     case Instagram = 'instagram';
     case Email = 'email';
@@ -25,6 +26,7 @@ enum LeadSourceType: string
     {
         return match ($this) {
             self::FacebookMessenger => 'Facebook Messenger',
+            self::FacebookLeadAds => 'Facebook Lead Ads',
             self::Whatsapp => 'WhatsApp',
             self::Instagram => 'Instagram',
             self::Email => 'Email',
@@ -39,6 +41,7 @@ enum LeadSourceType: string
     {
         return match ($this) {
             self::FacebookMessenger => 'chat-bubble-left-right',
+            self::FacebookLeadAds => 'document-text',
             self::Whatsapp => 'chat-bubble-oval-left-ellipsis',
             self::Instagram => 'camera',
             self::Email => 'envelope',
@@ -55,6 +58,12 @@ enum LeadSourceType: string
     {
         return match ($this) {
             self::FacebookMessenger => [
+                ['key' => 'page_id', 'label' => 'Page ID', 'type' => 'text', 'sensitive' => false],
+                ['key' => 'page_access_token', 'label' => 'Page Access Token', 'type' => 'password', 'sensitive' => true],
+                ['key' => 'verify_token', 'label' => 'Verify Token', 'type' => 'password', 'sensitive' => true],
+                ['key' => 'app_secret', 'label' => 'App Secret (enables webhook signature verification)', 'type' => 'password', 'sensitive' => true],
+            ],
+            self::FacebookLeadAds => [
                 ['key' => 'page_id', 'label' => 'Page ID', 'type' => 'text', 'sensitive' => false],
                 ['key' => 'page_access_token', 'label' => 'Page Access Token', 'type' => 'password', 'sensitive' => true],
                 ['key' => 'verify_token', 'label' => 'Verify Token', 'type' => 'password', 'sensitive' => true],
@@ -114,6 +123,12 @@ enum LeadSourceType: string
 
         return match ($this) {
             self::FacebookMessenger => [
+                'config.page_id' => ['required', 'string', 'max:255'],
+                'config.page_access_token' => [$sensitiveRule, 'string'],
+                'config.verify_token' => [$sensitiveRule, 'string'],
+                'config.app_secret' => ['nullable', 'string'],
+            ],
+            self::FacebookLeadAds => [
                 'config.page_id' => ['required', 'string', 'max:255'],
                 'config.page_access_token' => [$sensitiveRule, 'string'],
                 'config.verify_token' => [$sensitiveRule, 'string'],

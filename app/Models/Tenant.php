@@ -58,6 +58,9 @@ class Tenant extends Model
         return $this->hasMany(TenantUser::class);
     }
 
+    /**
+     * @return HasMany<LeadSource, $this>
+     */
     public function leadSources(): HasMany
     {
         return $this->hasMany(LeadSource::class);

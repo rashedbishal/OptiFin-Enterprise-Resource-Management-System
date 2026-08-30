@@ -62,10 +62,10 @@ test('a whatsapp webhook with a configured app secret and a valid signature is p
     expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(1);
 });
 
-test('a whatsapp webhook with a configured app secret and a missing signature is rejected', function () {
+test('a whatsapp webhook with a configured app secret and a missing signature is rejected and recorded on the source', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
 
-    LeadSource::factory()->create([
+    $source = LeadSource::factory()->create([
         'tenant_id' => $tenant->id,
         'type' => LeadSourceType::Whatsapp,
         'config' => ['phone_number_id' => '123', 'access_token' => 'x', 'verify_token' => 'y', 'app_secret' => 'wa-app-secret'],
@@ -75,6 +75,10 @@ test('a whatsapp webhook with a configured app secret and a missing signature is
         ->assertForbidden();
 
     expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(0);
+
+    $source->refresh();
+    expect($source->last_signature_rejection_at)->not->toBeNull();
+    expect($source->last_signature_rejection_reason)->toContain('Signature mismatch');
 });
 
 test('a whatsapp webhook with a configured app secret and a wrong signature is rejected', function () {

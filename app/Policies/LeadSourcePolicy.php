@@ -8,7 +8,13 @@ use App\Models\TenantUser;
 /**
  * Lead sources are configured by the Platform Admin (see PlatformUser-side
  * authorization in Platform\Clients\LeadSources). Tenant-side access is
- * read-only, gated only by the Lead Management module/view permission.
+ * otherwise read-only, gated only by the Lead Management module/view
+ * permission — `delete` is the one deliberate exception, letting a Client
+ * Admin remove an empty Facebook Lead Ads source directly from the Leads
+ * page (see Tenant\Leads\Index::deleteSource()) rather than needing the
+ * Platform Admin. Callers are still responsible for only allowing it when
+ * the source has no leads; that's a data-state check, not an authorization
+ * one, so it isn't encoded here.
  */
 class LeadSourcePolicy
 {
@@ -21,5 +27,12 @@ class LeadSourcePolicy
     {
         return $user->tenant_id === $leadSource->tenant_id
             && $user->hasModulePermission('lead-management', 'view');
+    }
+
+    public function delete(TenantUser $user, LeadSource $leadSource): bool
+    {
+        return $user->tenant_id === $leadSource->tenant_id
+            && $user->isClientAdmin()
+            && $user->hasModulePermission('lead-management', 'delete');
     }
 }

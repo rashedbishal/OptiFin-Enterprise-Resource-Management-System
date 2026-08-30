@@ -2,11 +2,10 @@
 
 namespace App\Livewire\Tenant\Leads;
 
-use App\Enums\LeadPriority;
 use App\Enums\LeadSourceType;
-use App\Enums\LeadStatus;
+use App\Livewire\Tenant\Leads\Concerns\FiltersLeadsQuery;
 use App\Models\Lead;
-use App\Models\TenantUser;
+use App\Models\LeadSource;
 use Flux\Flux;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
@@ -21,15 +20,9 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 #[Title('Leads')]
 class Index extends Component
 {
-    use WithPagination;
-
-    public string $status = '';
-
-    public string $priority = '';
+    use FiltersLeadsQuery, WithPagination;
 
     public string $sourceType = '';
-
-    public string $assignedTo = '';
 
     public function mount(): void
     {
@@ -52,33 +45,45 @@ class Index extends Component
     }
 
     #[Computed]
-    public function isClientAdmin(): bool
-    {
-        return Auth::user()->isClientAdmin();
-    }
-
-    #[Computed]
     public function leads()
     {
-        return $this->filteredQuery()
+        return $this->applyDropdownFilters($this->applyAssignmentScope($this->filteredQuery()))
             ->with(['source', 'assignedUser'])
             ->latest()
             ->paginate(25);
     }
 
+    /**
+     * Facebook Lead Ads submissions don't get a row per lead here like every
+     * other source — they'd flood this list, and an Instant Form submission
+     * has a very different shape (dynamic per-form fields) than a
+     * conversational lead. Instead each Facebook Lead Ads source gets one
+     * aggregate row, always shown regardless of the status/priority/
+     * assigned-to dropdowns above (they represent many leads with a mix of
+     * statuses/assignees, so those filters don't apply), linking through to
+     * a dedicated spreadsheet view. Still respects assignment-based
+     * visibility for non-admin agents: a source only appears for them if
+     * they have at least one lead assigned to them from it.
+     */
     #[Computed]
-    public function assignableUsers()
+    public function facebookLeadAdsSources()
     {
-        if (! $this->isClientAdmin) {
-            return collect();
+        $user = Auth::user();
+
+        $query = LeadSource::query()
+            ->where('tenant_id', $user->tenant_id)
+            ->where('type', LeadSourceType::FacebookLeadAds);
+
+        if ($this->isClientAdmin) {
+            $query->withCount('leads')->withMax('leads', 'created_at');
+        } else {
+            $query
+                ->withCount(['leads as leads_count' => fn (Builder $q) => $q->where('assigned_to', $user->id)])
+                ->withMax(['leads as leads_max_created_at' => fn (Builder $q) => $q->where('assigned_to', $user->id)], 'created_at')
+                ->whereHas('leads', fn (Builder $q) => $q->where('assigned_to', $user->id));
         }
 
-        return TenantUser::query()
-            ->where('tenant_id', Auth::user()->tenant_id)
-            ->where('is_active', true)
-            ->whereHas('role', fn (Builder $q) => $q->whereHas('modules', fn (Builder $m) => $m->where('slug', 'lead-management')))
-            ->orderBy('name')
-            ->get(['id', 'name']);
+        return $query->orderBy('name')->get();
     }
 
     public function delete(string $id): void
@@ -92,11 +97,41 @@ class Index extends Component
         Flux::toast(variant: 'success', text: __('Lead deleted.'));
     }
 
+    /**
+     * Removes an empty Facebook Lead Ads source directly from this page —
+     * the one tenant-side exception to Lead Sources otherwise being
+     * Platform-Admin-managed (see LeadSourcePolicy::delete()). Only reaches
+     * a source with zero leads in practice: the "Delete" button in the view
+     * is only rendered when `leads_count` is 0, but the count is re-checked
+     * here too since it's a data-state guard, not something the policy
+     * itself encodes.
+     */
+    public function deleteSource(string $id): void
+    {
+        $source = LeadSource::where('tenant_id', Auth::user()->tenant_id)
+            ->where('type', LeadSourceType::FacebookLeadAds)
+            ->findOrFail($id);
+
+        Gate::authorize('delete', $source);
+
+        if ($source->leads()->exists()) {
+            Flux::toast(variant: 'danger', text: __('This source has leads and can no longer be deleted.'));
+
+            return;
+        }
+
+        $source->delete();
+
+        Flux::toast(variant: 'success', text: __('Lead source deleted.'));
+    }
+
     public function export(): StreamedResponse
     {
         Gate::authorize('viewAny', Lead::class);
 
-        $leads = $this->filteredQuery()->with(['source', 'assignedUser'])->get();
+        $leads = $this->applyDropdownFilters($this->applyAssignmentScope($this->filteredQuery()))
+            ->with(['source', 'assignedUser'])
+            ->get();
 
         return response()->streamDownload(function () use ($leads): void {
             $handle = fopen('php://output', 'w');
@@ -132,48 +167,30 @@ class Index extends Component
     {
         $user = Auth::user();
 
-        $query = Lead::query()->where('tenant_id', $user->tenant_id);
-
-        if (! $this->isClientAdmin) {
-            $query->assignedTo($user->id);
-        }
-
-        if ($this->status !== '') {
-            $query->byStatus(LeadStatus::from($this->status));
-        }
-
-        if ($this->priority !== '') {
-            $query->byPriority(LeadPriority::from($this->priority));
-        }
+        $query = Lead::query()
+            ->where('tenant_id', $user->tenant_id)
+            ->whereHas('source', fn (Builder $q) => $q->where('type', '!=', LeadSourceType::FacebookLeadAds));
 
         if ($this->sourceType !== '') {
             $sourceType = $this->sourceType;
             $query->whereHas('source', fn (Builder $q) => $q->where('type', $sourceType));
         }
 
-        if ($this->isClientAdmin && $this->assignedTo !== '') {
-            if ($this->assignedTo === 'unassigned') {
-                $query->unassigned();
-            } else {
-                $query->assignedTo($this->assignedTo);
-            }
-        }
-
         return $query;
     }
 
-    public function statusOptions(): array
-    {
-        return LeadStatus::values();
-    }
-
-    public function priorityOptions(): array
-    {
-        return LeadPriority::values();
-    }
-
+    /**
+     * Facebook Lead Ads is excluded: those leads never appear as individual
+     * rows in this list, so filtering by that source type here would always
+     * return nothing.
+     *
+     * @return array<int, string>
+     */
     public function sourceTypeOptions(): array
     {
-        return LeadSourceType::values();
+        return array_values(array_filter(
+            LeadSourceType::values(),
+            fn (string $value): bool => $value !== LeadSourceType::FacebookLeadAds->value,
+        ));
     }
 }

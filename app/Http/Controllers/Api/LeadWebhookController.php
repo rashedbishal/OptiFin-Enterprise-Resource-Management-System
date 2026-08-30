@@ -27,22 +27,40 @@ use Throwable;
 class LeadWebhookController extends Controller
 {
     /**
-     * Verify a Facebook Messenger webhook subscription challenge.
+     * Verify a Facebook Page webhook subscription challenge — shared by
+     * Messenger and Lead Ads, so this accepts whichever of the two is
+     * configured for the tenant (a tenant may only have one set up).
      */
     public function verifyFacebook(Request $request, string $tenant_code): Response
     {
-        return $this->verifyHubChallenge($request, $this->resolveSource($tenant_code, LeadSourceType::FacebookMessenger));
+        $source = $this->resolveSourceOrNull($tenant_code, LeadSourceType::FacebookMessenger)
+            ?? $this->resolveSourceOrNull($tenant_code, LeadSourceType::FacebookLeadAds);
+
+        abort_if($source === null, 404);
+
+        return $this->verifyHubChallenge($request, $source);
     }
 
     /**
-     * Handle an incoming Facebook Messenger message webhook.
+     * Handle an incoming Facebook Page webhook — Messenger conversations
+     * (`entry[].messaging[]`) and Lead Ads submissions (`entry[].changes[]`
+     * with `field === 'leadgen'`) share this one URL, because that's how
+     * Meta delivers both: a single Page-level webhook subscription, not
+     * separate endpoints per capability.
+     *
+     * The Messenger source is resolved lazily, only once an actual
+     * `messaging` event needs it — a tenant may configure Lead Ads without
+     * ever setting up Messenger, and this must not 404 for them just
+     * because no Messenger source exists.
      */
     public function facebookMessenger(Request $request, string $tenant_code): JsonResponse
     {
-        $source = $this->resolveSource($tenant_code, LeadSourceType::FacebookMessenger);
+        $source = null;
 
         foreach ($request->array('entry') as $entry) {
             foreach (($entry['messaging'] ?? []) as $messaging) {
+                $source ??= $this->resolveSource($tenant_code, LeadSourceType::FacebookMessenger);
+
                 $senderId = (string) ($messaging['sender']['id'] ?? 'unknown');
                 $messageText = $messaging['message']['text'] ?? null;
                 $attachments = $this->extractMessagingAttachments($messaging);
@@ -77,6 +95,12 @@ class LeadWebhookController extends Controller
 
                 foreach ($attachments as $attachment) {
                     $this->createPendingAttachmentAndDispatch($lead, LeadSourceType::FacebookMessenger, $attachment, $senderId, $source, $sentAt);
+                }
+            }
+
+            foreach (($entry['changes'] ?? []) as $change) {
+                if (($change['field'] ?? null) === 'leadgen') {
+                    $this->handleFacebookLeadAd($tenant_code, $change['value'] ?? []);
                 }
             }
         }
@@ -264,6 +288,15 @@ class LeadWebhookController extends Controller
             ->where('type', $type)
             ->where('is_active', true)
             ->firstOrFail();
+    }
+
+    private function resolveSourceOrNull(string $tenantCode, LeadSourceType $type): ?LeadSource
+    {
+        try {
+            return $this->resolveSource($tenantCode, $type);
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     /**
@@ -682,5 +715,191 @@ class LeadWebhookController extends Controller
         return isset($messaging['timestamp'])
             ? Carbon::createFromTimestampMs((int) $messaging['timestamp'])
             : now();
+    }
+
+    /**
+     * Ingests a Facebook Lead Ads (Instant Forms) submission. Unlike a
+     * Messenger event, a `leadgen` change carries no field data itself —
+     * only a `leadgen_id` — so the actual submitted fields have to be
+     * fetched separately via the Graph API using the Page's access token.
+     *
+     * Deliberately swallows every failure internally and never throws: this
+     * runs inside the same request as Messenger event processing (they
+     * share one webhook URL), and a malformed or permission-denied lead ad
+     * must not take down the rest of that request or cause Meta to retry
+     * the whole delivery.
+     *
+     * @param  array<string, mixed>  $value
+     */
+    private function handleFacebookLeadAd(string $tenantCode, array $value): void
+    {
+        try {
+            $this->processFacebookLeadAd($tenantCode, $value);
+        } catch (Throwable $e) {
+            Log::error("Facebook lead ad processing failed for tenant [{$tenantCode}]: {$e->getMessage()}");
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $value
+     */
+    private function processFacebookLeadAd(string $tenantCode, array $value): void
+    {
+        $leadgenId = $value['leadgen_id'] ?? null;
+
+        if (! is_string($leadgenId) || $leadgenId === '') {
+            Log::warning("Facebook lead ad webhook for tenant [{$tenantCode}] had no leadgen_id.");
+
+            return;
+        }
+
+        $source = $this->resolveSourceOrNull($tenantCode, LeadSourceType::FacebookLeadAds);
+
+        if ($source === null) {
+            Log::error("Facebook lead ad [{$leadgenId}] received for tenant [{$tenantCode}], but no active Facebook Lead Ads source is configured.");
+
+            return;
+        }
+
+        // Meta can redeliver the same leadgen event (retries, duplicate
+        // subscriptions) — a lead ad submission is immutable once made, so
+        // unlike Messenger's self-healing retry-on-follow-up, a duplicate
+        // delivery is just skipped rather than re-fetched.
+        $alreadyProcessed = Lead::query()
+            ->where('source_id', $source->id)
+            ->where('source_data->leadgen_id', $leadgenId)
+            ->exists();
+
+        if ($alreadyProcessed) {
+            Log::info("Facebook lead ad [{$leadgenId}] already processed for tenant [{$tenantCode}]; skipping duplicate webhook delivery.");
+
+            return;
+        }
+
+        $accessToken = $source->config['page_access_token'] ?? null;
+
+        if (! is_string($accessToken) || $accessToken === '') {
+            Log::error("Facebook lead ad [{$leadgenId}] for tenant [{$tenantCode}]: no Page Access Token configured on the Lead Ads source.");
+
+            return;
+        }
+
+        $fetched = $this->fetchFacebookLeadgenData($leadgenId, $accessToken);
+        $mapped = $fetched !== null ? $this->mapLeadgenFieldData($fetched['field_data']) : ['name' => null, 'email' => null, 'phone' => null];
+
+        $formId = $value['form_id'] ?? null;
+        $formName = is_string($formId) ? $this->fetchFacebookFormName($formId, $accessToken) : null;
+
+        $lead = $this->createLead($source, [
+            'name' => $mapped['name'] ?? ('Facebook Lead '.substr($leadgenId, -4)),
+            'email' => $mapped['email'],
+            'phone' => $mapped['phone'],
+            'source_data' => [
+                'leadgen_id' => $leadgenId,
+                'page_id' => $value['page_id'] ?? null,
+                'form_id' => $formId,
+                'form_name' => $formName,
+                'ad_id' => $fetched['ad_id'] ?? ($value['ad_id'] ?? null),
+                'field_data' => $fetched['field_data'] ?? null,
+                'fetch_failed' => $fetched === null,
+            ],
+        ]);
+
+        Log::info("Facebook lead ad [{$leadgenId}] created lead [{$lead->id}] for tenant [{$tenantCode}].");
+    }
+
+    /**
+     * Fetches a lead ad's submitted field data via the Graph API. Returns
+     * null on any failure — the caller falls back to a minimal lead keyed
+     * only by leadgen_id, so a permission or connectivity problem doesn't
+     * mean losing the lead entirely, just its field data.
+     *
+     * @return array{field_data: array<int, array{name?: string, values?: array<int, string>}>, ad_id: ?string}|null
+     */
+    private function fetchFacebookLeadgenData(string $leadgenId, string $accessToken): ?array
+    {
+        try {
+            $response = Http::timeout(10)->get("https://graph.facebook.com/v20.0/{$leadgenId}", [
+                'access_token' => $accessToken,
+            ]);
+        } catch (ConnectionException $e) {
+            Log::warning("Facebook lead ad [{$leadgenId}] fetch could not connect: {$e->getMessage()}");
+
+            return null;
+        }
+
+        if (! $response->successful()) {
+            $code = (int) $response->json('error.code');
+            $subcode = (int) $response->json('error.error_subcode');
+
+            if ($code === 100 && $subcode === 33) {
+                Log::warning("Facebook lead ad [{$leadgenId}] fetch denied — leads_retrieval needs Advanced Access, or the submitter isn't added as a Tester/Developer on the app.");
+            } else {
+                Log::warning("Facebook lead ad [{$leadgenId}] fetch failed: HTTP {$response->status()} {$response->body()}");
+            }
+
+            return null;
+        }
+
+        return [
+            'field_data' => $response->json('field_data') ?? [],
+            'ad_id' => $response->json('ad_id'),
+        ];
+    }
+
+    /**
+     * The lead ad's form name isn't in the webhook payload or the leadgen
+     * fetch — a second, optional Graph API call. Failure just leaves the
+     * name unset; it's not worth losing the lead over.
+     */
+    private function fetchFacebookFormName(string $formId, string $accessToken): ?string
+    {
+        try {
+            $response = Http::timeout(10)->get("https://graph.facebook.com/v20.0/{$formId}", [
+                'fields' => 'name',
+                'access_token' => $accessToken,
+            ]);
+        } catch (ConnectionException) {
+            return null;
+        }
+
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $name = $response->json('name');
+
+        return is_string($name) && $name !== '' ? $name : null;
+    }
+
+    /**
+     * Facebook Lead Ads field names aren't fully standardized across form
+     * builders — this covers the common field-name variants Meta's own
+     * Instant Forms templates use. Nothing is dropped: the raw field_data
+     * is always kept in source_data regardless of what this recognizes.
+     *
+     * @param  array<int, array{name?: string, values?: array<int, string>}>  $fieldData
+     * @return array{name: ?string, email: ?string, phone: ?string}
+     */
+    private function mapLeadgenFieldData(array $fieldData): array
+    {
+        $values = [];
+
+        foreach ($fieldData as $field) {
+            $key = strtolower((string) ($field['name'] ?? ''));
+            $value = $field['values'][0] ?? null;
+
+            if ($key !== '' && is_string($value) && $value !== '') {
+                $values[$key] = $value;
+            }
+        }
+
+        $firstLast = trim(($values['first_name'] ?? '').' '.($values['last_name'] ?? ''));
+
+        return [
+            'name' => $values['full_name'] ?? ($firstLast !== '' ? $firstLast : null) ?? $values['email'] ?? null,
+            'email' => $values['email'] ?? null,
+            'phone' => $values['phone_number'] ?? $values['phone'] ?? null,
+        ];
     }
 }

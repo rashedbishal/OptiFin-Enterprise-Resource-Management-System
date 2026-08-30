@@ -77,7 +77,7 @@
             @if ($this->selectedType)
                 @foreach ($this->selectedType->configFields() as $field)
                     @if ($field['type'] === 'select')
-                        <flux:select wire:model.live="config.{{ $field['key'] }}" :label="$field['label']">
+                        <flux:select wire:key="config-field-{{ $field['key'] }}" wire:model.live="config.{{ $field['key'] }}" :label="$field['label']">
                             <flux:select.option value="">{{ __('Select an option') }}</flux:select.option>
                             @foreach ($field['options'] as $value => $optionLabel)
                                 <flux:select.option value="{{ $value }}">{{ $optionLabel }}</flux:select.option>
@@ -85,6 +85,7 @@
                         </flux:select>
                     @else
                         <flux:input
+                            wire:key="config-field-{{ $field['key'] }}"
                             wire:model="config.{{ $field['key'] }}"
                             :label="$field['label']"
                             type="{{ $field['type'] === 'password' ? 'password' : ($field['type'] === 'number' ? 'number' : ($field['type'] === 'email' ? 'email' : 'text')) }}"
