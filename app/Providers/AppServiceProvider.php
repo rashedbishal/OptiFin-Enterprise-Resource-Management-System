@@ -2,9 +2,11 @@
 
 namespace App\Providers;
 
+use App\Models\Lead;
 use App\Models\PlatformUser;
 use App\Models\Role;
 use App\Models\TenantUser;
+use App\Observers\LeadObserver;
 use App\Observers\PlatformUserObserver;
 use App\Observers\RoleObserver;
 use App\Observers\TenantUserObserver;
@@ -46,6 +48,7 @@ class AppServiceProvider extends ServiceProvider
         PlatformUser::observe(PlatformUserObserver::class);
         TenantUser::observe(TenantUserObserver::class);
         Role::observe(RoleObserver::class);
+        Lead::observe(LeadObserver::class);
     }
 
     /**

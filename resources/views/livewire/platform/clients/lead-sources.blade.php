@@ -76,13 +76,23 @@
 
             @if ($this->selectedType)
                 @foreach ($this->selectedType->configFields() as $field)
-                    <flux:input
-                        wire:model="config.{{ $field['key'] }}"
-                        :label="$field['label']"
-                        type="{{ $field['type'] === 'password' ? 'password' : ($field['type'] === 'number' ? 'number' : ($field['type'] === 'email' ? 'email' : 'text')) }}"
-                        :placeholder="$editingId && $field['sensitive'] ? __('Leave blank to keep current value') : ''"
-                        :viewable="$field['sensitive']"
-                    />
+                    @if ($field['type'] === 'select')
+                        <flux:select wire:model.live="config.{{ $field['key'] }}" :label="$field['label']">
+                            <flux:select.option value="">{{ __('Select an option') }}</flux:select.option>
+                            @foreach ($field['options'] as $value => $optionLabel)
+                                <flux:select.option value="{{ $value }}">{{ $optionLabel }}</flux:select.option>
+                            @endforeach
+                        </flux:select>
+                    @else
+                        <flux:input
+                            wire:model="config.{{ $field['key'] }}"
+                            :label="$field['label']"
+                            type="{{ $field['type'] === 'password' ? 'password' : ($field['type'] === 'number' ? 'number' : ($field['type'] === 'email' ? 'email' : 'text')) }}"
+                            :placeholder="$editingId && $field['sensitive'] ? __('Leave blank to keep current value') : ''"
+                            :viewable="$field['sensitive']"
+                            :disabled="isset($field['depends_on']) && empty($config[$field['depends_on']] ?? null)"
+                        />
+                    @endif
                 @endforeach
             @endif
 

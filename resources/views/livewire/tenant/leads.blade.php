@@ -49,13 +49,27 @@
         <flux:table.rows>
             @forelse ($this->leads as $lead)
                 <flux:table.row wire:key="lead-{{ $lead->id }}">
-                    <flux:table.cell>{{ $lead->name }}</flux:table.cell>
+                    <flux:table.cell>
+                        <div class="flex items-center gap-2">
+                            @if ($lead->avatarUrl())
+                                <img src="{{ $lead->avatarUrl() }}" alt="" loading="lazy" class="size-6 shrink-0 rounded-full object-cover">
+                            @endif
+                            {{ $lead->name }}
+                        </div>
+                    </flux:table.cell>
                     <flux:table.cell><flux:badge size="sm" icon="{{ $lead->source->type->icon() }}">{{ $lead->source->type->label() }}</flux:badge></flux:table.cell>
                     <flux:table.cell><flux:badge size="sm">{{ ucfirst(str_replace('_', ' ', $lead->status->value)) }}</flux:badge></flux:table.cell>
                     <flux:table.cell>{{ ucfirst($lead->priority->value) }}</flux:table.cell>
                     <flux:table.cell>{{ $lead->assignedUser?->name ?? __('Unassigned') }}</flux:table.cell>
                     <flux:table.cell>
-                        <flux:button size="sm" :href="route('tenant-leads.show', $lead)" wire:navigate>{{ __('View') }}</flux:button>
+                        <div class="flex justify-end gap-2">
+                            <flux:button size="sm" :href="route('tenant-leads.show', $lead)" wire:navigate>{{ __('View') }}</flux:button>
+                            @if (in_array($lead->source->type->value, ['email', 'website_form']))
+                                <flux:button size="sm" variant="danger" wire:click="delete('{{ $lead->id }}')" wire:confirm="{{ __('Delete this lead?') }}">
+                                    {{ __('Delete') }}
+                                </flux:button>
+                            @endif
+                        </div>
                     </flux:table.cell>
                 </flux:table.row>
             @empty

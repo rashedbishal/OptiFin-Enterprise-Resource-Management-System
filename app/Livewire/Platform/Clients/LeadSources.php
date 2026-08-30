@@ -156,6 +156,7 @@ class LeadSources extends Component
             LeadSourceType::Email => $this->testEmailConnection($source),
             LeadSourceType::FacebookMessenger => $this->testFacebookConnection($source),
             LeadSourceType::Whatsapp => $this->testWhatsappConnection($source),
+            LeadSourceType::Instagram => $this->testInstagramConnection($source),
             LeadSourceType::WebsiteForm => [
                 'success' => true,
                 'message' => __('There is nothing external to test — POST a sample lead to the webhook URL with the X-Api-Key header to confirm it end-to-end.'),
@@ -216,9 +217,20 @@ class LeadSources extends Component
         $connection = @imap_open($mailbox, $config['imap_username'] ?? '', $config['imap_password'] ?? '', OP_HALFOPEN);
 
         if ($connection === false) {
-            return ['success' => false, 'message' => __('Unable to connect: :error', ['error' => imap_last_error()])];
+            $error = imap_last_error();
+
+            // Drain the extension's internal alert/error stacks. Anything left
+            // unread here surfaces as a PHP warning at request shutdown (outside
+            // this suppressed scope), which Laravel turns into an ErrorException
+            // and corrupts the Livewire response.
+            imap_errors();
+            imap_alerts();
+
+            return ['success' => false, 'message' => __('Unable to connect: :error', ['error' => $error])];
         }
 
+        imap_errors();
+        imap_alerts();
         imap_close($connection);
 
         return ['success' => true, 'message' => __('Connection successful.')];
@@ -325,6 +337,43 @@ class LeadSources extends Component
 
         return ['success' => true, 'message' => __('Connected to WhatsApp number ":name" successfully.', [
             'name' => $response->json('display_phone_number') ?? $response->json('verified_name') ?? $phoneNumberId,
+        ])];
+    }
+
+    /**
+     * @return array{success: bool, message: string}
+     */
+    private function testInstagramConnection(LeadSource $source): array
+    {
+        $config = $source->config ?? [];
+        $accountId = $config['instagram_account_id'] ?? null;
+        $accessToken = $config['access_token'] ?? null;
+
+        if (! $accountId || ! $accessToken) {
+            return ['success' => false, 'message' => __('Instagram Business Account ID and Access Token must both be set.')];
+        }
+
+        $host = ($config['auth_mode'] ?? 'facebook') === 'instagram'
+            ? 'graph.instagram.com'
+            : 'graph.facebook.com';
+
+        try {
+            $response = Http::timeout(10)->get("https://{$host}/{$accountId}", [
+                'fields' => 'username,name',
+                'access_token' => $accessToken,
+            ]);
+        } catch (ConnectionException) {
+            return ['success' => false, 'message' => __('Could not reach the Instagram Graph API.')];
+        }
+
+        if (! $response->successful()) {
+            return ['success' => false, 'message' => __('Instagram rejected the request: :error', [
+                'error' => $response->json('error.message') ?? __('unknown error'),
+            ])];
+        }
+
+        return ['success' => true, 'message' => __('Connected to Instagram account ":name" successfully.', [
+            'name' => $response->json('username') ?? $response->json('name') ?? $accountId,
         ])];
     }
 }

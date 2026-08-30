@@ -64,6 +64,7 @@ class LeadSource extends Model
         $routeName = match ($this->type) {
             LeadSourceType::FacebookMessenger => 'api.webhook.facebook',
             LeadSourceType::Whatsapp => 'api.webhook.whatsapp',
+            LeadSourceType::Instagram => 'api.webhook.instagram',
             LeadSourceType::WebsiteForm => 'api.webhook.website-form',
             LeadSourceType::Email => null,
         };

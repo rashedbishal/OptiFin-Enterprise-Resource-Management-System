@@ -4,7 +4,9 @@ namespace App\Models;
 
 use App\Concerns\BelongsToTenant;
 use App\Enums\LeadPriority;
+use App\Enums\LeadSourceType;
 use App\Enums\LeadStatus;
+use Carbon\CarbonInterface;
 use Database\Factories\LeadFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Scope;
@@ -25,6 +27,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $email
  * @property string|null $phone
  * @property string|null $message
+ * @property string|null $html_body
  * @property array<string, mixed>|null $source_data
  * @property LeadStatus $status
  * @property LeadPriority $priority
@@ -34,9 +37,10 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $closed_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ * @property-read Tenant $tenant
  */
 #[Fillable([
-    'tenant_id', 'source_id', 'assigned_to', 'name', 'email', 'phone', 'message',
+    'tenant_id', 'source_id', 'assigned_to', 'name', 'email', 'phone', 'message', 'html_body',
     'source_data', 'status', 'priority', 'notes', 'assigned_at', 'first_contacted_at', 'closed_at',
 ])]
 class Lead extends Model
@@ -59,6 +63,90 @@ class Lead extends Model
         ];
     }
 
+    /**
+     * The sender's profile picture, for Messenger/Instagram leads — captured
+     * alongside their name when the webhook's Graph API profile lookup
+     * succeeds. Not a column: it's already in `source_data`, and duplicating
+     * it into its own column would just be another place for the two to
+     * drift out of sync.
+     */
+    public function avatarUrl(): ?string
+    {
+        $data = $this->source_data ?? [];
+        $url = $data['facebook_profile_pic'] ?? $data['instagram_profile_pic'] ?? null;
+
+        return is_string($url) && $url !== '' ? $url : null;
+    }
+
+    /**
+     * @return HasMany<LeadAttachment, $this>
+     */
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(LeadAttachment::class)->orderBy('sent_at');
+    }
+
+    /**
+     * Reconstructs the individual text messages that make up this lead's
+     * conversation, in arrival order, from the raw per-message webhook
+     * payloads stored in `source_data['messages']` — `message` alone only
+     * holds the flattened, newline-joined text (kept as-is for previews and
+     * notifications). Used to interleave text with attachments on the lead
+     * detail page, since a thread can carry several of each over time.
+     *
+     * @return array<int, array{text: string, at: CarbonInterface}>
+     */
+    public function messageTimeline(): array
+    {
+        $entries = $this->source_data['messages'] ?? null;
+
+        if (! is_array($entries)) {
+            return [];
+        }
+
+        $isWhatsapp = $this->source->type === LeadSourceType::Whatsapp;
+
+        return collect($entries)
+            ->map(fn (array $entry): array => $isWhatsapp
+                ? $this->parseWhatsappTimelineEntry($entry)
+                : $this->parseMessagingTimelineEntry($entry))
+            ->filter(fn (array $entry): bool => $entry['text'] !== null)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<string, mixed>  $entry
+     * @return array{text: ?string, at: CarbonInterface}
+     */
+    private function parseMessagingTimelineEntry(array $entry): array
+    {
+        $text = $entry['message']['text'] ?? null;
+
+        return [
+            'text' => is_string($text) && $text !== '' ? $text : null,
+            'at' => isset($entry['timestamp']) ? Carbon::createFromTimestampMs((int) $entry['timestamp']) : ($this->created_at ?? now()),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $entry
+     * @return array{text: ?string, at: CarbonInterface}
+     */
+    private function parseWhatsappTimelineEntry(array $entry): array
+    {
+        $type = $entry['type'] ?? 'text';
+        $text = $entry['text']['body'] ?? ($entry[$type]['caption'] ?? null);
+
+        return [
+            'text' => is_string($text) && $text !== '' ? $text : null,
+            'at' => isset($entry['timestamp']) ? Carbon::createFromTimestamp((int) $entry['timestamp']) : ($this->created_at ?? now()),
+        ];
+    }
+
+    /**
+     * @return BelongsTo<LeadSource, $this>
+     */
     public function source(): BelongsTo
     {
         return $this->belongsTo(LeadSource::class, 'source_id');

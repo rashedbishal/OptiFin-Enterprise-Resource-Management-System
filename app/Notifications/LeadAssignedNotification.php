@@ -31,7 +31,7 @@ class LeadAssignedNotification extends Notification
             'lead_id' => $this->lead->id,
             'name' => $this->lead->name,
             'assigned_by' => $this->assignedBy?->name,
-            'message' => Str::limit((string) $this->lead->message, 120),
+            'message' => Str::limit((string) ($this->lead->message ?: $this->lead->attachments->last()?->summary()), 120),
         ];
     }
 }

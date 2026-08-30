@@ -6,10 +6,12 @@ use App\Enums\LeadPriority;
 use App\Enums\LeadStatus;
 use App\Events\LeadStatusChanged;
 use App\Models\Lead;
+use App\Models\LeadAttachment;
 use App\Models\LeadNote;
 use App\Models\LeadStatusLog;
 use App\Models\TenantUser;
 use App\Services\LeadAssignmentService;
+use Carbon\CarbonInterface;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
@@ -29,6 +31,8 @@ class Show extends Component
     public ?string $assigneeId = null;
 
     public string $newNote = '';
+
+    public string $bodyView = 'text';
 
     public function mount(Lead $lead): void
     {
@@ -59,13 +63,39 @@ class Show extends Component
     public function refreshLead(): void
     {
         $this->lead->refresh();
-        unset($this->activity);
+        unset($this->activity, $this->timeline);
     }
 
     #[Computed]
     public function isClientAdmin(): bool
     {
         return Auth::user()->isClientAdmin();
+    }
+
+    /**
+     * The lead's text messages and downloaded attachments merged into a
+     * single chronological feed, matching the order they actually arrived
+     * in the conversation — a thread can carry several of each over time,
+     * and neither alone reflects that order on its own.
+     *
+     * @return array<int, array{type: 'text', text: string, at: CarbonInterface}|array{type: 'attachment', attachment: LeadAttachment, at: CarbonInterface}>
+     */
+    #[Computed]
+    public function timeline(): array
+    {
+        $items = [];
+
+        foreach ($this->lead->messageTimeline() as $entry) {
+            $items[] = ['type' => 'text', 'text' => $entry['text'], 'at' => $entry['at']];
+        }
+
+        foreach ($this->lead->attachments as $attachment) {
+            $items[] = ['type' => 'attachment', 'attachment' => $attachment, 'at' => $attachment->sent_at];
+        }
+
+        usort($items, fn (array $a, array $b): int => $a['at'] <=> $b['at']);
+
+        return $items;
     }
 
     #[Computed]

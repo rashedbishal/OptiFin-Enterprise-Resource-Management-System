@@ -7,6 +7,7 @@ use App\Enums\LeadSourceType;
 use App\Enums\LeadStatus;
 use App\Models\Lead;
 use App\Models\TenantUser;
+use Flux\Flux;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
@@ -78,6 +79,17 @@ class Index extends Component
             ->whereHas('role', fn (Builder $q) => $q->whereHas('modules', fn (Builder $m) => $m->where('slug', 'lead-management')))
             ->orderBy('name')
             ->get(['id', 'name']);
+    }
+
+    public function delete(string $id): void
+    {
+        $lead = Lead::where('tenant_id', Auth::user()->tenant_id)->findOrFail($id);
+
+        Gate::authorize('delete', $lead);
+
+        $lead->delete();
+
+        Flux::toast(variant: 'success', text: __('Lead deleted.'));
     }
 
     public function export(): StreamedResponse

@@ -21,7 +21,15 @@ class LeadFactory extends Factory
     {
         return [
             'tenant_id' => Tenant::factory(),
-            'source_id' => LeadSource::factory(),
+            // Created against the lead's own tenant_id (already resolved by
+            // this point in attribute expansion) rather than letting
+            // LeadSource::factory()'s own tenant_id default spawn an unrelated
+            // orphan tenant — that extra tenant used to collide with
+            // CreateClient's DB-count-based tenant_code numbering, since
+            // TenantFactory numbers via its own static counter instead.
+            'source_id' => fn (array $attributes) => LeadSource::factory()->create([
+                'tenant_id' => $attributes['tenant_id'],
+            ])->id,
             'name' => fake()->name(),
             'email' => fake()->safeEmail(),
             'phone' => fake()->phoneNumber(),
@@ -29,17 +37,5 @@ class LeadFactory extends Factory
             'status' => LeadStatus::New,
             'priority' => LeadPriority::Medium,
         ];
-    }
-
-    /**
-     * The lead source nested factory always creates its own (random) tenant.
-     * Force it back into the lead's actual tenant so `$lead->source` never
-     * resolves to null once the tenant global scope applies.
-     */
-    public function configure(): static
-    {
-        return $this->afterCreating(function (Lead $lead) {
-            LeadSource::query()->whereKey($lead->source_id)->update(['tenant_id' => $lead->tenant_id]);
-        });
     }
 }

@@ -72,6 +72,70 @@ test('a facebook message creates a lead, and a follow-up message is appended ins
     expect($lead->message)->toContain('Hello there')->toContain('Second message');
 });
 
+test('an instagram webhook verify challenge succeeds with the correct token', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Instagram,
+        'config' => ['instagram_account_id' => '456', 'verify_token' => 'secret-token'],
+    ]);
+
+    $this->get(route('api.webhook.instagram.verify', $tenant->tenant_code).'?hub_mode=subscribe&hub_verify_token=secret-token&hub_challenge=42')
+        ->assertOk()
+        ->assertSee('42');
+});
+
+test('an instagram webhook verify challenge fails with the wrong token', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Instagram,
+        'config' => ['instagram_account_id' => '456', 'verify_token' => 'secret-token'],
+    ]);
+
+    $this->get(route('api.webhook.instagram.verify', $tenant->tenant_code).'?hub_mode=subscribe&hub_verify_token=wrong&hub_challenge=42')
+        ->assertForbidden();
+});
+
+test('an instagram dm creates a lead, and a follow-up message is appended instead of duplicated', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Instagram,
+        'config' => ['instagram_account_id' => '456', 'verify_token' => 'secret-token'],
+    ]);
+
+    $payload = [
+        'entry' => [[
+            'messaging' => [[
+                'sender' => ['id' => 'igsid-1'],
+                'message' => ['text' => 'Hi, is this available?'],
+            ]],
+        ]],
+    ];
+
+    Event::fake([LeadReceived::class, LeadUpdated::class]);
+
+    $this->postJson(route('api.webhook.instagram', $tenant->tenant_code), $payload)->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(1);
+    Event::assertDispatched(LeadReceived::class);
+    Event::assertNotDispatched(LeadUpdated::class);
+
+    $payload['entry'][0]['messaging'][0]['message']['text'] = 'Still interested';
+    $this->postJson(route('api.webhook.instagram', $tenant->tenant_code), $payload)->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(1);
+    Event::assertDispatched(LeadReceived::class, 1);
+    Event::assertDispatched(LeadUpdated::class, 1);
+
+    $lead = Lead::where('tenant_id', $tenant->id)->first();
+    expect($lead->message)->toContain('Hi, is this available?')->toContain('Still interested');
+});
+
 test('a whatsapp message creates a lead', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
 
@@ -99,6 +163,131 @@ test('a whatsapp message creates a lead', function () {
     $lead = Lead::where('tenant_id', $tenant->id)->first();
     expect($lead)->not->toBeNull();
     expect($lead->phone)->toBe('8801700000000');
+    expect($lead->name)->toBe('WhatsApp User 8801700000000');
+});
+
+test('a whatsapp message with a contacts profile name uses that name instead of the generic fallback', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => ['phone_number_id' => '123', 'access_token' => 'x', 'verify_token' => 'y'],
+    ]);
+
+    $payload = [
+        'entry' => [[
+            'changes' => [[
+                'value' => [
+                    'contacts' => [[
+                        'wa_id' => '8801700000000',
+                        'profile' => ['name' => 'Rahim Uddin'],
+                    ]],
+                    'messages' => [[
+                        'from' => '8801700000000',
+                        'text' => ['body' => 'Hi, interested in your product'],
+                    ]],
+                ],
+            ]],
+        ]],
+    ];
+
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), $payload)->assertOk();
+
+    $lead = Lead::where('tenant_id', $tenant->id)->firstOrFail();
+    expect($lead->name)->toBe('Rahim Uddin');
+});
+
+test('a whatsapp message creates a lead, and a follow-up message from the same number is appended instead of duplicated', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => ['phone_number_id' => '123', 'access_token' => 'x', 'verify_token' => 'y'],
+    ]);
+
+    $payload = [
+        'entry' => [[
+            'changes' => [[
+                'value' => [
+                    'messages' => [[
+                        'from' => '8801700000000',
+                        'text' => ['body' => 'Hi, interested in your product'],
+                    ]],
+                ],
+            ]],
+        ]],
+    ];
+
+    Event::fake([LeadReceived::class, LeadUpdated::class]);
+
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), $payload)->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(1);
+    Event::assertDispatched(LeadReceived::class);
+    Event::assertNotDispatched(LeadUpdated::class);
+
+    $payload['entry'][0]['changes'][0]['value']['messages'][0]['text']['body'] = 'What is the price?';
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), $payload)->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(1);
+    Event::assertDispatched(LeadReceived::class, 1);
+    Event::assertDispatched(LeadUpdated::class, 1);
+
+    $lead = Lead::where('tenant_id', $tenant->id)->first();
+    expect($lead->message)->toContain('Hi, interested in your product')->toContain('What is the price?');
+});
+
+test('a whatsapp webhook for an unknown tenant code still acknowledges with 200 instead of failing Meta\'s retry', function () {
+    $payload = [
+        'entry' => [[
+            'changes' => [[
+                'value' => [
+                    'messages' => [[
+                        'from' => '8801700000000',
+                        'text' => ['body' => 'Hello'],
+                    ]],
+                ],
+            ]],
+        ]],
+    ];
+
+    $this->postJson(route('api.webhook.whatsapp', 'TEN-DOES-NOT-EXIST'), $payload)
+        ->assertOk()
+        ->assertJson(['status' => 'ok']);
+
+    expect(Lead::count())->toBe(0);
+});
+
+test('a whatsapp webhook with no active whatsapp source still acknowledges with 200', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'is_active' => false,
+        'config' => ['phone_number_id' => '123', 'access_token' => 'x', 'verify_token' => 'y'],
+    ]);
+
+    $payload = [
+        'entry' => [[
+            'changes' => [[
+                'value' => [
+                    'messages' => [[
+                        'from' => '8801700000000',
+                        'text' => ['body' => 'Hello'],
+                    ]],
+                ],
+            ]],
+        ]],
+    ];
+
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), $payload)
+        ->assertOk()
+        ->assertJson(['status' => 'ok']);
+
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(0);
 });
 
 test('a website form submission with a valid api key creates a lead', function () {
