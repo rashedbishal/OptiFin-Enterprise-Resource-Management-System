@@ -189,6 +189,7 @@ class LeadSources extends Component
             LeadSourceType::FacebookLeadAds => $this->testFacebookLeadAdsConnection($source),
             LeadSourceType::Whatsapp => $this->testWhatsappConnection($source),
             LeadSourceType::Instagram => $this->testInstagramConnection($source),
+            LeadSourceType::LinkedInLeadGen => $this->testLinkedInConnection($source),
             LeadSourceType::WebsiteForm => [
                 'success' => true,
                 'message' => __('There is nothing external to test — POST a sample lead to the webhook URL with the X-Api-Key header to confirm it end-to-end.'),
@@ -220,7 +221,7 @@ class LeadSources extends Component
      */
     private function normalizeConfig(LeadSourceType $type, array $config): array
     {
-        if ($type === LeadSourceType::Email) {
+        if ($type === LeadSourceType::Email || $type === LeadSourceType::LinkedInLeadGen) {
             $config['fetch_interval_minutes'] = $config['fetch_interval_minutes'] ?? 15;
         }
 
@@ -460,5 +461,72 @@ class LeadSources extends Component
         return ['success' => true, 'message' => __('Connected to Instagram account ":name" successfully.', [
             'name' => $response->json('username') ?? $response->json('name') ?? $accountId,
         ])];
+    }
+
+    /**
+     * Unlike every other type's "test connection", a LinkedIn source's
+     * access_token is never typed in by an admin — it only arrives via the
+     * OAuth callback (Phase 2, not yet implemented). Until a source has
+     * been through that flow, "no token yet" is an expected state, not a
+     * misconfiguration, so it gets its own message distinct from "not
+     * configured at all".
+     *
+     * @return array{success: bool, message: string}
+     */
+    private function testLinkedInConnection(LeadSource $source): array
+    {
+        $config = $source->config ?? [];
+        $organizationUrn = $config['organization_urn'] ?? null;
+        $accessToken = $config['access_token'] ?? null;
+
+        if (! $organizationUrn) {
+            return ['success' => false, 'message' => __('Organization / Sponsored Account URN must be set.')];
+        }
+
+        if (! $accessToken) {
+            return ['success' => false, 'message' => __('This source has not been connected to LinkedIn yet — use "Connect with LinkedIn" to authorize it.')];
+        }
+
+        $apiVersion = config('services.linkedin.api_version');
+
+        if (! $apiVersion) {
+            return ['success' => false, 'message' => __('LINKEDIN_API_VERSION is not configured — set it before testing a LinkedIn connection.')];
+        }
+
+        try {
+            $response = Http::withToken($accessToken)
+                ->withHeaders([
+                    'Linkedin-Version' => $apiVersion,
+                    'X-Restli-Protocol-Version' => '2.0.0',
+                ])
+                ->timeout(10)
+                ->get('https://api.linkedin.com/rest/leadForms', [
+                    'q' => 'owner',
+                    'owner' => "({$this->linkedInOwnerKey($organizationUrn)}:{$organizationUrn})",
+                    'count' => 1,
+                ]);
+        } catch (ConnectionException) {
+            return ['success' => false, 'message' => __('Could not reach the LinkedIn API.')];
+        }
+
+        if (! $response->successful()) {
+            return ['success' => false, 'message' => __('LinkedIn rejected the request: :error', [
+                'error' => $response->json('message') ?? __('unknown error'),
+            ])];
+        }
+
+        return ['success' => true, 'message' => __('Connected to LinkedIn successfully.')];
+    }
+
+    /**
+     * LinkedIn's `owner` union type is keyed by which kind of URN it is —
+     * `organization` for a Company Page or `sponsoredAccount` for an ad
+     * account. Both are valid values for `organization_urn`, so this just
+     * reads the URN's own resource segment rather than requiring a second
+     * config field to say which one it is.
+     */
+    private function linkedInOwnerKey(string $organizationUrn): string
+    {
+        return str_contains($organizationUrn, ':sponsoredAccount:') ? 'sponsoredAccount' : 'organization';
     }
 }

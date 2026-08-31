@@ -35,4 +35,26 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | LinkedIn
+    |--------------------------------------------------------------------------
+    |
+    | One LinkedIn Developer App is shared across every tenant — each tenant
+    | authorizes their own LinkedIn organization/ad account against it via
+    | OAuth (see App\Http\Controllers\Api\LinkedInOAuthController), rather
+    | than each tenant configuring their own app. `api_version` deliberately
+    | has no hardcoded fallback: LinkedIn versions its Marketing API monthly
+    | and sunsets old versions on a rolling schedule, so an unset value
+    | should fail loudly rather than silently send a stale/guessed version.
+    |
+    */
+
+    'linkedin' => [
+        'client_id' => env('LINKEDIN_CLIENT_ID'),
+        'client_secret' => env('LINKEDIN_CLIENT_SECRET'),
+        'redirect' => env('LINKEDIN_REDIRECT_URI'),
+        'api_version' => env('LINKEDIN_API_VERSION'),
+    ],
+
 ];

@@ -24,13 +24,14 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $last_synced_at
  * @property Carbon|null $last_signature_rejection_at
  * @property string|null $last_signature_rejection_reason
+ * @property Carbon|null $token_expires_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Tenant $tenant
  */
 #[Fillable([
     'tenant_id', 'type', 'name', 'config', 'is_active', 'last_synced_at',
-    'last_signature_rejection_at', 'last_signature_rejection_reason',
+    'last_signature_rejection_at', 'last_signature_rejection_reason', 'token_expires_at',
 ])]
 class LeadSource extends Model
 {
@@ -48,6 +49,7 @@ class LeadSource extends Model
             'is_active' => 'boolean',
             'last_synced_at' => 'datetime',
             'last_signature_rejection_at' => 'datetime',
+            'token_expires_at' => 'datetime',
         ];
     }
 
@@ -76,6 +78,14 @@ class LeadSource extends Model
             LeadSourceType::Whatsapp => 'api.webhook.whatsapp',
             LeadSourceType::Instagram => 'api.webhook.instagram',
             LeadSourceType::WebsiteForm => 'api.webhook.website-form',
+            // No route yet — LinkedIn's webhook endpoint doesn't exist
+            // until Phase 4 registers it. Until then this source is
+            // poll-only in practice, so it falls back to the same "Polled
+            // every :min min" display Email already uses. Wiring this to a
+            // route name before that route exists would throw a
+            // RouteNotFoundException the moment this page renders a
+            // LinkedIn source row.
+            LeadSourceType::LinkedInLeadGen => null,
             LeadSourceType::Email => null,
         };
 

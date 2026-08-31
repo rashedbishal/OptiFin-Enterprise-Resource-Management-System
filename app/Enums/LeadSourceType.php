@@ -10,6 +10,7 @@ enum LeadSourceType: string
     case Instagram = 'instagram';
     case Email = 'email';
     case WebsiteForm = 'website_form';
+    case LinkedInLeadGen = 'linkedin_lead_gen';
 
     /**
      * @return array<int, string>
@@ -31,6 +32,7 @@ enum LeadSourceType: string
             self::Instagram => 'Instagram',
             self::Email => 'Email',
             self::WebsiteForm => 'Website Form',
+            self::LinkedInLeadGen => 'LinkedIn Lead Gen',
         };
     }
 
@@ -46,6 +48,7 @@ enum LeadSourceType: string
             self::Instagram => 'camera',
             self::Email => 'envelope',
             self::WebsiteForm => 'globe-alt',
+            self::LinkedInLeadGen => 'briefcase',
         };
     }
 
@@ -95,6 +98,37 @@ enum LeadSourceType: string
             ],
             self::WebsiteForm => [
                 ['key' => 'allowed_domains', 'label' => 'Allowed Domains (comma separated)', 'type' => 'text', 'sensitive' => false],
+            ],
+            // No `app_secret` field here, unlike the Meta-family types above:
+            // LinkedIn webhook signatures are keyed by this app's single
+            // Developer App client secret (config('services.linkedin')),
+            // not a per-tenant secret — there is only ever one LinkedIn App
+            // for the whole ERP, shared across every tenant's connection.
+            self::LinkedInLeadGen => [
+                // Typed by hand for now. Once OAuth (Phase 2) can enumerate
+                // the orgs/ad accounts the connecting member actually has
+                // Lead Sync roles on, this should become a discovered
+                // choice instead of free text — kept a plain text field
+                // today so a source is still fully configurable before
+                // OAuth exists.
+                ['key' => 'organization_urn', 'label' => 'Organization / Sponsored Account URN', 'type' => 'text', 'sensitive' => false],
+                // The options below are LinkedIn's own leadType enum shape,
+                // not a claim about what this tenant is actually permitted
+                // to sync — that's only knowable from the API/OAuth grant
+                // itself (Phase 2/3), and must stay the source of truth for
+                // what a given connection can access.
+                ['key' => 'lead_type', 'label' => 'Lead Type', 'type' => 'select', 'sensitive' => false, 'options' => [
+                    'SPONSORED' => 'Sponsored (Ads)',
+                    'EVENT' => 'Event',
+                    'COMPANY' => 'Company Page',
+                    'ORGANIZATION_PRODUCT' => 'Organization Product',
+                ]],
+                // Populated by the OAuth callback (Phase 2), not typed here
+                // — see configValidationRules() for why these stay nullable
+                // even at creation time.
+                ['key' => 'access_token', 'label' => 'Access Token (set automatically via Connect with LinkedIn)', 'type' => 'password', 'sensitive' => true],
+                ['key' => 'refresh_token', 'label' => 'Refresh Token (set automatically via Connect with LinkedIn)', 'type' => 'password', 'sensitive' => true],
+                ['key' => 'fetch_interval_minutes', 'label' => 'Recovery Poll Interval (minutes)', 'type' => 'number', 'sensitive' => false],
             ],
         };
     }
@@ -157,6 +191,18 @@ enum LeadSourceType: string
             ],
             self::WebsiteForm => [
                 'config.allowed_domains' => ['nullable', 'string'],
+            ],
+            self::LinkedInLeadGen => [
+                'config.organization_urn' => ['required', 'string', 'starts_with:urn:li:', 'max:255'],
+                'config.lead_type' => ['required', 'in:SPONSORED,EVENT,COMPANY,ORGANIZATION_PRODUCT'],
+                // Always nullable, regardless of $isUpdate: unlike every
+                // other type's tokens, these can't be typed in by an admin
+                // in the normal case — they only arrive via the OAuth
+                // callback (Phase 2). A source must be creatable, and
+                // editable, before it's connected.
+                'config.access_token' => ['nullable', 'string'],
+                'config.refresh_token' => ['nullable', 'string'],
+                'config.fetch_interval_minutes' => ['nullable', 'integer', 'min:1'],
             ],
         };
     }

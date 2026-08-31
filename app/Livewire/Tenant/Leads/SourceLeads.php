@@ -8,6 +8,7 @@ use App\Livewire\Tenant\Leads\Concerns\FiltersLeadsQuery;
 use App\Models\Lead;
 use App\Models\LeadSource;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
@@ -40,6 +41,16 @@ class SourceLeads extends Component
         abort_unless($leadSource->type === LeadSourceType::FacebookLeadAds, 404);
 
         $this->leadSource = $leadSource;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function getListeners(): array
+    {
+        return [
+            'echo-private:tenant.'.Auth::user()->tenant_id.',.lead.received' => '$refresh',
+        ];
     }
 
     public function updating(): void
