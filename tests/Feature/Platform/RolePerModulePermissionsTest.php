@@ -28,7 +28,6 @@ test('creating a platform role can grant different permissions per module', func
     Livewire::actingAs($motherAdmin, 'platform')
         ->test(PlatformRolesIndex::class)
         ->set('name', 'Module Manager')
-        ->set('moduleIds', [$moduleA->id, $moduleB->id])
         ->set('modulePermissions', [
             $moduleA->id => [$view, $create],
             $moduleB->id => [$view, $delete],
@@ -47,7 +46,39 @@ test('creating a platform role can grant different permissions per module', func
     expect($role->hasPermissionForModule('module-b', 'create'))->toBeFalse();
 });
 
-test('unchecking a module on edit drops only that module\'s permission grants', function () {
+test('a platform role cannot be created without selecting any permission', function () {
+    (new PermissionSeeder)->run();
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+
+    Livewire::actingAs($motherAdmin, 'platform')
+        ->test(PlatformRolesIndex::class)
+        ->set('name', 'Empty Role')
+        ->call('save')
+        ->assertHasErrors('modulePermissions');
+
+    expect(Role::whereNull('tenant_id')->where('name', 'Empty Role')->exists())->toBeFalse();
+});
+
+test('a module with no permission checked does not satisfy the at-least-one-permission requirement', function () {
+    (new PermissionSeeder)->run();
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+
+    $moduleA = Module::factory()->platformScope()->create(['name' => 'Module A', 'slug' => 'module-a']);
+
+    Livewire::actingAs($motherAdmin, 'platform')
+        ->test(PlatformRolesIndex::class)
+        ->set('name', 'Empty Selection')
+        // A module's key can exist with an empty array (e.g. every
+        // checkbox under it was unchecked again) without any permission
+        // actually being granted - that must still be rejected.
+        ->set('modulePermissions', [$moduleA->id => []])
+        ->call('save')
+        ->assertHasErrors('modulePermissions');
+
+    expect(Role::whereNull('tenant_id')->where('name', 'Empty Selection')->exists())->toBeFalse();
+});
+
+test('unchecking every permission on edit drops that module\'s grant, keeping others intact', function () {
     (new PermissionSeeder)->run();
     $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
 
@@ -63,7 +94,7 @@ test('unchecking a module on edit drops only that module\'s permission grants', 
     Livewire::actingAs($motherAdmin, 'platform')
         ->test(PlatformRolesIndex::class)
         ->call('edit', $role->id)
-        ->set('moduleIds', [$moduleA->id])
+        ->set("modulePermissions.{$moduleB->id}", [])
         ->call('save')
         ->assertHasNoErrors();
 
@@ -97,7 +128,6 @@ test('creating a tenant role can grant different permissions per module', functi
     Livewire::actingAs($clientAdmin)
         ->test(TenantRolesIndex::class)
         ->set('name', 'Sales Manager')
-        ->set('moduleIds', [$leadModule->id, $secondModule->id])
         ->set('modulePermissions', [
             $leadModule->id => [$view, $create],
             $secondModule->id => [$view],

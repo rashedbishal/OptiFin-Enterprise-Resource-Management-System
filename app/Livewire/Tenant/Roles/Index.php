@@ -6,6 +6,7 @@ use App\Actions\Tenant\CreateTenantRole;
 use App\Models\Permission;
 use App\Models\Role;
 use App\Services\RoleService;
+use Closure;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
@@ -24,11 +25,10 @@ class Index extends Component
 
     public string $name = '';
 
-    /** @var array<int, string> */
-    public array $moduleIds = [];
-
     /**
      * Permission ids granted per module: module id => list of permission ids.
+     * A module only counts as granted to the role while this holds at
+     * least one permission id for it.
      *
      * @var array<string, array<int, string>>
      */
@@ -63,7 +63,7 @@ class Index extends Component
 
     public function create(): void
     {
-        $this->reset('editingId', 'name', 'moduleIds', 'modulePermissions');
+        $this->reset('editingId', 'name', 'modulePermissions');
         $this->showModal = true;
     }
 
@@ -75,18 +75,8 @@ class Index extends Component
 
         $this->editingId = $role->id;
         $this->name = $role->name;
-        $this->moduleIds = $role->modules->pluck('id')->all();
         $this->modulePermissions = $role->permissionIdsByModule();
         $this->showModal = true;
-    }
-
-    /**
-     * Drop permission selections for modules that were just unchecked, so
-     * a re-checked module doesn't come back with stale grants attached.
-     */
-    public function updatedModuleIds(): void
-    {
-        $this->modulePermissions = collect($this->modulePermissions)->only($this->moduleIds)->all();
     }
 
     public function save(RoleService $roleService): void
@@ -98,11 +88,20 @@ class Index extends Component
                 'required', 'string', 'max:255',
                 Rule::unique('roles', 'name')->where('tenant_id', $tenant->id)->ignore($this->editingId),
             ],
-            'moduleIds' => ['array'],
-            'modulePermissions' => ['array'],
+            'modulePermissions' => [
+                'array',
+                function (string $attribute, mixed $value, Closure $fail): void {
+                    if (array_filter($value) === []) {
+                        $fail(__('Select at least one permission for at least one module.'));
+                    }
+                },
+            ],
         ]);
 
-        $modulePermissions = array_intersect_key($this->modulePermissions, array_flip($this->moduleIds));
+        // A module is only granted to the role while at least one
+        // permission is checked for it - drop empty selections here.
+        $modulePermissions = array_filter($this->modulePermissions);
+        $moduleIds = array_keys($modulePermissions);
 
         if ($this->editingId) {
             $role = Role::where('tenant_id', $tenant->id)->findOrFail($this->editingId);
@@ -113,12 +112,12 @@ class Index extends Component
                 'slug' => Str::slug($validated['name']),
             ]);
 
-            $roleService->syncModules($role, $this->moduleIds);
+            $roleService->syncModules($role, $moduleIds);
             $roleService->syncModulePermissions($role, $modulePermissions);
         } else {
             Gate::authorize('create', [Role::class, $tenant]);
 
-            app(CreateTenantRole::class)->handle($tenant, $validated['name'], $this->moduleIds, $modulePermissions);
+            app(CreateTenantRole::class)->handle($tenant, $validated['name'], $moduleIds, $modulePermissions);
         }
 
         $this->showModal = false;
