@@ -151,7 +151,7 @@ class DownloadLeadAttachment implements ShouldQueue
             ]));
 
         if (! $lookup->successful()) {
-            $this->markFailed("WhatsApp media lookup returned HTTP {$lookup->status()}.");
+            $this->markFailed("WhatsApp media lookup HTTP {$lookup->status()}: ".substr($lookup->body(), 0, 500));
 
             return null;
         }
