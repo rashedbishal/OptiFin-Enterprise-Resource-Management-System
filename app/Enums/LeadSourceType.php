@@ -11,6 +11,12 @@ enum LeadSourceType: string
     case Email = 'email';
     case WebsiteForm = 'website_form';
     case LinkedInLeadGen = 'linkedin_lead_gen';
+    // Not a Platform-Admin-configured external channel like the others -
+    // the single per-tenant source every manually keyed-in lead (see
+    // App\Actions\Tenant\CreateManualLead) is attributed to, lazily
+    // created on first use. Excluded from
+    // Platform\Clients\LeadSources::typeOptions() for that reason.
+    case Manual = 'manual';
 
     /**
      * @return array<int, string>
@@ -33,6 +39,7 @@ enum LeadSourceType: string
             self::Email => 'Email',
             self::WebsiteForm => 'Website Form',
             self::LinkedInLeadGen => 'LinkedIn Lead Gen',
+            self::Manual => 'Manual Entry',
         };
     }
 
@@ -49,6 +56,7 @@ enum LeadSourceType: string
             self::Email => 'envelope',
             self::WebsiteForm => 'globe-alt',
             self::LinkedInLeadGen => 'briefcase',
+            self::Manual => 'pencil-square',
         };
     }
 
@@ -130,6 +138,8 @@ enum LeadSourceType: string
                 ['key' => 'refresh_token', 'label' => 'Refresh Token (set automatically via Connect with LinkedIn)', 'type' => 'password', 'sensitive' => true],
                 ['key' => 'fetch_interval_minutes', 'label' => 'Recovery Poll Interval (minutes)', 'type' => 'number', 'sensitive' => false],
             ],
+            // Nothing to configure - see the case's own doc comment above.
+            self::Manual => [],
         };
     }
 
@@ -204,6 +214,7 @@ enum LeadSourceType: string
                 'config.refresh_token' => ['nullable', 'string'],
                 'config.fetch_interval_minutes' => ['nullable', 'integer', 'min:1'],
             ],
+            self::Manual => [],
         };
     }
 }

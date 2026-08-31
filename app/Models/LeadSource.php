@@ -87,6 +87,8 @@ class LeadSource extends Model
             // LinkedIn source row.
             LeadSourceType::LinkedInLeadGen => null,
             LeadSourceType::Email => null,
+            // Never receives webhooks - leads are typed in directly.
+            LeadSourceType::Manual => null,
         };
 
         if (! $routeName) {

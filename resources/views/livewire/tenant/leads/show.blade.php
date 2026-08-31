@@ -6,6 +6,9 @@
             @endif
             <div>
                 <flux:heading size="xl">{{ $lead->name }}</flux:heading>
+                @if ($lead->company)
+                    <flux:text variant="strong">{{ $lead->company }}</flux:text>
+                @endif
                 <flux:text>{{ $lead->email }} {{ $lead->phone ? '· '.$lead->phone : '' }}</flux:text>
             </div>
         </div>
@@ -36,6 +39,66 @@
                     </div>
                 </div>
 
+                @php
+                    $hasCrmDetails = collect([
+                        $lead->website, $lead->industry, $lead->location, $lead->service_interest,
+                        $lead->estimated_budget, $lead->deal_value, $lead->win_probability, $lead->next_follow_up_at,
+                    ])->filter(fn ($value) => $value !== null && $value !== '')->isNotEmpty();
+                @endphp
+                @if ($hasCrmDetails)
+                    <flux:separator class="mb-4" />
+                    <div class="mb-4 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3">
+                        @if ($lead->website)
+                            <div>
+                                <flux:text size="sm" variant="subtle">{{ __('Website') }}</flux:text>
+                                <flux:text><a href="{{ $lead->website }}" target="_blank" rel="noopener noreferrer" class="underline">{{ $lead->website }}</a></flux:text>
+                            </div>
+                        @endif
+                        @if ($lead->industry)
+                            <div>
+                                <flux:text size="sm" variant="subtle">{{ __('Industry') }}</flux:text>
+                                <flux:text>{{ $lead->industry }}</flux:text>
+                            </div>
+                        @endif
+                        @if ($lead->location)
+                            <div>
+                                <flux:text size="sm" variant="subtle">{{ __('Location') }}</flux:text>
+                                <flux:text>{{ $lead->location }}</flux:text>
+                            </div>
+                        @endif
+                        @if ($lead->service_interest)
+                            <div>
+                                <flux:text size="sm" variant="subtle">{{ __('Service Interested') }}</flux:text>
+                                <flux:text>{{ $lead->service_interest }}</flux:text>
+                            </div>
+                        @endif
+                        @if ($lead->estimated_budget !== null)
+                            <div>
+                                <flux:text size="sm" variant="subtle">{{ __('Est. Budget') }}</flux:text>
+                                <flux:text>{{ $lead->tenant->currency }} {{ number_format((float) $lead->estimated_budget, 2) }}</flux:text>
+                            </div>
+                        @endif
+                        @if ($lead->deal_value !== null)
+                            <div>
+                                <flux:text size="sm" variant="subtle">{{ __('Deal Value') }}</flux:text>
+                                <flux:text>{{ $lead->tenant->currency }} {{ number_format((float) $lead->deal_value, 2) }}</flux:text>
+                            </div>
+                        @endif
+                        @if ($lead->win_probability !== null)
+                            <div>
+                                <flux:text size="sm" variant="subtle">{{ __('Win Probability') }}</flux:text>
+                                <flux:text>{{ $lead->win_probability }}%</flux:text>
+                            </div>
+                        @endif
+                        @if ($lead->next_follow_up_at)
+                            <div>
+                                <flux:text size="sm" variant="subtle">{{ __('Next Follow-up') }}</flux:text>
+                                <flux:text>{{ $lead->next_follow_up_at->format('M j, Y') }}</flux:text>
+                            </div>
+                        @endif
+                    </div>
+                @endif
+
                 @if (count($lead->messageTimeline()) > 0)
                     {{-- Webhook-sourced leads (Messenger/Instagram/WhatsApp) can carry
                     several text messages and attachments over time — shown here as a
@@ -44,7 +107,9 @@
                     on messageTimeline() specifically (not just "has any attachment"):
                     an email lead can have attachments too, but it isn't a threaded
                     conversation and should keep its own body/HTML rendering below. --}}
-                    <flux:separator class="mb-4" />
+                    @unless ($hasCrmDetails)
+                        <flux:separator class="mb-4" />
+                    @endunless
 
                     <div class="flex max-h-96 flex-col gap-3 overflow-y-auto pe-1">
                         @foreach ($this->timeline as $item)
@@ -56,7 +121,9 @@
                         @endforeach
                     </div>
                 @elseif ($lead->message || $lead->html_body || $lead->attachments->isNotEmpty())
-                    <flux:separator class="mb-4" />
+                    @unless ($hasCrmDetails)
+                        <flux:separator class="mb-4" />
+                    @endunless
 
                     @if ($lead->html_body)
                         <div class="mb-3 flex gap-2">

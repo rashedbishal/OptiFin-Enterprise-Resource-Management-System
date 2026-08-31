@@ -24,6 +24,11 @@ use Illuminate\Support\Carbon;
  * @property string $source_id
  * @property string|null $assigned_to
  * @property string $name
+ * @property string|null $company
+ * @property string|null $website
+ * @property string|null $industry
+ * @property string|null $location
+ * @property string|null $service_interest
  * @property string|null $email
  * @property string|null $phone
  * @property string|null $message
@@ -32,6 +37,10 @@ use Illuminate\Support\Carbon;
  * @property LeadStatus $status
  * @property LeadPriority $priority
  * @property string|null $notes
+ * @property string|null $estimated_budget
+ * @property string|null $deal_value
+ * @property int|null $win_probability
+ * @property Carbon|null $next_follow_up_at
  * @property Carbon|null $assigned_at
  * @property Carbon|null $first_contacted_at
  * @property Carbon|null $closed_at
@@ -40,8 +49,10 @@ use Illuminate\Support\Carbon;
  * @property-read Tenant $tenant
  */
 #[Fillable([
-    'tenant_id', 'source_id', 'assigned_to', 'name', 'email', 'phone', 'message', 'html_body',
-    'source_data', 'status', 'priority', 'notes', 'assigned_at', 'first_contacted_at', 'closed_at',
+    'tenant_id', 'source_id', 'assigned_to', 'name', 'company', 'website', 'industry', 'location',
+    'service_interest', 'email', 'phone', 'message', 'html_body', 'source_data', 'status', 'priority',
+    'notes', 'estimated_budget', 'deal_value', 'win_probability', 'next_follow_up_at',
+    'assigned_at', 'first_contacted_at', 'closed_at',
 ])]
 class Lead extends Model
 {
@@ -57,6 +68,10 @@ class Lead extends Model
             'source_data' => 'array',
             'status' => LeadStatus::class,
             'priority' => LeadPriority::class,
+            'estimated_budget' => 'decimal:2',
+            'deal_value' => 'decimal:2',
+            'win_probability' => 'integer',
+            'next_follow_up_at' => 'date',
             'assigned_at' => 'datetime',
             'first_contacted_at' => 'datetime',
             'closed_at' => 'datetime',

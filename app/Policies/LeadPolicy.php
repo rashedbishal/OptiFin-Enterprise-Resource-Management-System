@@ -12,6 +12,11 @@ class LeadPolicy
         return $user->hasModulePermission('lead-management', 'view');
     }
 
+    public function create(TenantUser $user): bool
+    {
+        return $user->hasModulePermission('lead-management', 'create');
+    }
+
     public function view(TenantUser $user, Lead $lead): bool
     {
         return $this->belongsToUserTenant($user, $lead)

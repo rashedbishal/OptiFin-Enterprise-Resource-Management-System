@@ -85,10 +85,19 @@ class LeadSources extends Component
         return $this->tenant->leadSources()->latest()->get();
     }
 
+    /**
+     * Excludes LeadSourceType::Manual: that type isn't a Platform-Admin-
+     * configured external channel - it's the single per-tenant source
+     * manually keyed-in leads are attributed to, provisioned automatically
+     * the first time a tenant user creates one.
+     */
     #[Computed]
     public function typeOptions(): array
     {
-        return LeadSourceType::cases();
+        return array_filter(
+            LeadSourceType::cases(),
+            fn (LeadSourceType $type): bool => $type !== LeadSourceType::Manual,
+        );
     }
 
     #[Computed]
@@ -193,6 +202,10 @@ class LeadSources extends Component
             LeadSourceType::WebsiteForm => [
                 'success' => true,
                 'message' => __('There is nothing external to test — POST a sample lead to the webhook URL with the X-Api-Key header to confirm it end-to-end.'),
+            ],
+            LeadSourceType::Manual => [
+                'success' => true,
+                'message' => __('Manual entry has nothing external to test.'),
             ],
         };
 
