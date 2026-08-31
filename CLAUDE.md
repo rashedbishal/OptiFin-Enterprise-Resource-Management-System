@@ -1,3 +1,63 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project
+
+A multi-tenant SaaS ERP built on the Laravel Livewire starter kit (Laravel 13, PHP 8.3, Livewire 4, Flux UI 2, Tailwind v4). It has a Platform side (`/admin/*`, run by the vendor) and a Tenant side (`/*`, run by each client), plus a Lead Management module ported from a sibling project.
+
+**Before editing or planning anything under `app/`, `resources/views/livewire/`, read `.ai/rules/index.md` and every rule file whose glob matches the path in scope, and grep `.ai/rules` for related keywords.** These are settled decisions and traps, not optional background — see summaries below but treat the files themselves as authoritative.
+
+## Commands
+
+```bash
+composer run dev          # artisan serve + queue + pail + vite, all at once (primary local dev loop)
+npm run dev                # vite only
+npm run build
+
+vendor/bin/pint --dirty --format agent   # format PHP after any change (run before finishing, per Boost rules)
+phpstan analyse                          # composer run types:check
+php artisan test --compact               # full suite
+php artisan test --compact --filter=testName
+vendor/bin/pest path/to/FileTest.php     # single file
+composer run test                        # config:clear + lint:check + types:check + full test suite (CI gate)
+
+php artisan route:list
+php artisan leads:fetch-emails           # poll IMAP lead sources, create Lead + ProcessEmailLeadSource job
+php artisan leads:cleanup-attachments    # delete orphaned lead attachment files
+```
+
+No `README.md` exists in this repo.
+
+## Architecture
+
+### Dual-guard auth — two people tables, never a shared `User`
+- `App\Models\PlatformUser` (table `platform_users`, guard `platform`, routes under `/admin`, login `admin/login`) — exactly one `mother_admin` (enforced by a DB partial unique index, bypasses all authorization via `Gate::before`) plus Platform Admins.
+- `App\Models\TenantUser` (table `tenant_users`, guard `web`, default Fortify `/login`) — Client Admins/Users, always scoped to `tenant_id`.
+- Both share one Role → Module → Permission engine (`roles`/`modules`/`permissions`/`role_modules`/`role_permissions`/`tenant_modules` — see `App\Services\RoleService` and `App\Concerns\HasModulePermissions`). `modules.scope` (platform|tenant) gates which catalog a role can draw from.
+- All IDs are ULIDs. Extend `PlatformUser`/`TenantUser` and their existing policies/observers — don't reintroduce a generic `User` model.
+- `PlatformUser`/`TenantUser` use a `#[Fillable([...])]` PHP attribute instead of `protected $fillable`. Adding a mutable column requires adding it there too, or `create()`/`update()` silently drops it with no error.
+
+### Route structure
+- `routes/web.php` — tenant area, behind `auth`, `verified`, `tenant.identify`, `tenant.active`; module-gated routes (e.g. Lead Management) additionally behind `module:{slug}` (see `EnsureModuleAccess` middleware).
+- `routes/admin.php` — platform area, prefixed `/admin`, guard `platform`.
+- `routes/api.php` — public webhook intake for lead capture (Facebook Messenger, WhatsApp, Instagram, website form), keyed by `{tenant_code}` (not a slug column) and protected by `VerifyMetaWebhookSignature`.
+- `routes/channels.php` — Reverb broadcast auth channels (`tenant.{tenantId}`, `lead.{lead}`).
+
+### Livewire conventions (see `.ai/rules/livewire.md`, `.ai/rules/views-livewire.md`)
+- A class-based full-page component named `Index` inside a subfolder resolves its view with the trailing `index` segment stripped: `App\Livewire\Tenant\Users\Index` → `resources/views/livewire/tenant/users.blade.php`, **not** `tenant/users/index.blade.php`. Non-`Index` class names keep their full path.
+- `Route::livewire()` page components are auto-wrapped in a layout by Livewire — the component's Blade view must be only its single root element's inner content, with no `<x-layouts::*>` wrapper, or Livewire throws "Multiple root elements detected". Page `<title>` comes from `#[Title('...')]` on the class. Platform components use `#[Layout('layouts.admin')]`; tenant components use the default `layouts::app`; guest/auth pages use `#[Layout('layouts.auth')]`.
+
+### Lead Management module
+Ported from a sibling project (`OpticoreLeadManagementHub`, Inertia/React) onto this app's Blade/Livewire + Tenant/TenantUser/Role/Module/Permission stack. Models: `Lead`, `LeadSource`, `LeadAssignment`, `LeadStatusLog`, `LeadNote`, `LeadAttachment`. Enums: `LeadSourceType`, `LeadStatus`, `LeadPriority`, `LeadDistributionMode`, `AutoDistributionMethod`. Key pieces: `App\Services\LeadAssignmentService`, webhook capture in `App\Http\Controllers\Api\LeadWebhookController`, IMAP polling via `leads:fetch-emails` → `App\Jobs\ProcessEmailLeadSource`. Lead sources are configured by the Platform Admin at `/admin/clients/{tenant}/lead-sources` (`App\Livewire\Platform\Clients\LeadSources`); the tenant-side `/lead-sources` view is read-only. If extending this module or building another "external capture + per-client config" feature, check the reference project's approach first.
+
+### Skills
+Domain skills exist under `**/skills/**` (Livewire, Flux UI, Fortify, Echo/broadcasting, Tailwind, testing, Laravel best practices). Activate the matching skill proactively when working in that domain rather than waiting to get stuck.
+
+## Laravel Boost Guidelines
+
+The block below is maintained by `composer post-update-cmd` (`artisan boost:update`) — don't hand-edit it; if it drifts, regenerate it rather than patching it manually.
+
 <laravel-boost-guidelines>
 === foundation rules ===
 
