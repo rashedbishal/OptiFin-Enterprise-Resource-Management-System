@@ -27,8 +27,12 @@ class Index extends Component
     /** @var array<int, string> */
     public array $moduleIds = [];
 
-    /** @var array<int, string> */
-    public array $permissionIds = [];
+    /**
+     * Permission ids granted per module: module id => list of permission ids.
+     *
+     * @var array<string, array<int, string>>
+     */
+    public array $modulePermissions = [];
 
     public function mount(): void
     {
@@ -40,7 +44,7 @@ class Index extends Component
     {
         return Role::query()
             ->where('tenant_id', Auth::user()->tenant_id)
-            ->with(['modules', 'permissions'])
+            ->with(['modules', 'modulePermissions.permission'])
             ->orderBy('name')
             ->get();
     }
@@ -59,7 +63,7 @@ class Index extends Component
 
     public function create(): void
     {
-        $this->reset('editingId', 'name', 'moduleIds', 'permissionIds');
+        $this->reset('editingId', 'name', 'moduleIds', 'modulePermissions');
         $this->showModal = true;
     }
 
@@ -72,8 +76,17 @@ class Index extends Component
         $this->editingId = $role->id;
         $this->name = $role->name;
         $this->moduleIds = $role->modules->pluck('id')->all();
-        $this->permissionIds = $role->permissions->pluck('id')->all();
+        $this->modulePermissions = $role->permissionIdsByModule();
         $this->showModal = true;
+    }
+
+    /**
+     * Drop permission selections for modules that were just unchecked, so
+     * a re-checked module doesn't come back with stale grants attached.
+     */
+    public function updatedModuleIds(): void
+    {
+        $this->modulePermissions = collect($this->modulePermissions)->only($this->moduleIds)->all();
     }
 
     public function save(RoleService $roleService): void
@@ -86,8 +99,10 @@ class Index extends Component
                 Rule::unique('roles', 'name')->where('tenant_id', $tenant->id)->ignore($this->editingId),
             ],
             'moduleIds' => ['array'],
-            'permissionIds' => ['array'],
+            'modulePermissions' => ['array'],
         ]);
+
+        $modulePermissions = array_intersect_key($this->modulePermissions, array_flip($this->moduleIds));
 
         if ($this->editingId) {
             $role = Role::where('tenant_id', $tenant->id)->findOrFail($this->editingId);
@@ -99,11 +114,11 @@ class Index extends Component
             ]);
 
             $roleService->syncModules($role, $this->moduleIds);
-            $roleService->syncPermissions($role, $this->permissionIds);
+            $roleService->syncModulePermissions($role, $modulePermissions);
         } else {
             Gate::authorize('create', [Role::class, $tenant]);
 
-            app(CreateTenantRole::class)->handle($tenant, $validated['name'], $this->moduleIds, $this->permissionIds);
+            app(CreateTenantRole::class)->handle($tenant, $validated['name'], $this->moduleIds, $modulePermissions);
         }
 
         $this->showModal = false;

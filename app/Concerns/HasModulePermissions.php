@@ -25,6 +25,6 @@ trait HasModulePermissions
             return false;
         }
 
-        return $role->hasModule($moduleSlug) && $role->hasPermission($permissionSlug);
+        return $role->hasModule($moduleSlug) && $role->hasPermissionForModule($moduleSlug, $permissionSlug);
     }
 }

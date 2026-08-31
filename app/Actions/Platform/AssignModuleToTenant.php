@@ -5,6 +5,7 @@ namespace App\Actions\Platform;
 use App\Models\Module;
 use App\Models\Permission;
 use App\Models\PlatformUser;
+use App\Models\RoleModulePermission;
 use App\Models\Tenant;
 use Illuminate\Support\Facades\DB;
 
@@ -30,8 +31,15 @@ class AssignModuleToTenant
 
             if ($ownerRole) {
                 $ownerRole->modules()->syncWithoutDetaching([$module->id]);
-                $ownerRole->permissions()->syncWithoutDetaching(
-                    Permission::query()->pluck('id')
+
+                $ownerRole->modulePermissions()->where('module_id', $module->id)->delete();
+
+                RoleModulePermission::query()->insert(
+                    Permission::query()->pluck('id')->map(fn (string $permissionId) => [
+                        'role_id' => $ownerRole->id,
+                        'module_id' => $module->id,
+                        'permission_id' => $permissionId,
+                    ])->all()
                 );
             }
         });

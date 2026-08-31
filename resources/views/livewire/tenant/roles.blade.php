@@ -22,7 +22,21 @@
                             @endif
                         </flux:table.cell>
                         <flux:table.cell>{{ $role->modules->pluck('name')->join(', ') ?: '—' }}</flux:table.cell>
-                        <flux:table.cell>{{ $role->permissions->pluck('name')->join(', ') ?: '—' }}</flux:table.cell>
+                        <flux:table.cell>
+                            @php $modulesById = $role->modules->keyBy('id'); @endphp
+                            @if ($role->modulePermissions->isEmpty())
+                                —
+                            @else
+                                <div class="flex flex-col gap-0.5">
+                                    @foreach ($role->modulePermissions->groupBy('module_id') as $moduleId => $grants)
+                                        <flux:text size="sm">
+                                            <span class="font-medium">{{ $modulesById[$moduleId]?->name }}:</span>
+                                            {{ $grants->pluck('permission.name')->join(', ') }}
+                                        </flux:text>
+                                    @endforeach
+                                </div>
+                            @endif
+                        </flux:table.cell>
                         <flux:table.cell>
                             <div class="flex justify-end gap-2">
                                 <flux:button size="sm" wire:click="edit('{{ $role->id }}')">{{ __('Edit') }}</flux:button>
@@ -43,7 +57,7 @@
         </flux:table>
     </div>
 
-    <flux:modal wire:model.self="showModal" class="md:w-[36rem]">
+    <flux:modal wire:model.self="showModal" class="md:w-[42rem]">
         <form wire:submit="save" class="flex flex-col gap-6">
             <flux:heading size="lg">{{ $editingId ? __('Edit Role') : __('New Role') }}</flux:heading>
 
@@ -53,21 +67,35 @@
                 <flux:label>{{ __('Modules') }}</flux:label>
                 <div class="grid grid-cols-2 gap-2">
                     @forelse ($this->availableModules as $module)
-                        <flux:checkbox wire:model="moduleIds" value="{{ $module->id }}" :label="$module->name" />
+                        <flux:checkbox wire:model.live="moduleIds" value="{{ $module->id }}" :label="$module->name" />
                     @empty
                         <flux:text>{{ __('Your organization has no modules assigned yet.') }}</flux:text>
                     @endforelse
                 </div>
             </flux:field>
 
-            <flux:field>
-                <flux:label>{{ __('Permissions') }}</flux:label>
-                <div class="grid grid-cols-2 gap-2">
-                    @foreach ($this->permissions as $permission)
-                        <flux:checkbox wire:model="permissionIds" value="{{ $permission->id }}" :label="$permission->name" />
-                    @endforeach
-                </div>
-            </flux:field>
+            @if (! empty($moduleIds))
+                <flux:field>
+                    <flux:label>{{ __('Permissions per module') }}</flux:label>
+                    <flux:description>{{ __('Choose which actions this role can perform within each selected module.') }}</flux:description>
+                    <div class="flex flex-col gap-3">
+                        @foreach ($this->availableModules->whereIn('id', $moduleIds) as $module)
+                            <div class="rounded-lg border border-zinc-200 p-4 dark:border-zinc-700" wire:key="tenant-module-permissions-{{ $module->id }}">
+                                <flux:heading size="sm" class="mb-2">{{ $module->name }}</flux:heading>
+                                <div class="flex flex-wrap gap-4">
+                                    @foreach ($this->permissions as $permission)
+                                        <flux:checkbox
+                                            wire:model="modulePermissions.{{ $module->id }}"
+                                            value="{{ $permission->id }}"
+                                            :label="$permission->name"
+                                        />
+                                    @endforeach
+                                </div>
+                            </div>
+                        @endforeach
+                    </div>
+                </flux:field>
+            @endif
 
             <div class="flex justify-end gap-2">
                 <flux:button type="button" wire:click="$set('showModal', false)">{{ __('Cancel') }}</flux:button>

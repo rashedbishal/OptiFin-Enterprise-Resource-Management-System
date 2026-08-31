@@ -13,11 +13,11 @@ class CreatePlatformRole
 
     /**
      * @param  array<int, string>  $moduleIds
-     * @param  array<int, string>  $permissionIds
+     * @param  array<string, array<int, string>>  $modulePermissions
      */
-    public function handle(string $name, array $moduleIds, array $permissionIds): Role
+    public function handle(string $name, array $moduleIds, array $modulePermissions): Role
     {
-        return DB::transaction(function () use ($name, $moduleIds, $permissionIds) {
+        return DB::transaction(function () use ($name, $moduleIds, $modulePermissions) {
             $role = Role::create([
                 'tenant_id' => null,
                 'name' => $name,
@@ -25,7 +25,7 @@ class CreatePlatformRole
             ]);
 
             $this->roleService->syncModules($role, $moduleIds);
-            $this->roleService->syncPermissions($role, $permissionIds);
+            $this->roleService->syncModulePermissions($role, $modulePermissions);
 
             return $role;
         });

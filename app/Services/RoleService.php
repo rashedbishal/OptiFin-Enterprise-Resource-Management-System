@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\ModuleScope;
 use App\Models\Module;
 use App\Models\Role;
+use App\Models\RoleModulePermission;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -33,11 +34,41 @@ class RoleService
     }
 
     /**
-     * @param  array<int, string>  $permissionIds
+     * Replace a role's per-module permission grants. Each key is a module
+     * id the role currently has (via syncModules), and each value is the
+     * list of permission ids granted for that module specifically — the
+     * same permission can be granted for one module and withheld for
+     * another.
+     *
+     * @param  array<string, array<int, string>>  $modulePermissions
      */
-    public function syncPermissions(Role $role, array $permissionIds): void
+    public function syncModulePermissions(Role $role, array $modulePermissions): void
     {
-        $role->permissions()->sync($permissionIds);
+        $roleModuleIds = $role->modules()->pluck('modules.id')->all();
+
+        $grants = [];
+
+        foreach ($modulePermissions as $moduleId => $permissionIds) {
+            if (! in_array($moduleId, $roleModuleIds, true)) {
+                throw ValidationException::withMessages([
+                    'modulePermissions' => 'Permissions can only be granted for modules selected on this role.',
+                ]);
+            }
+
+            foreach ($permissionIds as $permissionId) {
+                $grants[] = [
+                    'role_id' => $role->id,
+                    'module_id' => $moduleId,
+                    'permission_id' => $permissionId,
+                ];
+            }
+        }
+
+        $role->modulePermissions()->delete();
+
+        if ($grants !== []) {
+            RoleModulePermission::query()->insert($grants);
+        }
     }
 
     public function assertModuleMatchesRoleScope(Role $role, Module $module): void

@@ -7,6 +7,7 @@ use App\Models\Module;
 use App\Models\Permission;
 use App\Models\PlatformUser;
 use App\Models\Role;
+use App\Models\RoleModulePermission;
 use App\Models\Tenant;
 use App\Models\TenantUser;
 use Database\Seeders\PermissionSeeder;
@@ -100,8 +101,13 @@ function clientUserWithLeadPermission(Tenant $tenant, array $permissions = ['vie
     ]);
 
     $role->modules()->attach($module->id);
-    $role->permissions()->attach(
-        Permission::whereIn('slug', $permissions)->pluck('id')
+
+    RoleModulePermission::query()->insert(
+        Permission::whereIn('slug', $permissions)->pluck('id')->map(fn (string $permissionId) => [
+            'role_id' => $role->id,
+            'module_id' => $module->id,
+            'permission_id' => $permissionId,
+        ])->all()
     );
 
     return TenantUser::factory()->create([

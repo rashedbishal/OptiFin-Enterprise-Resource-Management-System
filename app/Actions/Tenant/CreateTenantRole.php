@@ -14,11 +14,11 @@ class CreateTenantRole
 
     /**
      * @param  array<int, string>  $moduleIds
-     * @param  array<int, string>  $permissionIds
+     * @param  array<string, array<int, string>>  $modulePermissions
      */
-    public function handle(Tenant $tenant, string $name, array $moduleIds, array $permissionIds): Role
+    public function handle(Tenant $tenant, string $name, array $moduleIds, array $modulePermissions): Role
     {
-        return DB::transaction(function () use ($tenant, $name, $moduleIds, $permissionIds) {
+        return DB::transaction(function () use ($tenant, $name, $moduleIds, $modulePermissions) {
             $role = Role::create([
                 'tenant_id' => $tenant->id,
                 'name' => $name,
@@ -26,7 +26,7 @@ class CreateTenantRole
             ]);
 
             $this->roleService->syncModules($role, $moduleIds);
-            $this->roleService->syncPermissions($role, $permissionIds);
+            $this->roleService->syncModulePermissions($role, $modulePermissions);
 
             return $role;
         });

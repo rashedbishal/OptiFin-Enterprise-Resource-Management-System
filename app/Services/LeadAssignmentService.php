@@ -99,7 +99,10 @@ class LeadAssignmentService
             ->where('is_active', true)
             ->whereHas('role', function (Builder $query): void {
                 $query->whereHas('modules', fn (Builder $q) => $q->where('slug', 'lead-management'))
-                    ->whereHas('permissions', fn (Builder $q) => $q->where('slug', 'view'));
+                    ->whereHas('modulePermissions', function (Builder $q): void {
+                        $q->whereHas('module', fn (Builder $q) => $q->where('slug', 'lead-management'))
+                            ->whereHas('permission', fn (Builder $q) => $q->where('slug', 'view'));
+                    });
             });
     }
 }

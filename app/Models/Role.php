@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
@@ -54,9 +55,9 @@ class Role extends Model
         return $this->belongsToMany(Module::class, 'role_modules');
     }
 
-    public function permissions(): BelongsToMany
+    public function modulePermissions(): HasMany
     {
-        return $this->belongsToMany(Permission::class, 'role_permissions');
+        return $this->hasMany(RoleModulePermission::class);
     }
 
     public function platformUsers(): HasMany
@@ -74,9 +75,26 @@ class Role extends Model
         return $this->modules()->where('slug', $moduleSlug)->exists();
     }
 
-    public function hasPermission(string $permissionSlug): bool
+    public function hasPermissionForModule(string $moduleSlug, string $permissionSlug): bool
     {
-        return $this->permissions()->where('slug', $permissionSlug)->exists();
+        return $this->modulePermissions()
+            ->whereHas('module', fn ($query) => $query->where('slug', $moduleSlug))
+            ->whereHas('permission', fn ($query) => $query->where('slug', $permissionSlug))
+            ->exists();
+    }
+
+    /**
+     * This role's granted permission ids, grouped by module id, for
+     * pre-filling the per-module permission form when editing a role.
+     *
+     * @return array<string, array<int, string>>
+     */
+    public function permissionIdsByModule(): array
+    {
+        return $this->modulePermissions
+            ->groupBy('module_id')
+            ->map(fn (Collection $grants) => $grants->pluck('permission_id')->all())
+            ->all();
     }
 
     public function getActivitylogOptions(): LogOptions
