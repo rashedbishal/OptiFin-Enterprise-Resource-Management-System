@@ -81,7 +81,34 @@
             natural content height and the row overflows horizontally into
             the page itself, so the whole page scrolls (both axes) instead
             of a cramped inner scrollbox stopping wherever the cards end. --}}
-            <div class="hidden lg:flex lg:gap-4">
+            <div
+                class="hidden lg:flex lg:gap-4"
+                x-data="{
+                    scrollEl: null,
+                    edge: 72,
+                    maxSpeed: 22,
+                    init() {
+                        // The scrollable region is the page's own main content
+                        // area (see layouts/app.blade.php), never the sidebar —
+                        // it's a sibling outside this element entirely, so edge
+                        // proximity is measured against *this* container's own
+                        // bounds, not the browser window's.
+                        this.scrollEl = this.$el.closest('[data-flux-main]');
+                    },
+                    autoScrollWhileDragging(event) {
+                        if (! this.scrollEl) return;
+                        const rect = this.scrollEl.getBoundingClientRect();
+                        const fromLeft = event.clientX - rect.left;
+                        const fromRight = rect.right - event.clientX;
+                        if (fromLeft >= 0 && fromLeft < this.edge) {
+                            this.scrollEl.scrollLeft -= this.maxSpeed * (1 - fromLeft / this.edge);
+                        } else if (fromRight >= 0 && fromRight < this.edge) {
+                            this.scrollEl.scrollLeft += this.maxSpeed * (1 - fromRight / this.edge);
+                        }
+                    },
+                }"
+                x-on:dragover.prevent="autoScrollWhileDragging($event)"
+            >
                 @foreach (\App\Enums\LeadStatus::cases() as $statusCase)
                     @php
                         $columnLeads = $this->boardLeads->get($statusCase->value, collect());
