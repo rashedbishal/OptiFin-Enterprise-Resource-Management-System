@@ -31,7 +31,10 @@ test('a client admin can view the lead management pages', function () {
 
     $this->actingAs($clientAdmin)->get(route('tenant-leads.index'))->assertOk();
     $this->actingAs($clientAdmin)->get(route('tenant-lead-sources.index'))->assertOk();
-    $this->actingAs($clientAdmin)->get(route('tenant-leads.show', $lead))->assertOk();
+    $this->actingAs($clientAdmin)
+        ->get(route('tenant-leads.show', $lead))
+        ->assertOk()
+        ->assertSeeInOrder(['Dashboard', 'Leads', $lead->name]);
 });
 
 test('a permitted client user can view their own lead but not the leads index for others', function () {

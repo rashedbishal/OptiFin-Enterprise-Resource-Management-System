@@ -29,7 +29,8 @@ test('mother admin can view a client\'s details page', function () {
 
     $this->actingAs($motherAdmin, 'platform')
         ->get(route('admin.clients.show', $tenant))
-        ->assertOk();
+        ->assertOk()
+        ->assertSeeInOrder(['Dashboard', 'Clients', $tenant->name]);
 });
 
 test('mother admin can view a client\'s lead sources page', function () {

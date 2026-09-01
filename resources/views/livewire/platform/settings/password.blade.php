@@ -1,4 +1,9 @@
 <div class="flex flex-1 flex-col gap-6 md:max-w-md">
+        <x-breadcrumbs :items="[
+            ['label' => __('Dashboard'), 'href' => route('admin.dashboard')],
+            ['label' => __('Change Password')],
+        ]" />
+
         <flux:heading size="xl">{{ __('Change Password') }}</flux:heading>
 
         <form wire:submit="updatePassword" class="flex flex-col gap-6">

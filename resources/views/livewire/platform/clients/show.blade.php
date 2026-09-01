@@ -1,4 +1,10 @@
 <div class="flex flex-1 flex-col gap-6">
+        <x-breadcrumbs :items="[
+            ['label' => __('Dashboard'), 'href' => route('admin.dashboard')],
+            ['label' => __('Clients'), 'href' => route('admin.clients.index')],
+            ['label' => $tenant->name],
+        ]" />
+
         <div class="flex items-center justify-between">
             <div>
                 <flux:heading size="xl">{{ $tenant->name }}</flux:heading>

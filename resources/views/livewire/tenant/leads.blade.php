@@ -1,4 +1,9 @@
 <div class="flex flex-1 flex-col gap-6">
+    <x-breadcrumbs :items="[
+        ['label' => __('Dashboard'), 'href' => route('dashboard')],
+        ['label' => __('Leads')],
+    ]" />
+
     <div class="flex items-center justify-between">
         <flux:heading size="xl">{{ __('Leads') }}</flux:heading>
         <div class="flex gap-2">

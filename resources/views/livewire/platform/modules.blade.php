@@ -1,5 +1,10 @@
 <div>
     <div class="flex flex-1 flex-col gap-6">
+        <x-breadcrumbs :items="[
+            ['label' => __('Dashboard'), 'href' => route('admin.dashboard')],
+            ['label' => __('Modules')],
+        ]" />
+
         <div class="flex items-center justify-between">
             <flux:heading size="xl">{{ __('Modules') }}</flux:heading>
             <flux:button variant="primary" icon="plus" wire:click="create">{{ __('New Module') }}</flux:button>

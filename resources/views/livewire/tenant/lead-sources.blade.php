@@ -1,4 +1,9 @@
 <div class="flex flex-1 flex-col gap-6">
+    <x-breadcrumbs :items="[
+        ['label' => __('Dashboard'), 'href' => route('dashboard')],
+        ['label' => __('Lead Sources')],
+    ]" />
+
     <flux:heading size="xl">{{ __('Lead Sources') }}</flux:heading>
     <flux:text>{{ __('Configured by your account manager. Contact support to add or change a source.') }}</flux:text>
 

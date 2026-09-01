@@ -1,4 +1,6 @@
 <div class="flex flex-1 flex-col gap-6">
+        <x-breadcrumbs :items="[['label' => __('Dashboard')]]" />
+
         <div class="grid auto-rows-min gap-4 md:grid-cols-4">
             <flux:card>
                 <flux:text>{{ __('Total Clients') }}</flux:text>
