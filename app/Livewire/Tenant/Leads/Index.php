@@ -13,6 +13,7 @@ use App\Models\LeadSource;
 use App\Models\LeadStatusLog;
 use App\Models\TenantUser;
 use Flux\Flux;
+use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -21,13 +22,14 @@ use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
+use Livewire\WithPagination;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 #[Title('Leads')]
 class Index extends Component
 {
-    use FiltersLeadsQuery;
+    use FiltersLeadsQuery, WithPagination;
 
     public string $sourceType = '';
 
@@ -81,6 +83,17 @@ class Index extends Component
     public function mount(): void
     {
         Gate::authorize('viewAny', Lead::class);
+    }
+
+    /**
+     * Client Admins keep the original filterable table (bulk oversight,
+     * pagination, per-row actions); the Kanban board/detail flyout is only
+     * for the individual Client User (sales rep) managing their own
+     * assigned leads day to day.
+     */
+    public function render(): View
+    {
+        return view($this->isClientAdmin ? 'livewire.tenant.leads' : 'livewire.tenant.leads-kanban');
     }
 
     #[Computed]
@@ -200,6 +213,27 @@ class Index extends Component
             'lead-panel-updated' => 'refreshBoard',
             'lead-panel-deleted' => 'onPanelLeadDeleted',
         ];
+    }
+
+    public function updating(string $property): void
+    {
+        if (in_array($property, ['status', 'priority', 'sourceType', 'assignedTo'], true)) {
+            $this->resetPage();
+        }
+    }
+
+    /**
+     * The Client Admin table view's paginated, unfiltered-by-status list —
+     * unlike boardLeads() below, this isn't grouped, since it's rendered as
+     * flat table rows with a "Status" column instead of Kanban columns.
+     */
+    #[Computed]
+    public function leads()
+    {
+        return $this->applyDropdownFilters($this->applyAssignmentScope($this->filteredQuery()))
+            ->with(['source', 'assignedUser'])
+            ->latest()
+            ->paginate(25);
     }
 
     /**

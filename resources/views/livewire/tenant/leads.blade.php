@@ -14,7 +14,14 @@
         </div>
     </div>
 
-    <div class="grid grid-cols-2 gap-3 md:grid-cols-3">
+    <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
+        <flux:select wire:model.live="status" placeholder="{{ __('All statuses') }}">
+            <flux:select.option value="">{{ __('All statuses') }}</flux:select.option>
+            @foreach ($this->statusOptions() as $option)
+                <flux:select.option value="{{ $option }}">{{ ucfirst(str_replace('_', ' ', $option)) }}</flux:select.option>
+            @endforeach
+        </flux:select>
+
         <flux:select wire:model.live="priority" placeholder="{{ __('All priorities') }}">
             <flux:select.option value="">{{ __('All priorities') }}</flux:select.option>
             @foreach ($this->priorityOptions() as $option)
@@ -40,103 +47,79 @@
         @endif
     </div>
 
-    @if ($this->facebookLeadAdsSources->isNotEmpty())
-        <div class="flex flex-col gap-2">
-            <flux:text variant="strong" size="sm">{{ __('Facebook Lead Ads') }}</flux:text>
-            <div class="flex flex-wrap gap-3">
-                @foreach ($this->facebookLeadAdsSources as $source)
-                    <div wire:key="fb-source-{{ $source->id }}" class="flex w-full items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white p-3 sm:w-72 dark:border-zinc-700 dark:bg-zinc-800">
-                        <div class="min-w-0">
-                            <flux:text variant="strong" class="block truncate">{{ $source->name }}</flux:text>
+    <flux:table>
+        <flux:table.columns>
+            <flux:table.column>{{ __('Name') }}</flux:table.column>
+            <flux:table.column>{{ __('Source') }}</flux:table.column>
+            <flux:table.column>{{ __('Status') }}</flux:table.column>
+            <flux:table.column>{{ __('Priority') }}</flux:table.column>
+            <flux:table.column>{{ __('Assigned To') }}</flux:table.column>
+            <flux:table.column></flux:table.column>
+        </flux:table.columns>
+        <flux:table.rows>
+            @foreach ($this->facebookLeadAdsSources as $source)
+                <flux:table.row wire:key="fb-lead-ads-source-{{ $source->id }}">
+                    <flux:table.cell>
+                        <div class="flex flex-col">
+                            <span>{{ $source->name }}</span>
                             <flux:text size="sm" variant="subtle">
-                                {{ trans_choice(':count lead|:count leads', $source->leads_count, ['count' => $source->leads_count]) }}
-                                @if ($source->leads_max_created_at)
-                                    &middot; {{ \Illuminate\Support\Carbon::parse($source->leads_max_created_at)->diffForHumans() }}
-                                @endif
+                                {{ $source->leads_max_created_at ? __('Last submission :time', ['time' => \Illuminate\Support\Carbon::parse($source->leads_max_created_at)->diffForHumans()]) : __('No submissions yet') }}
                             </flux:text>
                         </div>
-                        @if ($source->leads_count > 0)
-                            <flux:button size="sm" :href="route('tenant-leads.source', $source)" wire:navigate>{{ __('View All') }}</flux:button>
-                        @elseif ($this->isClientAdmin)
-                            <flux:button size="sm" variant="danger" wire:click="deleteSource('{{ $source->id }}')" wire:confirm="{{ __('Delete this lead source?') }}">
-                                {{ __('Delete') }}
-                            </flux:button>
-                        @endif
-                    </div>
-                @endforeach
-            </div>
-        </div>
-    @endif
-
-    @if ($this->boardLeads->isEmpty() && $this->facebookLeadAdsSources->isEmpty())
-        <div class="flex flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-zinc-200 py-16 text-center dark:border-zinc-700">
-            <flux:icon.inbox class="size-8 text-zinc-300 dark:text-zinc-600" />
-            <flux:text variant="strong">{{ __('No leads yet') }}</flux:text>
-            <flux:text size="sm" variant="subtle">{{ __('New leads from your connected channels will show up here.') }}</flux:text>
-        </div>
-    @else
-        <div wire:loading.class.delay="opacity-70" wire:target="moveLead">
-            {{-- Desktop / tablet: Kanban board, one column per pipeline status. --}}
-            <div class="hidden lg:flex lg:gap-4 lg:overflow-x-auto lg:pb-2">
-                @foreach (\App\Enums\LeadStatus::cases() as $statusCase)
-                    @php
-                        $columnLeads = $this->boardLeads->get($statusCase->value, collect());
-                        $totalCount = collect($this->boardLeadCounts)->firstWhere('status', $statusCase->value)['count'] ?? 0;
-                    @endphp
-                    <div
-                        wire:key="column-{{ $statusCase->value }}"
-                        x-on:dragover.prevent
-                        x-on:dragenter.prevent="$el.classList.add('bg-zinc-100', 'dark:bg-zinc-800')"
-                        x-on:dragleave="$el.classList.remove('bg-zinc-100', 'dark:bg-zinc-800')"
-                        x-on:drop="$el.classList.remove('bg-zinc-100', 'dark:bg-zinc-800'); $wire.moveLead($event.dataTransfer.getData('text/plain'), '{{ $statusCase->value }}')"
-                        class="flex w-72 shrink-0 flex-col rounded-lg bg-zinc-50 transition-colors dark:bg-zinc-900/40"
-                    >
-                        <div class="flex items-center justify-between gap-2 px-3 py-2.5">
-                            <flux:text variant="strong" size="sm">{{ $statusCase->label() }}</flux:text>
-                            <flux:badge size="sm" :color="$statusCase->color()">{{ $totalCount }}</flux:badge>
-                        </div>
-
-                        <div class="flex max-h-[65vh] flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3">
-                            @forelse ($columnLeads as $lead)
-                                @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'tenantCurrency' => $this->tenantCurrency, 'draggable' => true])
-                            @empty
-                                <div class="rounded-md border border-dashed border-zinc-200 py-6 text-center dark:border-zinc-700">
-                                    <flux:text size="sm" variant="subtle">{{ __('No leads') }}</flux:text>
-                                </div>
-                            @endforelse
-
-                            @if ($columnLeads->count() < $totalCount)
-                                <flux:text size="sm" variant="subtle" class="px-1 pt-1">
-                                    {{ __('Showing :shown of :total — refine filters to see the rest.', ['shown' => $columnLeads->count(), 'total' => $totalCount]) }}
-                                </flux:text>
+                    </flux:table.cell>
+                    <flux:table.cell><flux:badge size="sm" icon="{{ $source->type->icon() }}">{{ $source->type->label() }}</flux:badge></flux:table.cell>
+                    <flux:table.cell><flux:badge size="sm" color="zinc">{{ trans_choice(':count lead|:count leads', $source->leads_count, ['count' => $source->leads_count]) }}</flux:badge></flux:table.cell>
+                    <flux:table.cell>—</flux:table.cell>
+                    <flux:table.cell>—</flux:table.cell>
+                    <flux:table.cell>
+                        <div class="flex justify-end gap-2">
+                            @if ($source->leads_count > 0)
+                                <flux:button size="sm" :href="route('tenant-leads.source', $source)" wire:navigate>{{ __('View All') }}</flux:button>
+                            @elseif ($this->isClientAdmin)
+                                <flux:button size="sm" variant="danger" wire:click="deleteSource('{{ $source->id }}')" wire:confirm="{{ __('Delete this lead source?') }}">
+                                    {{ __('Delete') }}
+                                </flux:button>
                             @endif
                         </div>
-                    </div>
-                @endforeach
-            </div>
-
-            {{-- Mobile: status-grouped vertical list, no drag-and-drop — each
-            card's "…" menu is the way to move it between statuses. --}}
-            <div class="flex flex-col gap-6 lg:hidden">
-                @foreach (\App\Enums\LeadStatus::cases() as $statusCase)
-                    @php $columnLeads = $this->boardLeads->get($statusCase->value, collect()); @endphp
-                    @if ($columnLeads->isNotEmpty())
-                        <div wire:key="mobile-group-{{ $statusCase->value }}" class="flex flex-col gap-2">
-                            <div class="flex items-center gap-2 px-1">
-                                <flux:text variant="strong" size="sm">{{ $statusCase->label() }}</flux:text>
-                                <flux:badge size="sm" :color="$statusCase->color()">{{ $columnLeads->count() }}</flux:badge>
-                            </div>
-                            <div class="flex flex-col gap-2">
-                                @foreach ($columnLeads as $lead)
-                                    @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'tenantCurrency' => $this->tenantCurrency, 'draggable' => false])
-                                @endforeach
-                            </div>
+                    </flux:table.cell>
+                </flux:table.row>
+            @endforeach
+            @forelse ($this->leads as $lead)
+                <flux:table.row wire:key="lead-{{ $lead->id }}">
+                    <flux:table.cell>
+                        <div class="flex items-center gap-2">
+                            @if ($lead->avatarUrl())
+                                <img src="{{ $lead->avatarUrl() }}" alt="" loading="lazy" class="size-6 shrink-0 rounded-full object-cover">
+                            @endif
+                            {{ $lead->name }}
                         </div>
-                    @endif
-                @endforeach
-            </div>
-        </div>
-    @endif
+                    </flux:table.cell>
+                    <flux:table.cell><flux:badge size="sm" icon="{{ $lead->source->type->icon() }}">{{ $lead->source->type->label() }}</flux:badge></flux:table.cell>
+                    <flux:table.cell><flux:badge size="sm">{{ ucfirst(str_replace('_', ' ', $lead->status->value)) }}</flux:badge></flux:table.cell>
+                    <flux:table.cell>{{ ucfirst($lead->priority->value) }}</flux:table.cell>
+                    <flux:table.cell>{{ $lead->assignedUser?->name ?? __('Unassigned') }}</flux:table.cell>
+                    <flux:table.cell>
+                        <div class="flex justify-end gap-2">
+                            <flux:button size="sm" :href="route('tenant-leads.show', $lead)" wire:navigate>{{ __('View') }}</flux:button>
+                            @if (in_array($lead->source->type->value, ['email', 'website_form', 'manual']))
+                                <flux:button size="sm" variant="danger" wire:click="delete('{{ $lead->id }}')" wire:confirm="{{ __('Delete this lead?') }}">
+                                    {{ __('Delete') }}
+                                </flux:button>
+                            @endif
+                        </div>
+                    </flux:table.cell>
+                </flux:table.row>
+            @empty
+                @if ($this->facebookLeadAdsSources->isEmpty())
+                    <flux:table.row>
+                        <flux:table.cell colspan="6">{{ __('No leads yet.') }}</flux:table.cell>
+                    </flux:table.row>
+                @endif
+            @endforelse
+        </flux:table.rows>
+    </flux:table>
+
+    {{ $this->leads->links() }}
 
     @if ($this->canCreateLead)
         <flux:modal wire:model.self="showCreateLeadModal" :dismissible="false" scroll="body" class="w-full md:w-[44rem]">
@@ -241,10 +224,4 @@
             </form>
         </flux:modal>
     @endif
-
-    <flux:modal variant="flyout" wire:model.self="showLeadPanel" class="w-full sm:max-w-md">
-        @if ($this->selectedLead)
-            <livewire:tenant.leads.show :lead="$this->selectedLead" :panel="true" :key="'lead-panel-'.$this->selectedLead->id" />
-        @endif
-    </flux:modal>
 </div>
