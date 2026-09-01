@@ -129,7 +129,7 @@
                             highlight once it's actually left the column, however
                             many child elements it crossed on the way.
                         --}}
-                        :class="dragDepth > 0 ? 'bg-accent/10 ring-2 ring-inset ring-accent' : 'bg-zinc-50 dark:bg-zinc-900/40'"
+                        :class="dragDepth > 0 ? '{{ $statusCase->columnDropTargetClasses() }}' : '{{ $statusCase->columnBackgroundClasses() }}'"
                         class="flex w-72 shrink-0 flex-col rounded-lg transition-colors"
                     >
                         <div class="flex items-center justify-between gap-2 px-3 py-2.5">
