@@ -5,6 +5,7 @@ namespace App\Livewire\Tenant\Leads;
 use App\Enums\LeadPriority;
 use App\Enums\LeadStatus;
 use App\Events\LeadStatusChanged;
+use App\Events\LeadUpdated;
 use App\Models\Lead;
 use App\Models\LeadAttachment;
 use App\Models\LeadNote;
@@ -78,6 +79,9 @@ class Show extends Component
     public function refreshLead(): void
     {
         $this->lead->refresh();
+        $this->status = $this->lead->status->value;
+        $this->priority = $this->lead->priority->value;
+        $this->assigneeId = $this->lead->assigned_to;
         unset($this->activity, $this->timeline);
     }
 
@@ -194,6 +198,7 @@ class Show extends Component
         $this->lead->update($updates);
 
         event(new LeadStatusChanged($this->lead, $oldStatus, $newStatus, Auth::user()));
+        event(new LeadUpdated($this->lead));
 
         unset($this->activity);
 

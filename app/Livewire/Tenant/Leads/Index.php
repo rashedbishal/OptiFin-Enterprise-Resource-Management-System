@@ -7,6 +7,7 @@ use App\Enums\LeadPriority;
 use App\Enums\LeadSourceType;
 use App\Enums\LeadStatus;
 use App\Events\LeadStatusChanged;
+use App\Events\LeadUpdated;
 use App\Livewire\Tenant\Leads\Concerns\FiltersLeadsQuery;
 use App\Models\Lead;
 use App\Models\LeadSource;
@@ -210,6 +211,7 @@ class Index extends Component
     {
         return [
             'echo-private:tenant.'.Auth::user()->tenant_id.',.lead.received' => '$refresh',
+            'echo-private:tenant.'.Auth::user()->tenant_id.',.lead.updated' => '$refresh',
             'lead-panel-updated' => 'refreshBoard',
             'lead-panel-deleted' => 'onPanelLeadDeleted',
         ];
@@ -386,6 +388,7 @@ class Index extends Component
         $lead->update($updates);
 
         event(new LeadStatusChanged($lead, $oldStatus, $newStatus, Auth::user()));
+        event(new LeadUpdated($lead));
 
         $this->refreshBoard();
 

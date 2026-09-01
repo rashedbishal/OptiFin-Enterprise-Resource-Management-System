@@ -1,9 +1,11 @@
 <?php
 
 use App\Enums\LeadStatus;
+use App\Events\LeadUpdated;
 use App\Livewire\Tenant\Leads\Index;
 use App\Models\Lead;
 use App\Models\LeadStatusLog;
+use Illuminate\Support\Facades\Event;
 use Livewire\Livewire;
 
 test('the board groups leads by status', function () {
@@ -33,6 +35,18 @@ test('a client admin can drag a lead to a new status', function () {
     expect($lead->status)->toBe(LeadStatus::Contacted);
     expect($lead->first_contacted_at)->not->toBeNull();
     expect(LeadStatusLog::where('lead_id', $lead->id)->where('new_status', LeadStatus::Contacted)->exists())->toBeTrue();
+});
+
+test('dragging a lead to a new status broadcasts a lead update so other viewers refresh live', function () {
+    Event::fake([LeadUpdated::class]);
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status' => LeadStatus::New]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class)
+        ->call('moveLead', $lead->id, LeadStatus::Contacted->value);
+
+    Event::assertDispatched(LeadUpdated::class, fn (LeadUpdated $event): bool => $event->lead->is($lead));
 });
 
 test('moving a lead to won sets the closed-at timestamp', function () {

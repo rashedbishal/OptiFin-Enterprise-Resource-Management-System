@@ -50,6 +50,7 @@ class SourceLeads extends Component
     {
         return [
             'echo-private:tenant.'.Auth::user()->tenant_id.',.lead.received' => '$refresh',
+            'echo-private:tenant.'.Auth::user()->tenant_id.',.lead.updated' => '$refresh',
         ];
     }
 
