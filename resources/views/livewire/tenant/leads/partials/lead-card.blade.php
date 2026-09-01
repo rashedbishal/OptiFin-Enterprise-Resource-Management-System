@@ -71,7 +71,8 @@
             <flux:tooltip content="{{ __('Advance to :status', ['status' => $nextStatus->label()]) }}">
                 <flux:button
                     size="xs"
-                    variant="subtle"
+                    variant="primary"
+                    :color="$nextStatus->color()"
                     icon:trailing="arrow-right"
                     wire:click.stop="moveLead('{{ $lead->id }}', '{{ $nextStatus->value }}')"
                 >
