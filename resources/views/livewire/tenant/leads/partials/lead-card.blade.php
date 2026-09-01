@@ -11,7 +11,15 @@
         x-on:dragstart="$event.dataTransfer.effectAllowed = 'move'; $event.dataTransfer.setData('text/plain', '{{ $lead->id }}'); $el.classList.add('opacity-50')"
         x-on:dragend="$el.classList.remove('opacity-50')"
     @endif
-    class="flex cursor-pointer flex-col gap-2 rounded-lg border border-zinc-200 bg-white p-3 text-left shadow-sm transition hover:border-zinc-300 hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-accent dark:border-zinc-700 dark:bg-zinc-800 dark:hover:border-zinc-600"
+    {{--
+        border-l-4 plus the status's own accent color on just that side (not
+        the general border-zinc-* used for the other three) — a hover:border
+        override on all sides would win the cascade for border-left-color too
+        (shorthand beats a same-specificity longhand once :hover adds
+        specificity) and wash the stripe out, so hover feedback here is
+        shadow-only instead.
+    --}}
+    class="flex cursor-pointer flex-col gap-2 rounded-lg border border-l-4 border-zinc-200 bg-white p-3 text-left shadow-sm transition hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-accent dark:border-zinc-700 dark:bg-zinc-800 {{ $lead->status->cardAccentBorderClasses() }}"
 >
     <div class="flex items-start justify-between gap-2">
         <p class="min-w-0 truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ $lead->name }}</p>

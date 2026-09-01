@@ -82,7 +82,7 @@
             the page itself, so the whole page scrolls (both axes) instead
             of a cramped inner scrollbox stopping wherever the cards end. --}}
             <div
-                class="hidden lg:flex lg:gap-4"
+                class="hidden lg:flex lg:items-start lg:gap-4"
                 x-data="{
                     scrollEl: null,
                     edge: 72,
@@ -130,7 +130,7 @@
                             many child elements it crossed on the way.
                         --}}
                         :class="dragDepth > 0 ? '{{ $statusCase->columnDropTargetClasses() }}' : '{{ $statusCase->columnBackgroundClasses() }}'"
-                        class="flex w-72 shrink-0 flex-col rounded-lg transition-colors"
+                        class="flex w-72 min-h-32 shrink-0 flex-col rounded-lg transition-colors"
                     >
                         <div class="flex items-center justify-between gap-2 px-3 py-2.5">
                             <flux:text variant="strong" size="sm">{{ $statusCase->label() }}</flux:text>

@@ -71,7 +71,10 @@ enum LeadStatus: string
             self::Negotiation => 'bg-orange-50/60 dark:bg-orange-950/20',
             self::Won => 'bg-green-50/60 dark:bg-green-950/20',
             self::Lost => 'bg-red-50/60 dark:bg-red-950/20',
-            self::Unqualified => 'bg-zinc-100/60 dark:bg-zinc-800/40',
+            // A plain zinc tint at low opacity over the page's own
+            // dark:bg-zinc-800 would blend straight into it — one shade
+            // lighter (zinc-700) so the column still actually shows up.
+            self::Unqualified => 'bg-zinc-100/80 dark:bg-zinc-700/40',
         };
     }
 
@@ -92,6 +95,27 @@ enum LeadStatus: string
             self::Won => 'bg-green-100 ring-2 ring-inset ring-green-400 dark:bg-green-900/40 dark:ring-green-500',
             self::Lost => 'bg-red-100 ring-2 ring-inset ring-red-400 dark:bg-red-900/40 dark:ring-red-500',
             self::Unqualified => 'bg-zinc-200 ring-2 ring-inset ring-zinc-400 dark:bg-zinc-700/60 dark:ring-zinc-500',
+        };
+    }
+
+    /**
+     * A brighter, more saturated shade of this status's color(), for a
+     * lead card's left-edge accent stripe — the column background is
+     * deliberately muted, so the card sitting on it needs a stronger tone
+     * to actually read as "this card belongs to this status" rather than
+     * just blending into the column.
+     */
+    public function cardAccentBorderClasses(): string
+    {
+        return match ($this) {
+            self::New => 'border-l-blue-400',
+            self::Contacted => 'border-l-sky-400',
+            self::Qualified => 'border-l-indigo-400',
+            self::ProposalSent => 'border-l-amber-400',
+            self::Negotiation => 'border-l-orange-400',
+            self::Won => 'border-l-green-400',
+            self::Lost => 'border-l-red-400',
+            self::Unqualified => 'border-l-zinc-400 dark:border-l-zinc-500',
         };
     }
 
