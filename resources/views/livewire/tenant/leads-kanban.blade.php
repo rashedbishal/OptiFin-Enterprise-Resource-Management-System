@@ -116,11 +116,21 @@
                     @endphp
                     <div
                         wire:key="column-{{ $statusCase->value }}"
+                        x-data="{ dragDepth: 0 }"
                         x-on:dragover.prevent
-                        x-on:dragenter.prevent="$el.classList.add('bg-zinc-100', 'dark:bg-zinc-800')"
-                        x-on:dragleave="$el.classList.remove('bg-zinc-100', 'dark:bg-zinc-800')"
-                        x-on:drop="$el.classList.remove('bg-zinc-100', 'dark:bg-zinc-800'); $wire.moveLead($event.dataTransfer.getData('text/plain'), '{{ $statusCase->value }}')"
-                        class="flex w-72 shrink-0 flex-col rounded-lg bg-zinc-50 transition-colors dark:bg-zinc-900/40"
+                        x-on:dragenter.prevent="dragDepth++"
+                        x-on:dragleave="dragDepth = Math.max(0, dragDepth - 1)"
+                        x-on:drop="dragDepth = 0; $wire.moveLead($event.dataTransfer.getData('text/plain'), '{{ $statusCase->value }}')"
+                        {{--
+                            dragenter/dragleave fire on every child element boundary
+                            too (not just the column's own edge), so a plain toggle
+                            flickers the highlight off the moment the pointer passes
+                            over a card. Track nesting depth instead: only clear the
+                            highlight once it's actually left the column, however
+                            many child elements it crossed on the way.
+                        --}}
+                        :class="dragDepth > 0 ? 'bg-accent/10 ring-2 ring-inset ring-accent' : 'bg-zinc-50 dark:bg-zinc-900/40'"
+                        class="flex w-72 shrink-0 flex-col rounded-lg transition-colors"
                     >
                         <div class="flex items-center justify-between gap-2 px-3 py-2.5">
                             <flux:text variant="strong" size="sm">{{ $statusCase->label() }}</flux:text>

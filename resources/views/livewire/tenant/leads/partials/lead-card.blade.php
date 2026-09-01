@@ -1,4 +1,4 @@
-@php $draggable ??= false; $canMove ??= false; @endphp
+@php $draggable ??= false; $canMove ??= false; $nextStatus = $lead->status->nextInPipeline(); @endphp
 
 <div
     wire:key="lead-card-{{ $lead->id }}"
@@ -17,7 +17,19 @@
         <p class="min-w-0 truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ $lead->name }}</p>
 
         @if ($canMove)
-            <div x-on:click.stop x-on:keydown.enter.stop>
+            <div class="flex shrink-0 items-center gap-0.5" x-on:click.stop x-on:keydown.enter.stop>
+                @if ($nextStatus)
+                    <flux:tooltip content="{{ __('Advance to :status', ['status' => $nextStatus->label()]) }}">
+                        <flux:button
+                            size="xs"
+                            variant="ghost"
+                            icon="arrow-right"
+                            wire:click="moveLead('{{ $lead->id }}', '{{ $nextStatus->value }}')"
+                            aria-label="{{ __('Advance to :status', ['status' => $nextStatus->label()]) }}"
+                        />
+                    </flux:tooltip>
+                @endif
+
                 <flux:dropdown position="bottom" align="end">
                     <flux:button size="xs" variant="ghost" icon="ellipsis-horizontal" aria-label="{{ __('Move to…') }}" />
                     <flux:menu>

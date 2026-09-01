@@ -55,4 +55,23 @@ enum LeadStatus: string
             self::Unqualified => 'zinc',
         };
     }
+
+    /**
+     * The next step in the linear sales pipeline (New → Contacted →
+     * Qualified → Proposal Sent → Negotiation → Won), for the Kanban
+     * board's one-click "advance" action. Won, Lost and Unqualified are
+     * terminal — reached by a deliberate choice, not a "next" step — so
+     * they have none.
+     */
+    public function nextInPipeline(): ?self
+    {
+        return match ($this) {
+            self::New => self::Contacted,
+            self::Contacted => self::Qualified,
+            self::Qualified => self::ProposalSent,
+            self::ProposalSent => self::Negotiation,
+            self::Negotiation => self::Won,
+            self::Won, self::Lost, self::Unqualified => null,
+        };
+    }
 }
