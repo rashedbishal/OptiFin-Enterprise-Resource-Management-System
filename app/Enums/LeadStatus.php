@@ -99,11 +99,29 @@ enum LeadStatus: string
     }
 
     /**
-     * A brighter, more saturated shade of this status's color(), for a
-     * lead card's left-edge accent stripe — the column background is
-     * deliberately muted, so the card sitting on it needs a stronger tone
-     * to actually read as "this card belongs to this status" rather than
-     * just blending into the column.
+     * A lead card's own surface (background + border) — a brighter shade of
+     * this status's color() than the muted columnBackgroundClasses() it
+     * sits on, so the card actually pops against its column instead of
+     * reading as the same flat gray on every card regardless of status.
+     */
+    public function cardBackgroundClasses(): string
+    {
+        return match ($this) {
+            self::New => 'bg-blue-100 border-blue-200 dark:bg-blue-900/40 dark:border-blue-800',
+            self::Contacted => 'bg-sky-100 border-sky-200 dark:bg-sky-900/40 dark:border-sky-800',
+            self::Qualified => 'bg-indigo-100 border-indigo-200 dark:bg-indigo-900/40 dark:border-indigo-800',
+            self::ProposalSent => 'bg-amber-100 border-amber-200 dark:bg-amber-900/40 dark:border-amber-800',
+            self::Negotiation => 'bg-orange-100 border-orange-200 dark:bg-orange-900/40 dark:border-orange-800',
+            self::Won => 'bg-green-100 border-green-200 dark:bg-green-900/40 dark:border-green-800',
+            self::Lost => 'bg-red-100 border-red-200 dark:bg-red-900/40 dark:border-red-800',
+            self::Unqualified => 'bg-zinc-100 border-zinc-200 dark:bg-zinc-700/50 dark:border-zinc-600',
+        };
+    }
+
+    /**
+     * A brighter, more saturated shade still than cardBackgroundClasses(),
+     * for the card's left-edge accent stripe — enough contrast between the
+     * two that the stripe still reads as an accent, not just more fill.
      */
     public function cardAccentBorderClasses(): string
     {
