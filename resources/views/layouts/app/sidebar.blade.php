@@ -4,7 +4,11 @@
         @include('partials.head')
     </head>
     <body class="min-h-screen bg-white dark:bg-zinc-800">
-        <flux:sidebar sticky collapsible="mobile" class="border-e border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
+        {{-- `sticky` already pins the sidebar vertically (Flux sets
+        position:sticky via JS); `left-0` extends that to the horizontal
+        axis too, so a page that scrolls sideways (e.g. the Kanban board)
+        can't carry the sidebar off-screen with it. --}}
+        <flux:sidebar sticky collapsible="mobile" class="left-0 border-e border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
             <flux:sidebar.header>
                 <x-app-logo :sidebar="true" href="{{ route('dashboard') }}" wire:navigate />
                 <flux:sidebar.collapse class="lg:hidden" />
