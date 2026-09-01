@@ -67,15 +67,17 @@
     @endif
 
     @if ($canMove && $nextStatus)
-        <flux:tooltip content="{{ __('Advance to :status', ['status' => $nextStatus->label()]) }}">
-            <flux:button
-                size="xs"
-                icon:trailing="arrow-right"
-                class="w-full"
-                wire:click.stop="moveLead('{{ $lead->id }}', '{{ $nextStatus->value }}')"
-            >
-                {{ __('Advance') }}
-            </flux:button>
-        </flux:tooltip>
+        <div class="flex justify-end">
+            <flux:tooltip content="{{ __('Advance to :status', ['status' => $nextStatus->label()]) }}">
+                <flux:button
+                    size="xs"
+                    variant="subtle"
+                    icon:trailing="arrow-right"
+                    wire:click.stop="moveLead('{{ $lead->id }}', '{{ $nextStatus->value }}')"
+                >
+                    {{ __('Advance') }}
+                </flux:button>
+            </flux:tooltip>
+        </div>
     @endif
 </div>
