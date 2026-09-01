@@ -25,19 +25,7 @@
         <p class="min-w-0 truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ $lead->name }}</p>
 
         @if ($canMove)
-            <div class="flex shrink-0 items-center gap-0.5" x-on:click.stop x-on:keydown.enter.stop>
-                @if ($nextStatus)
-                    <flux:tooltip content="{{ __('Advance to :status', ['status' => $nextStatus->label()]) }}">
-                        <flux:button
-                            size="xs"
-                            variant="ghost"
-                            icon="arrow-right"
-                            wire:click="moveLead('{{ $lead->id }}', '{{ $nextStatus->value }}')"
-                            aria-label="{{ __('Advance to :status', ['status' => $nextStatus->label()]) }}"
-                        />
-                    </flux:tooltip>
-                @endif
-
+            <div class="flex shrink-0 items-center" x-on:click.stop x-on:keydown.enter.stop>
                 <flux:dropdown position="bottom" align="end">
                     <flux:button size="xs" variant="ghost" icon="ellipsis-horizontal" aria-label="{{ __('Move to…') }}" />
                     <flux:menu>
@@ -76,5 +64,18 @@
                 <flux:avatar size="xs" :initials="$lead->assignedUser->initials()" />
             @endif
         </div>
+    @endif
+
+    @if ($canMove && $nextStatus)
+        <flux:tooltip content="{{ __('Advance to :status', ['status' => $nextStatus->label()]) }}">
+            <flux:button
+                size="xs"
+                icon:trailing="arrow-right"
+                class="w-full"
+                wire:click.stop="moveLead('{{ $lead->id }}', '{{ $nextStatus->value }}')"
+            >
+                {{ __('Advance') }}
+            </flux:button>
+        </flux:tooltip>
     @endif
 </div>

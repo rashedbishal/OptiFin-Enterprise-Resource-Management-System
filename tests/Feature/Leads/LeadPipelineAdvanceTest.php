@@ -32,29 +32,32 @@ test('the advance button moves a lead to the next status', function () {
 test('the advance button is not shown on a Won lead', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
     $rep = clientUserWithLeadPermission($tenant, ['view', 'update']);
-    Lead::factory()->create(['tenant_id' => $tenant->id, 'status' => LeadStatus::Won, 'assigned_to' => $rep->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status' => LeadStatus::Won, 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
         ->test(Index::class)
-        ->assertDontSeeHtml('aria-label="Advance to');
+        ->assertDontSee(__('Advance'))
+        ->assertDontSeeHtml("wire:click.stop=\"moveLead('{$lead->id}'");
 });
 
 test('the advance button is shown on a lead still in the core pipeline', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
     $rep = clientUserWithLeadPermission($tenant, ['view', 'update']);
-    Lead::factory()->create(['tenant_id' => $tenant->id, 'status' => LeadStatus::Negotiation, 'assigned_to' => $rep->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status' => LeadStatus::Negotiation, 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
         ->test(Index::class)
-        ->assertSeeHtml('aria-label="Advance to Won"');
+        ->assertSee(__('Advance'))
+        ->assertSeeHtml("wire:click.stop=\"moveLead('{$lead->id}', 'won')\"");
 });
 
 test('the advance button is hidden without update permission', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
     $rep = clientUserWithLeadPermission($tenant, ['view']);
-    Lead::factory()->create(['tenant_id' => $tenant->id, 'status' => LeadStatus::New, 'assigned_to' => $rep->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status' => LeadStatus::New, 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
         ->test(Index::class)
-        ->assertDontSeeHtml('aria-label="Advance to');
+        ->assertDontSee(__('Advance'))
+        ->assertDontSeeHtml("wire:click.stop=\"moveLead('{$lead->id}'");
 });
