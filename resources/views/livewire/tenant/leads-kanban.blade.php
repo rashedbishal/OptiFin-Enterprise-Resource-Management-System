@@ -76,8 +76,12 @@
         </div>
     @else
         <div wire:loading.class.delay="opacity-70" wire:target="moveLead">
-            {{-- Desktop / tablet: Kanban board, one column per pipeline status. --}}
-            <div class="hidden lg:flex lg:gap-4 lg:overflow-x-auto lg:pb-2">
+            {{-- Desktop / tablet: Kanban board, one column per pipeline status.
+            Deliberately no overflow/max-height here: columns grow to their
+            natural content height and the row overflows horizontally into
+            the page itself, so the whole page scrolls (both axes) instead
+            of a cramped inner scrollbox stopping wherever the cards end. --}}
+            <div class="hidden lg:flex lg:gap-4">
                 @foreach (\App\Enums\LeadStatus::cases() as $statusCase)
                     @php
                         $columnLeads = $this->boardLeads->get($statusCase->value, collect());
@@ -96,7 +100,7 @@
                             <flux:badge size="sm" :color="$statusCase->color()">{{ $totalCount }}</flux:badge>
                         </div>
 
-                        <div class="flex max-h-[65vh] flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3">
+                        <div class="flex flex-1 flex-col gap-2 px-3 pb-3">
                             @forelse ($columnLeads as $lead)
                                 @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'tenantCurrency' => $this->tenantCurrency, 'draggable' => true])
                             @empty
