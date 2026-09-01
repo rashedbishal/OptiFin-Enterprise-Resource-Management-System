@@ -144,7 +144,8 @@ test('a user without lead-management create permission cannot create a manual le
 
     expect($component->instance()->canCreateLead)->toBeFalse();
 
-    $component->call('createLead')->assertForbidden();
+    $component->call('createLead')->assertDispatched('toast-show');
+    expect($component->instance()->showCreateLeadModal)->toBeFalse();
     expect(Lead::where('tenant_id', $tenant->id)->exists())->toBeFalse();
 });
 

@@ -103,6 +103,33 @@ class Index extends Component
         return Gate::allows('create', Lead::class);
     }
 
+    /**
+     * Whether the current user can update ANY lead they can see here — used
+     * to gate the Kanban "…" move menu and the table's per-row actions.
+     * Not evaluated per-lead: `update` also requires being assigned to the
+     * lead for a non-admin, but every lead reaching this page's queries is
+     * already scoped that way (applyAssignmentScope()), so the module
+     * permission is the only variable left. Computing it once here instead
+     * of calling Gate::allows() per row avoids an N+1 of permission checks
+     * across a board with hundreds of cards.
+     */
+    #[Computed]
+    public function canUpdateLeads(): bool
+    {
+        return Auth::user()->hasModulePermission('lead-management', 'update');
+    }
+
+    /**
+     * Same reasoning as canUpdateLeads(): `delete` requires isClientAdmin,
+     * which is already this page's own $this->isClientAdmin, so the module
+     * permission is the only remaining variable.
+     */
+    #[Computed]
+    public function canDeleteLeads(): bool
+    {
+        return $this->isClientAdmin && Auth::user()->hasModulePermission('lead-management', 'delete');
+    }
+
     #[Computed]
     public function tenantCurrency(): string
     {
@@ -111,7 +138,11 @@ class Index extends Component
 
     public function createLead(): void
     {
-        Gate::authorize('create', Lead::class);
+        if (Gate::denies('create', Lead::class)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to create leads."));
+
+            return;
+        }
 
         $this->reset(
             'leadName', 'leadCompany', 'leadWebsite', 'leadIndustry', 'leadLocation', 'leadServiceInterest',
@@ -125,7 +156,11 @@ class Index extends Component
 
     public function saveLead(CreateManualLead $action): void
     {
-        Gate::authorize('create', Lead::class);
+        if (Gate::denies('create', Lead::class)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to create leads."));
+
+            return;
+        }
 
         $validated = $this->validate([
             // Letters (incl. accented/Unicode), spaces, apostrophes, periods
@@ -306,7 +341,7 @@ class Index extends Component
         $lead = Lead::where('tenant_id', Auth::user()->tenant_id)->find($id);
 
         if (! $lead || Gate::denies('view', $lead)) {
-            Flux::toast(variant: 'danger', text: __('You are not allowed to view this lead.'));
+            Flux::toast(variant: 'danger', text: __("You don't have permission to view this lead."));
 
             return;
         }
@@ -356,7 +391,7 @@ class Index extends Component
         $lead = Lead::where('tenant_id', Auth::user()->tenant_id)->find($leadId);
 
         if (! $lead || Gate::denies('update', $lead)) {
-            Flux::toast(variant: 'danger', text: __('You are not allowed to move this lead.'));
+            Flux::toast(variant: 'danger', text: __("You don't have permission to move this lead."));
             $this->refreshBoard();
 
             return;
@@ -432,7 +467,11 @@ class Index extends Component
     {
         $lead = Lead::where('tenant_id', Auth::user()->tenant_id)->findOrFail($id);
 
-        Gate::authorize('delete', $lead);
+        if (Gate::denies('delete', $lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to delete this lead."));
+
+            return;
+        }
 
         $lead->delete();
 
@@ -461,7 +500,11 @@ class Index extends Component
             ->where('type', LeadSourceType::FacebookLeadAds)
             ->findOrFail($id);
 
-        Gate::authorize('delete', $source);
+        if (Gate::denies('delete', $source)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to delete this lead source."));
+
+            return;
+        }
 
         if ($source->leads()->exists()) {
             Flux::toast(variant: 'danger', text: __('This source has leads and can no longer be deleted.'));

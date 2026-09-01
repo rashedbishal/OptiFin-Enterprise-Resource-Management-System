@@ -213,7 +213,7 @@ test('a client user without delete permission cannot delete a facebook lead ads 
     Livewire::actingAs($rep)
         ->test(Index::class)
         ->call('deleteSource', $source->id)
-        ->assertForbidden();
+        ->assertDispatched('toast-show');
 
     expect(LeadSource::find($source->id))->not->toBeNull();
 });

@@ -102,7 +102,7 @@ test('a client user without delete permission cannot delete a lead', function ()
     Livewire::actingAs($rep)
         ->test(Index::class)
         ->call('delete', $lead->id)
-        ->assertForbidden();
+        ->assertDispatched('toast-show');
 
     expect(Lead::find($lead->id))->not->toBeNull();
 });

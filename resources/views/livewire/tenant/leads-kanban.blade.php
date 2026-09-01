@@ -129,7 +129,7 @@
 
                         <div class="flex flex-1 flex-col gap-2 px-3 pb-3">
                             @forelse ($columnLeads as $lead)
-                                @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'tenantCurrency' => $this->tenantCurrency, 'draggable' => true])
+                                @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'tenantCurrency' => $this->tenantCurrency, 'draggable' => true, 'canMove' => $this->canUpdateLeads])
                             @empty
                                 <div class="rounded-md border border-dashed border-zinc-200 py-6 text-center dark:border-zinc-700">
                                     <flux:text size="sm" variant="subtle">{{ __('No leads') }}</flux:text>
@@ -159,7 +159,7 @@
                             </div>
                             <div class="flex flex-col gap-2">
                                 @foreach ($columnLeads as $lead)
-                                    @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'tenantCurrency' => $this->tenantCurrency, 'draggable' => false])
+                                    @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'tenantCurrency' => $this->tenantCurrency, 'draggable' => false, 'canMove' => $this->canUpdateLeads])
                                 @endforeach
                             </div>
                         </div>

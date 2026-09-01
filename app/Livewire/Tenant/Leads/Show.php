@@ -92,6 +92,30 @@ class Show extends Component
     }
 
     /**
+     * Gates the status/priority form and the "Add Note" form — used to hide
+     * both from a viewer who can see this lead but isn't allowed to change
+     * it (e.g. a Client User without the module's "update" permission),
+     * rather than letting them submit and hit a denial.
+     */
+    #[Computed]
+    public function canUpdate(): bool
+    {
+        return Gate::allows('update', $this->lead);
+    }
+
+    #[Computed]
+    public function canAssign(): bool
+    {
+        return Gate::allows('assign', $this->lead);
+    }
+
+    #[Computed]
+    public function canDelete(): bool
+    {
+        return Gate::allows('delete', $this->lead);
+    }
+
+    /**
      * The lead's text messages and downloaded attachments merged into a
      * single chronological feed, matching the order they actually arrived
      * in the conversation — a thread can carry several of each over time,
@@ -169,7 +193,11 @@ class Show extends Component
 
     public function updateStatus(): void
     {
-        Gate::authorize('update', $this->lead);
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
 
         $newStatus = LeadStatus::from($this->status);
         $oldStatus = $this->lead->status;
@@ -211,7 +239,11 @@ class Show extends Component
 
     public function assign(LeadAssignmentService $assignmentService): void
     {
-        Gate::authorize('assign', $this->lead);
+        if (Gate::denies('assign', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to assign this lead."));
+
+            return;
+        }
 
         if (! $this->assigneeId) {
             return;
@@ -233,7 +265,11 @@ class Show extends Component
 
     public function addNote(): void
     {
-        Gate::authorize('update', $this->lead);
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
 
         $validated = $this->validate([
             'newNote' => ['required', 'string', 'max:2000'],
@@ -252,7 +288,11 @@ class Show extends Component
 
     public function delete(): void
     {
-        Gate::authorize('delete', $this->lead);
+        if (Gate::denies('delete', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to delete this lead."));
+
+            return;
+        }
 
         $leadId = $this->lead->id;
 

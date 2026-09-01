@@ -17,7 +17,7 @@ test('a client admin sees the classic filterable table, not the Kanban board', f
 
 test('a client user (sales rep) sees the Kanban board, not the table', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
-    $rep = clientUserWithLeadPermission($tenant);
+    $rep = clientUserWithLeadPermission($tenant, ['view', 'update']);
     Lead::factory()->create(['tenant_id' => $tenant->id, 'status' => LeadStatus::New, 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)

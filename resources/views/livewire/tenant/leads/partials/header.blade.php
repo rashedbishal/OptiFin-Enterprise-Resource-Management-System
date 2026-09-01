@@ -13,7 +13,7 @@
             <flux:text>{{ $lead->email }} {{ $lead->phone ? '· '.$lead->phone : '' }}</flux:text>
         </div>
     </div>
-    @if ($isClientAdmin)
+    @if ($canDelete)
         <flux:button variant="danger" size="sm" wire:click="delete" wire:confirm="{{ __('Delete this lead?') }}">
             {{ __('Delete') }}
         </flux:button>

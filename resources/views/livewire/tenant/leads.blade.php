@@ -75,7 +75,7 @@
                         <div class="flex justify-end gap-2">
                             @if ($source->leads_count > 0)
                                 <flux:button size="sm" :href="route('tenant-leads.source', $source)" wire:navigate>{{ __('View All') }}</flux:button>
-                            @elseif ($this->isClientAdmin)
+                            @elseif ($this->canDeleteLeads)
                                 <flux:button size="sm" variant="danger" wire:click="deleteSource('{{ $source->id }}')" wire:confirm="{{ __('Delete this lead source?') }}">
                                     {{ __('Delete') }}
                                 </flux:button>
@@ -101,7 +101,7 @@
                     <flux:table.cell>
                         <div class="flex justify-end gap-2">
                             <flux:button size="sm" :href="route('tenant-leads.show', $lead)" wire:navigate>{{ __('View') }}</flux:button>
-                            @if (in_array($lead->source->type->value, ['email', 'website_form', 'manual']))
+                            @if ($this->canDeleteLeads && in_array($lead->source->type->value, ['email', 'website_form', 'manual']))
                                 <flux:button size="sm" variant="danger" wire:click="delete('{{ $lead->id }}')" wire:confirm="{{ __('Delete this lead?') }}">
                                     {{ __('Delete') }}
                                 </flux:button>
