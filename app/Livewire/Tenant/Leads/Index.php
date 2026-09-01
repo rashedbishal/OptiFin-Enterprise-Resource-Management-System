@@ -6,26 +6,28 @@ use App\Actions\Tenant\CreateManualLead;
 use App\Enums\LeadPriority;
 use App\Enums\LeadSourceType;
 use App\Enums\LeadStatus;
+use App\Events\LeadStatusChanged;
 use App\Livewire\Tenant\Leads\Concerns\FiltersLeadsQuery;
 use App\Models\Lead;
 use App\Models\LeadSource;
+use App\Models\LeadStatusLog;
 use App\Models\TenantUser;
 use Flux\Flux;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
-use Livewire\WithPagination;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 #[Title('Leads')]
 class Index extends Component
 {
-    use FiltersLeadsQuery, WithPagination;
+    use FiltersLeadsQuery;
 
     public string $sourceType = '';
 
@@ -62,6 +64,19 @@ class Index extends Component
     public string $leadWinProbability = '';
 
     public string $leadNextFollowUpAt = '';
+
+    /**
+     * Caps how many leads are fetched for the Kanban board / mobile list in
+     * one query — grouped in PHP afterwards, since a per-column SQL limit
+     * would need a window function. `boardLeadCounts()` is queried
+     * separately (a cheap grouped count) so column headers stay accurate
+     * even if a single status has more open leads than this cap.
+     */
+    private const BOARD_LEAD_LIMIT = 500;
+
+    public ?string $selectedLeadId = null;
+
+    public bool $showLeadPanel = false;
 
     public function mount(): void
     {
@@ -171,7 +186,7 @@ class Index extends Component
         ], $user, $assignee);
 
         $this->showCreateLeadModal = false;
-        unset($this->leads);
+        $this->refreshBoard();
         Flux::toast(variant: 'success', text: __('Lead created.'));
     }
 
@@ -182,21 +197,165 @@ class Index extends Component
     {
         return [
             'echo-private:tenant.'.Auth::user()->tenant_id.',.lead.received' => '$refresh',
+            'lead-panel-updated' => 'refreshBoard',
+            'lead-panel-deleted' => 'onPanelLeadDeleted',
         ];
     }
 
-    public function updating(): void
+    /**
+     * All leads matching the current filters/assignment scope, grouped by
+     * status for the Kanban columns / mobile status sections. Capped at
+     * BOARD_LEAD_LIMIT total rows for performance — see that constant's
+     * docblock. `updated*()` hooks below invalidate this whenever a filter
+     * changes, since Livewire only recomputes on a fresh request otherwise.
+     *
+     * @return Collection<string, Collection<int, Lead>>
+     */
+    #[Computed]
+    public function boardLeads()
     {
-        $this->resetPage();
+        $leads = $this->applyDropdownFilters($this->applyAssignmentScope($this->filteredQuery()))
+            ->with(['source', 'assignedUser'])
+            ->latest()
+            ->limit(self::BOARD_LEAD_LIMIT)
+            ->get();
+
+        // Plain Support Collection, not Eloquent Collection: once grouped,
+        // the values are per-status collections of leads rather than leads
+        // themselves, which doesn't fit Eloquent Collection's Model-typed
+        // generic.
+        return collect($leads)->groupBy(fn (Lead $lead): string => $lead->status->value);
+    }
+
+    /**
+     * True per-status counts (unaffected by BOARD_LEAD_LIMIT) so a column
+     * header never understates how many leads are actually in that status.
+     *
+     * @return array<int, array{status: string, count: int}>
+     */
+    #[Computed]
+    public function boardLeadCounts(): array
+    {
+        return Lead::countsByStatus($this->applyDropdownFilters($this->applyAssignmentScope($this->filteredQuery())));
+    }
+
+    public function refreshBoard(): void
+    {
+        unset($this->boardLeads, $this->boardLeadCounts);
+    }
+
+    public function updated(string $property): void
+    {
+        if (in_array($property, ['priority', 'assignedTo', 'sourceType'], true)) {
+            $this->refreshBoard();
+        }
+
+        // The flyout was closed (Flux's own close button, backdrop click or
+        // Escape all sync this property back down via wire:model) — drop
+        // the selected lead so the nested detail component un-mounts
+        // instead of silently re-querying on every later board action.
+        if ($property === 'showLeadPanel' && ! $this->showLeadPanel) {
+            $this->selectedLeadId = null;
+        }
+    }
+
+    /**
+     * Opens the lead detail flyout. Leads rendered on the board already
+     * belong to the current user's assignment scope, but this is called
+     * directly from the client (drag target / card click), so the
+     * authorization is re-checked server-side rather than trusted.
+     */
+    public function viewLead(string $id): void
+    {
+        $lead = Lead::where('tenant_id', Auth::user()->tenant_id)->find($id);
+
+        if (! $lead || Gate::denies('view', $lead)) {
+            Flux::toast(variant: 'danger', text: __('You are not allowed to view this lead.'));
+
+            return;
+        }
+
+        $this->selectedLeadId = $lead->id;
+        $this->showLeadPanel = true;
     }
 
     #[Computed]
-    public function leads()
+    public function selectedLead(): ?Lead
     {
-        return $this->applyDropdownFilters($this->applyAssignmentScope($this->filteredQuery()))
+        if ($this->selectedLeadId === null) {
+            return null;
+        }
+
+        return Lead::where('tenant_id', Auth::user()->tenant_id)
             ->with(['source', 'assignedUser'])
-            ->latest()
-            ->paginate(25);
+            ->find($this->selectedLeadId);
+    }
+
+    public function onPanelLeadDeleted(string $leadId): void
+    {
+        if ($this->selectedLeadId === $leadId) {
+            $this->showLeadPanel = false;
+            $this->selectedLeadId = null;
+        }
+
+        $this->refreshBoard();
+    }
+
+    /**
+     * Moves a lead to a new status — the Kanban drag-and-drop target, and
+     * the mobile/keyboard-accessible "move to" menu. Mirrors
+     * Show::updateStatus() but only touches status (not priority, which
+     * that form edits together) and fails soft with a toast instead of
+     * throwing, since this runs from board interactions rather than a
+     * dedicated form submission.
+     */
+    public function moveLead(string $leadId, string $status): void
+    {
+        $newStatus = LeadStatus::tryFrom($status);
+
+        if ($newStatus === null) {
+            return;
+        }
+
+        $lead = Lead::where('tenant_id', Auth::user()->tenant_id)->find($leadId);
+
+        if (! $lead || Gate::denies('update', $lead)) {
+            Flux::toast(variant: 'danger', text: __('You are not allowed to move this lead.'));
+            $this->refreshBoard();
+
+            return;
+        }
+
+        $oldStatus = $lead->status;
+
+        if ($oldStatus === $newStatus) {
+            return;
+        }
+
+        LeadStatusLog::create([
+            'lead_id' => $lead->id,
+            'changed_by' => Auth::id(),
+            'old_status' => $oldStatus,
+            'new_status' => $newStatus,
+        ]);
+
+        $updates = ['status' => $newStatus];
+
+        if ($oldStatus === LeadStatus::New) {
+            $updates['first_contacted_at'] = $lead->first_contacted_at ?? now();
+        }
+
+        if (in_array($newStatus, [LeadStatus::Won, LeadStatus::Lost], true)) {
+            $updates['closed_at'] = now();
+        }
+
+        $lead->update($updates);
+
+        event(new LeadStatusChanged($lead, $oldStatus, $newStatus, Auth::user()));
+
+        $this->refreshBoard();
+
+        Flux::toast(variant: 'success', text: __(':name moved to :status.', ['name' => $lead->name, 'status' => $newStatus->label()]));
     }
 
     /**
@@ -239,6 +398,13 @@ class Index extends Component
         Gate::authorize('delete', $lead);
 
         $lead->delete();
+
+        if ($this->selectedLeadId === $id) {
+            $this->showLeadPanel = false;
+            $this->selectedLeadId = null;
+        }
+
+        $this->refreshBoard();
 
         Flux::toast(variant: 'success', text: __('Lead deleted.'));
     }

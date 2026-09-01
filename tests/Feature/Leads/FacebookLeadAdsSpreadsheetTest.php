@@ -23,7 +23,7 @@ test('the leads index shows one aggregate row per facebook lead ads source inste
 
     expect($component->get('facebookLeadAdsSources'))->toHaveCount(1);
     expect($component->get('facebookLeadAdsSources')->first()->leads_count)->toBe(3);
-    expect($component->get('leads'))->toHaveCount(1);
+    expect($component->get('boardLeads')->collapse())->toHaveCount(1);
 });
 
 test('a second facebook lead ads source gets its own aggregate row', function () {

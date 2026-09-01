@@ -20,4 +20,39 @@ enum LeadStatus: string
     {
         return array_column(self::cases(), 'value');
     }
+
+    /**
+     * Get the human-readable label for this status.
+     */
+    public function label(): string
+    {
+        return match ($this) {
+            self::New => 'New',
+            self::Contacted => 'Contacted',
+            self::Qualified => 'Qualified',
+            self::ProposalSent => 'Proposal Sent',
+            self::Negotiation => 'Negotiation',
+            self::Won => 'Won',
+            self::Lost => 'Lost',
+            self::Unqualified => 'Unqualified',
+        };
+    }
+
+    /**
+     * Get the Flux badge/indicator color representing this status, for the
+     * Kanban board columns and status badges.
+     */
+    public function color(): string
+    {
+        return match ($this) {
+            self::New => 'blue',
+            self::Contacted => 'sky',
+            self::Qualified => 'indigo',
+            self::ProposalSent => 'amber',
+            self::Negotiation => 'orange',
+            self::Won => 'green',
+            self::Lost => 'red',
+            self::Unqualified => 'zinc',
+        };
+    }
 }

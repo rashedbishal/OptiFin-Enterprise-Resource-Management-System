@@ -13,6 +13,7 @@ use App\Models\TenantUser;
 use App\Services\LeadAssignmentService;
 use Carbon\CarbonInterface;
 use Flux\Flux;
+use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Computed;
@@ -34,6 +35,15 @@ class Show extends Component
 
     public string $bodyView = 'text';
 
+    /**
+     * True when this component is embedded in the Kanban board's lead
+     * detail flyout (App\Livewire\Tenant\Leads\Index) rather than rendered
+     * as the full `/leads/{lead}` page — swaps to a single-column,
+     * drawer-width view and reports mutations back to the board via
+     * dispatched events instead of a page redirect.
+     */
+    public bool $panel = false;
+
     public function mount(Lead $lead): void
     {
         Gate::authorize('view', $lead);
@@ -42,6 +52,11 @@ class Show extends Component
         $this->status = $lead->status->value;
         $this->priority = $lead->priority->value;
         $this->assigneeId = $lead->assigned_to;
+    }
+
+    public function render(): View
+    {
+        return view($this->panel ? 'livewire.tenant.leads.show-panel' : 'livewire.tenant.leads.show');
     }
 
     /**
@@ -181,6 +196,11 @@ class Show extends Component
         event(new LeadStatusChanged($this->lead, $oldStatus, $newStatus, Auth::user()));
 
         unset($this->activity);
+
+        if ($this->panel) {
+            $this->dispatch('lead-panel-updated');
+        }
+
         Flux::toast(variant: 'success', text: __('Lead updated.'));
     }
 
@@ -198,6 +218,11 @@ class Show extends Component
 
         $this->lead->refresh();
         unset($this->activity);
+
+        if ($this->panel) {
+            $this->dispatch('lead-panel-updated');
+        }
+
         Flux::toast(variant: 'success', text: __('Lead assigned to :name.', ['name' => $assignee->name]));
     }
 
@@ -224,7 +249,15 @@ class Show extends Component
     {
         Gate::authorize('delete', $this->lead);
 
+        $leadId = $this->lead->id;
+
         $this->lead->delete();
+
+        if ($this->panel) {
+            $this->dispatch('lead-panel-deleted', leadId: $leadId);
+
+            return;
+        }
 
         $this->redirect(route('tenant-leads.index'), navigate: true);
     }
