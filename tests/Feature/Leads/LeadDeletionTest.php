@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\LeadAttachmentStatus;
 use App\Enums\LeadSourceType;
 use App\Livewire\Tenant\Leads\Index;
 use App\Models\Lead;
@@ -63,6 +64,26 @@ test('deleting a lead with no attachment does not error', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::WebsiteForm]);
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class)
+        ->call('delete', $lead->id)
+        ->assertDispatched('toast-show');
+
+    expect(Lead::find($lead->id))->toBeNull();
+});
+
+test('deleting a lead with a failed (pathless) attachment does not error', function () {
+    Storage::fake('local');
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::WebsiteForm]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+
+    LeadAttachment::factory()->create([
+        'lead_id' => $lead->id,
+        'path' => null,
+        'status' => LeadAttachmentStatus::Failed,
+    ]);
 
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)

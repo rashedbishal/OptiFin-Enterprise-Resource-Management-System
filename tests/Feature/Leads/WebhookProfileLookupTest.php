@@ -18,6 +18,26 @@ function messengerPayload(string $psid, ?string $text = null): array
     ];
 }
 
+test('a facebook lead is created with the graph api name and profile picture when the lookup succeeds immediately', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::FacebookMessenger,
+        'config' => ['page_id' => '123', 'page_access_token' => 'page-token', 'verify_token' => 'secret'],
+    ]);
+
+    Http::fake(['graph.facebook.com/*' => Http::response(['name' => 'Saadman Rahman', 'profile_pic' => 'https://example.com/pic.jpg'])]);
+
+    $this->postJson(route('api.webhook.facebook', $tenant->tenant_code), messengerPayload('27181450094857149', 'Hi'))->assertOk();
+
+    $lead = Lead::where('tenant_id', $tenant->id)->firstOrFail();
+    expect($lead->name)->toBe('Saadman Rahman');
+    expect($lead->avatarUrl())->toBe('https://example.com/pic.jpg');
+
+    Http::assertSent(fn ($request): bool => $request->url() === 'https://graph.facebook.com/27181450094857149?fields=first_name%2Clast_name%2Cname%2Cprofile_pic&access_token=page-token');
+});
+
 test('a facebook lead falls back to "Facebook User {psid}" when the profile lookup fails', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
 

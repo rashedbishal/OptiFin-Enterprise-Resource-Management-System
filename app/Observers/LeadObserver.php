@@ -16,7 +16,7 @@ class LeadObserver
      */
     public function deleting(Lead $lead): void
     {
-        $paths = $lead->attachments()->pluck('path');
+        $paths = $lead->attachments()->whereNotNull('path')->pluck('path');
 
         Storage::disk('local')->delete($paths->all());
     }

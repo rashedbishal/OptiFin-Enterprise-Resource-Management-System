@@ -199,3 +199,47 @@ test('an attachment is ignored without crashing when the source has no access to
     expect($lead->attachments()->count())->toBe(0);
     Queue::assertNotPushed(DownloadLeadAttachment::class);
 });
+
+test('a whatsapp payload with three image messages from the same new sender creates one lead with three pending attachments and queues three download jobs', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => ['phone_number_id' => '456', 'access_token' => 'wa-token', 'verify_token' => 'secret'],
+    ]);
+
+    $payload = [
+        'entry' => [[
+            'changes' => [[
+                'value' => [
+                    'messages' => array_map(
+                        fn (int $i): array => [
+                            'from' => '8801700000000',
+                            'type' => 'image',
+                            'image' => ['id' => "media-{$i}", 'caption' => "Photo {$i}"],
+                        ],
+                        range(1, 3),
+                    ),
+                ],
+            ]],
+        ]],
+    ];
+
+    Queue::fake();
+
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), $payload)->assertOk();
+
+    $lead = Lead::where('tenant_id', $tenant->id)->sole();
+
+    expect($lead->attachments)->toHaveCount(3);
+    expect($lead->attachments->pluck('status')->unique()->all())->toBe([LeadAttachmentStatus::Downloading]);
+    expect($lead->source_data['messages'])->toHaveCount(3);
+    expect($lead->message)->toBe("Photo 1\nPhoto 2\nPhoto 3");
+
+    Queue::assertPushed(DownloadLeadAttachment::class, 3);
+
+    foreach (range(1, 3) as $i) {
+        Queue::assertPushed(DownloadLeadAttachment::class, fn (DownloadLeadAttachment $job): bool => $job->mediaId === "media-{$i}");
+    }
+});
