@@ -5,3 +5,4 @@
  */
 
 import './echo';
+import './flyout-close-animation';

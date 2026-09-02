@@ -79,6 +79,24 @@ live in @layer utilities, which always loses to unlayered CSS).
     transition: all 0.32s ease-out allow-discrete;
 }
 
+/*
+Firefox doesn't support the `overlay` CSS property, so it can't animate a
+<dialog> being removed from the top layer — the rules above do nothing
+visible there on close, it just snaps shut. flyout-close-animation.js
+intercepts every close path and applies this class *while the dialog is
+still open* (still in the top layer) before actually closing it, so this
+is an ordinary transition on a still-rendered element — no `overlay` or
+`allow-discrete` involved, which is why it works in every browser
+including Firefox. Higher specificity (one more class) than the [open]
+rule above, so it wins during the animated-close window.
+*/
+[data-flux-modal] > dialog[data-flux-flyout][open].flux-flyout-closing,
+[data-flux-modal] > dialog[data-flux-flyout][open].flux-flyout-closing::backdrop {
+    transform: var(--flux-flyout-translate, translateX(100%));
+    opacity: 0;
+    transition: all 0.26s ease-in;
+}
+
 [data-flux-modal] > dialog::backdrop {
     background-color: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(4px);
