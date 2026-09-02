@@ -21,12 +21,15 @@
         <flux:card class="flex flex-col gap-4">
             <div>
                 <flux:heading size="lg">{{ __('Lead Pipeline') }}</flux:heading>
-                <flux:text variant="subtle">{{ __('Click a status to add it to this client\'s pipeline — the click order becomes its position. Click a selected status again to remove it.') }}</flux:text>
+                <flux:text variant="subtle">{{ __('Click a status to add it to this client\'s pipeline — the click order becomes its position. Click a selected status again to remove it. A status with leads in it (shown below its name) can\'t be removed until those leads are reassigned.') }}</flux:text>
             </div>
 
             <div class="flex flex-wrap gap-2">
                 @foreach ($this->allLeadStatuses as $status)
-                    @php $position = $this->selectedLeadStatuses->search(fn ($selected) => $selected->id === $status->id); @endphp
+                    @php
+                        $position = $this->selectedLeadStatuses->search(fn ($selected) => $selected->id === $status->id);
+                        $leadCount = $this->leadCountsByStatus[$status->id] ?? 0;
+                    @endphp
                     <flux:button
                         size="sm"
                         :variant="$position === false ? 'ghost' : 'primary'"
@@ -37,6 +40,9 @@
                             <span class="mr-1 font-semibold">{{ $position + 1 }}.</span>
                         @endif
                         {{ $status->name }}
+                        @if ($leadCount > 0)
+                            <span class="ml-1 text-xs opacity-75">({{ trans_choice(':count lead|:count leads', $leadCount, ['count' => $leadCount]) }})</span>
+                        @endif
                     </flux:button>
                 @endforeach
             </div>

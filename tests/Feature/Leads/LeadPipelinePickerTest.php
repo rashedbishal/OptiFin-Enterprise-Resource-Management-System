@@ -1,6 +1,7 @@
 <?php
 
 use App\Livewire\Platform\Clients\LeadSources;
+use App\Models\Lead;
 use App\Models\LeadStatus;
 use App\Models\PlatformUser;
 use App\Models\Tenant;
@@ -61,4 +62,44 @@ test('the last remaining pipeline status cannot be removed', function () {
         ->assertDispatched('toast-show');
 
     expect($tenant->fresh()->leadStatuses->pluck('slug')->all())->toBe(['new']);
+});
+
+test('a status with leads currently in it cannot be removed from the pipeline', function () {
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+    $tenant = Tenant::factory()->create();
+    Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('qualified')->id]);
+
+    Livewire::actingAs($motherAdmin, 'platform')
+        ->test(LeadSources::class, ['tenant' => $tenant])
+        ->call('toggleLeadStatus', leadStatus('qualified')->id)
+        ->assertDispatched('toast-show');
+
+    expect($tenant->fresh()->leadStatuses->pluck('slug')->all())
+        ->toBe(['new', 'contacted', 'qualified', 'proposal_sent', 'negotiation', 'won', 'lost', 'unqualified']);
+});
+
+test('a status with no leads in it can still be removed even if other statuses have leads', function () {
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+    $tenant = Tenant::factory()->create();
+    Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('qualified')->id]);
+
+    Livewire::actingAs($motherAdmin, 'platform')
+        ->test(LeadSources::class, ['tenant' => $tenant])
+        ->call('toggleLeadStatus', leadStatus('negotiation')->id);
+
+    expect($tenant->fresh()->leadStatuses->pluck('slug')->all())
+        ->toBe(['new', 'contacted', 'qualified', 'proposal_sent', 'won', 'lost', 'unqualified']);
+});
+
+test('a new status can still be added to the pipeline even while other statuses have leads', function () {
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+    $tenant = Tenant::factory()->create();
+    Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('qualified')->id]);
+    $custom = LeadStatus::factory()->create(['name' => 'Custom Stage']);
+
+    Livewire::actingAs($motherAdmin, 'platform')
+        ->test(LeadSources::class, ['tenant' => $tenant])
+        ->call('toggleLeadStatus', $custom->id);
+
+    expect($tenant->fresh()->leadStatuses->last()->id)->toBe($custom->id);
 });

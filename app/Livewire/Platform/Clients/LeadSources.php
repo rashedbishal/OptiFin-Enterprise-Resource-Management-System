@@ -3,6 +3,7 @@
 namespace App\Livewire\Platform\Clients;
 
 use App\Enums\LeadSourceType;
+use App\Models\Lead;
 use App\Models\LeadSource;
 use App\Models\LeadStatus;
 use App\Models\Tenant;
@@ -105,10 +106,35 @@ class LeadSources extends Component
     }
 
     /**
+     * How many of this tenant's leads currently sit in each status —
+     * powers both the removal guard below and the picker's lead-count
+     * badges, so an admin can see why a status is locked before they even
+     * try to remove it. Reordering never touches leads.status_id at all,
+     * so only removal needs to consult this; adding and reordering are
+     * always safe regardless of these counts.
+     *
+     * @return array<string, int> status id => lead count
+     */
+    #[Computed]
+    public function leadCountsByStatus(): array
+    {
+        return $this->tenant->leads()
+            ->selectRaw('status_id, count(*) as count')
+            ->groupBy('status_id')
+            ->pluck('count', 'status_id')
+            ->all();
+    }
+
+    /**
      * Click-to-number pipeline picker: clicking an unselected status
      * appends it at the next position; clicking an already-selected one
      * removes it and renumbers the rest so positions stay contiguous
      * (1..N) — there's never a gap for a later "next click" to land on.
+     * Removing a status the tenant still has leads sitting in is refused
+     * outright rather than silently orphaning them from the Kanban board
+     * (see Lead::nextPipelineStatus() and Index::tenantLeadStatuses(),
+     * which both only ever consider the tenant's *current* pipeline) —
+     * reassign those leads to another status first.
      */
     public function toggleLeadStatus(string $statusId): void
     {
@@ -117,10 +143,24 @@ class LeadSources extends Component
         $currentIds = $this->tenant->leadStatuses()->orderByPivot('position')->pluck('lead_statuses.id')->all();
         $alreadySelected = in_array($statusId, $currentIds, true);
 
-        if ($alreadySelected && count($currentIds) <= 1) {
-            Flux::toast(variant: 'danger', text: __('A client must have at least one pipeline status.'));
+        if ($alreadySelected) {
+            if (count($currentIds) <= 1) {
+                Flux::toast(variant: 'danger', text: __('A client must have at least one pipeline status.'));
 
-            return;
+                return;
+            }
+
+            $leadCount = $this->leadCountsByStatus[$statusId] ?? 0;
+
+            if ($leadCount > 0) {
+                Flux::toast(variant: 'danger', text: trans_choice(
+                    ':count lead is currently in this status — reassign it before removing this status from the pipeline.|:count leads are currently in this status — reassign them before removing this status from the pipeline.',
+                    $leadCount,
+                    ['count' => $leadCount],
+                ));
+
+                return;
+            }
         }
 
         $newIds = $alreadySelected
