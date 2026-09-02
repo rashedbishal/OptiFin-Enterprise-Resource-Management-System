@@ -10,15 +10,15 @@
     own compositor layer ([transform:translateZ(0)]) — without it, some
     browsers/devtools mobile emulation can paint scrolled-past content
     through this element for a frame instead of it staying solid. --}}
-    <div class="sticky top-0 z-20 -mt-6 flex [transform:translateZ(0)] flex-col gap-2 bg-white pt-6 pb-3 lg:-mt-8 lg:gap-4 lg:pt-8 lg:pb-4 dark:bg-zinc-800">
-        <x-breadcrumbs :items="[
+    <div class="sticky top-0 z-20 -mx-4 flex [transform:translateZ(0)] flex-col gap-2 bg-white px-4 py-3 lg:-mx-8 lg:gap-3.5 lg:px-8 lg:py-4 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
+        <x-breadcrumbs class="hidden sm:flex" :items="[
             ['label' => __('Dashboard'), 'href' => route('dashboard')],
             ['label' => __('Leads')],
         ]" />
 
-        <div class="flex items-center justify-between">
-            <flux:heading size="xl" class="text-lg lg:text-2xl">{{ __('Leads') }}</flux:heading>
-            <div class="flex gap-2">
+        <div class="flex items-center justify-between gap-2">
+            <flux:heading size="lg" class="text-base sm:text-lg lg:text-2xl font-semibold">{{ __('Leads') }}</flux:heading>
+            <div class="flex items-center gap-1.5 sm:gap-2">
                 @if ($this->canCreateLead)
                     <flux:button variant="primary" icon="plus" size="sm" wire:click="createLead">{{ __('New Lead') }}</flux:button>
                 @endif

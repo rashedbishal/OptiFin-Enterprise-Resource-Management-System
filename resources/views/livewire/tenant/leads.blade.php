@@ -1,50 +1,52 @@
-<div class="flex flex-1 flex-col gap-6">
-    <x-breadcrumbs :items="[
-        ['label' => __('Dashboard'), 'href' => route('dashboard')],
-        ['label' => __('Leads')],
-    ]" />
+<div class="flex flex-1 flex-col gap-3.5 lg:gap-6">
+    <div class="sticky top-0 z-20 -mx-4 flex [transform:translateZ(0)] flex-col gap-2 bg-white px-4 py-3 lg:-mx-8 lg:gap-3.5 lg:px-8 lg:py-4 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
+        <x-breadcrumbs class="hidden sm:flex" :items="[
+            ['label' => __('Dashboard'), 'href' => route('dashboard')],
+            ['label' => __('Leads')],
+        ]" />
 
-    <div class="flex items-center justify-between">
-        <flux:heading size="xl">{{ __('Leads') }}</flux:heading>
-        <div class="flex gap-2">
-            @if ($this->canCreateLead)
-                <flux:button variant="primary" icon="plus" wire:click="createLead">{{ __('New Lead') }}</flux:button>
-            @endif
-            <flux:button icon="arrow-down-tray" wire:click="export">{{ __('Export CSV') }}</flux:button>
+        <div class="flex items-center justify-between gap-2">
+            <flux:heading size="lg" class="text-base sm:text-lg lg:text-2xl font-semibold">{{ __('Leads') }}</flux:heading>
+            <div class="flex items-center gap-1.5 sm:gap-2">
+                @if ($this->canCreateLead)
+                    <flux:button variant="primary" icon="plus" size="sm" wire:click="createLead">{{ __('New Lead') }}</flux:button>
+                @endif
+                <flux:button icon="arrow-down-tray" size="sm" wire:click="export">{{ __('Export CSV') }}</flux:button>
+            </div>
         </div>
-    </div>
 
-    <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <flux:select wire:model.live="status" placeholder="{{ __('All statuses') }}">
-            <flux:select.option value="">{{ __('All statuses') }}</flux:select.option>
-            @foreach ($this->statusOptions() as $option)
-                <flux:select.option value="{{ $option->id }}">{{ $option->label() }}</flux:select.option>
-            @endforeach
-        </flux:select>
-
-        <flux:select wire:model.live="priority" placeholder="{{ __('All priorities') }}">
-            <flux:select.option value="">{{ __('All priorities') }}</flux:select.option>
-            @foreach ($this->priorityOptions() as $option)
-                <flux:select.option value="{{ $option }}">{{ ucfirst($option) }}</flux:select.option>
-            @endforeach
-        </flux:select>
-
-        <flux:select wire:model.live="sourceType" placeholder="{{ __('All sources') }}">
-            <flux:select.option value="">{{ __('All sources') }}</flux:select.option>
-            @foreach ($this->sourceTypeOptions() as $option)
-                <flux:select.option value="{{ $option }}">{{ ucfirst(str_replace('_', ' ', $option)) }}</flux:select.option>
-            @endforeach
-        </flux:select>
-
-        @if ($this->isClientAdmin)
-            <flux:select wire:model.live="assignedTo" placeholder="{{ __('All users') }}">
-                <flux:select.option value="">{{ __('All users') }}</flux:select.option>
-                <flux:select.option value="unassigned">{{ __('Unassigned') }}</flux:select.option>
-                @foreach ($this->assignableUsers as $assignableUser)
-                    <flux:select.option value="{{ $assignableUser->id }}">{{ $assignableUser->name }}</flux:select.option>
+        <div class="grid grid-cols-2 gap-2 md:grid-cols-4 lg:gap-3">
+            <flux:select wire:model.live="status" size="sm" placeholder="{{ __('All statuses') }}">
+                <flux:select.option value="">{{ __('All statuses') }}</flux:select.option>
+                @foreach ($this->statusOptions() as $option)
+                    <flux:select.option value="{{ $option->id }}">{{ $option->label() }}</flux:select.option>
                 @endforeach
             </flux:select>
-        @endif
+
+            <flux:select wire:model.live="priority" size="sm" placeholder="{{ __('All priorities') }}">
+                <flux:select.option value="">{{ __('All priorities') }}</flux:select.option>
+                @foreach ($this->priorityOptions() as $option)
+                    <flux:select.option value="{{ $option }}">{{ ucfirst($option) }}</flux:select.option>
+                @endforeach
+            </flux:select>
+
+            <flux:select wire:model.live="sourceType" size="sm" placeholder="{{ __('All sources') }}">
+                <flux:select.option value="">{{ __('All sources') }}</flux:select.option>
+                @foreach ($this->sourceTypeOptions() as $option)
+                    <flux:select.option value="{{ $option }}">{{ ucfirst(str_replace('_', ' ', $option)) }}</flux:select.option>
+                @endforeach
+            </flux:select>
+
+            @if ($this->isClientAdmin)
+                <flux:select wire:model.live="assignedTo" size="sm" placeholder="{{ __('All users') }}">
+                    <flux:select.option value="">{{ __('All users') }}</flux:select.option>
+                    <flux:select.option value="unassigned">{{ __('Unassigned') }}</flux:select.option>
+                    @foreach ($this->assignableUsers as $assignableUser)
+                        <flux:select.option value="{{ $assignableUser->id }}">{{ $assignableUser->name }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+            @endif
+        </div>
     </div>
 
     <flux:table>
