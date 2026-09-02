@@ -3,6 +3,7 @@
 namespace App\Livewire\Platform\Clients;
 
 use App\Enums\LeadSourceType;
+use App\Models\Currency;
 use App\Models\Lead;
 use App\Models\LeadSource;
 use App\Models\LeadStatus;
@@ -179,6 +180,55 @@ class LeadSources extends Component
     }
 
     /**
+     * The full global catalog, for the currency picker below.
+     */
+    #[Computed]
+    public function allCurrencies()
+    {
+        return Currency::query()->orderBy('code')->get();
+    }
+
+    /**
+     * This tenant's currently enabled currencies, for Est. Budget / Deal
+     * Value on their leads.
+     */
+    #[Computed]
+    public function selectedCurrencies()
+    {
+        return $this->tenant->currencies()->orderBy('code')->get();
+    }
+
+    /**
+     * Simple checkbox toggle — unlike toggleLeadStatus(), there's no
+     * ordering to preserve and no "leads currently use this" block, only
+     * the one invariant the tenant must always satisfy: at least one
+     * currency enabled, since LeadSources::create()/save() below refuse to
+     * let a tenant with zero create a new Lead Source at all, and every
+     * lead's Est. Budget / Deal Value dropdown needs at least one option.
+     */
+    public function toggleCurrency(string $currencyId): void
+    {
+        Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
+
+        $currentIds = $this->tenant->currencies()->pluck('currencies.id')->all();
+        $alreadySelected = in_array($currencyId, $currentIds, true);
+
+        if ($alreadySelected && count($currentIds) <= 1) {
+            Flux::toast(variant: 'danger', text: __('A client must have at least one enabled currency.'));
+
+            return;
+        }
+
+        if ($alreadySelected) {
+            $this->tenant->currencies()->detach($currencyId);
+        } else {
+            $this->tenant->currencies()->attach($currencyId);
+        }
+
+        unset($this->selectedCurrencies);
+    }
+
+    /**
      * Excludes LeadSourceType::Manual: that type isn't a Platform-Admin-
      * configured external channel - it's the single per-tenant source
      * manually keyed-in leads are attributed to, provisioned automatically
@@ -199,8 +249,21 @@ class LeadSources extends Component
         return $this->type !== '' ? LeadSourceType::from($this->type) : null;
     }
 
+    /**
+     * A tenant with zero enabled currencies can't create a new Lead Source
+     * at all — Est. Budget / Deal Value on any lead it produces would have
+     * no currency to default to. Only gates *creating*: editing/testing/
+     * deleting an existing source is unaffected, since those don't depend
+     * on the currency picker.
+     */
     public function create(): void
     {
+        if ($this->tenant->currencies()->doesntExist()) {
+            Flux::toast(variant: 'danger', text: __('Enable at least one currency for this client before creating a Lead Source.'));
+
+            return;
+        }
+
         $this->reset('editingId', 'type', 'name', 'config');
         $this->showModal = true;
     }
@@ -219,6 +282,15 @@ class LeadSources extends Component
     public function save(): void
     {
         Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
+
+        // Re-checked here, not just in create(): the modal could have been
+        // opened before the tenant's last currency was removed elsewhere
+        // in the same session, and this is what actually persists the row.
+        if ($this->editingId === null && $this->tenant->currencies()->doesntExist()) {
+            Flux::toast(variant: 'danger', text: __('Enable at least one currency for this client before creating a Lead Source.'));
+
+            return;
+        }
 
         $type = LeadSourceType::from($this->type);
 

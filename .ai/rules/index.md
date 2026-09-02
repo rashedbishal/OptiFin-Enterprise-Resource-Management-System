@@ -11,6 +11,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Livewire/Tenant/Leads/** | .ai/rules/leads.md |
 | app/Livewire/** | .ai/rules/livewire.md |
 | app/{Models,Http/Middleware,Policies}/** | .ai/rules/middleware-policies.md |
+| database/migrations/2026_09_02_16*.php,app/Models/Currency.php,tests/** | .ai/rules/migrations-models.md |
 | app/Models/{PlatformUser,TenantUser}.php | .ai/rules/models.md |
 | resources/views/livewire/tenant/leads/** | .ai/rules/tenant-leads.md |
 | resources/views/livewire/** | .ai/rules/views-livewire.md |

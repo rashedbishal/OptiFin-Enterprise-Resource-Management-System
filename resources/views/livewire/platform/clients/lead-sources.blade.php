@@ -75,6 +75,24 @@
             @endif
         </flux:card>
 
+        <flux:card class="flex flex-col gap-4">
+            <div>
+                <flux:heading size="lg">{{ __('Preferred Currencies') }}</flux:heading>
+                <flux:text variant="subtle">{{ __('Which currencies this client can pick from for a lead\'s Est. Budget / Deal Value. At least one must stay enabled — a client with none can\'t have a new Lead Source created, and existing leads would have no currency to offer.') }}</flux:text>
+            </div>
+
+            <div class="flex flex-wrap gap-4">
+                @foreach ($this->allCurrencies as $currency)
+                    @php $enabled = $this->selectedCurrencies->contains('id', $currency->id); @endphp
+                    <flux:checkbox
+                        :checked="$enabled"
+                        :label="$currency->label()"
+                        wire:click="toggleCurrency('{{ $currency->id }}')"
+                    />
+                @endforeach
+            </div>
+        </flux:card>
+
         <flux:table>
             <flux:table.columns>
                 <flux:table.column>{{ __('Name') }}</flux:table.column>

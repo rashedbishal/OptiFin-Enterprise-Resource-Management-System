@@ -31,7 +31,7 @@
                             <div class="flex justify-end gap-2">
                                 <flux:button size="sm" wire:click="edit('{{ $module->id }}')">{{ __('Edit') }}</flux:button>
                                 @if ($module->slug === 'lead-management')
-                                    <flux:button size="sm" :href="route('admin.lead-statuses.index')" wire:navigate>{{ __('Configuration') }}</flux:button>
+                                    <flux:button size="sm" :href="route('admin.lead-management.index')" wire:navigate>{{ __('Configuration') }}</flux:button>
                                 @endif
                                 <flux:button size="sm" wire:click="toggleStatus('{{ $module->id }}')">
                                     {{ $module->status->value === 'active' ? __('Deactivate') : __('Activate') }}

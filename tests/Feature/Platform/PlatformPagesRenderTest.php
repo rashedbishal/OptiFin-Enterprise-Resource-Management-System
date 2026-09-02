@@ -21,7 +21,7 @@ test('mother admin can view the platform pages', function (string $route) {
     'admin.roles.index',
     'admin.clients.index',
     'admin.modules.index',
-    'admin.lead-statuses.index',
+    'admin.lead-management.index',
     'admin.settings.password',
 ]);
 
@@ -67,7 +67,7 @@ test('the modules index shows a Configuration button only for the Lead Managemen
     Module::factory()->create(['name' => 'Unrelated Module', 'slug' => 'unrelated-module']);
 
     $component = Livewire::actingAs($motherAdmin, 'platform')->test(ModulesIndex::class);
-    $component->assertDontSeeHtml(route('admin.lead-statuses.index'));
+    $component->assertDontSeeHtml(route('admin.lead-management.index'));
 
     Module::firstOrCreate(
         ['slug' => 'lead-management'],
@@ -76,7 +76,7 @@ test('the modules index shows a Configuration button only for the Lead Managemen
 
     Livewire::actingAs($motherAdmin, 'platform')
         ->test(ModulesIndex::class)
-        ->assertSeeHtml(route('admin.lead-statuses.index'));
+        ->assertSeeHtml(route('admin.lead-management.index'));
 });
 
 test('a module without a configuration page yet has no config url', function () {
