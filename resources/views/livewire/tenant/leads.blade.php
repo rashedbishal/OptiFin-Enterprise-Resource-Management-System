@@ -53,6 +53,47 @@
 
     {{-- Table content area (scrollbar touches right edge & bottom edge) --}}
     <div class="flex-1 min-h-0 overflow-auto">
+        <style>
+            @keyframes leadRowInsert {
+                0% {
+                    opacity: 0;
+                    transform: translateY(-16px) scale(0.98);
+                    background-color: rgba(16, 185, 129, 0.25);
+                }
+                40% {
+                    opacity: 1;
+                    transform: translateY(0) scale(1);
+                    background-color: rgba(16, 185, 129, 0.18);
+                }
+                100% {
+                    background-color: rgba(16, 185, 129, 0.08);
+                }
+            }
+
+            @keyframes leadRowLift {
+                0% {
+                    opacity: 0.4;
+                    transform: translateY(24px);
+                    background-color: rgba(245, 158, 11, 0.25);
+                }
+                50% {
+                    opacity: 1;
+                    transform: translateY(0);
+                    background-color: rgba(245, 158, 11, 0.16);
+                }
+                100% {
+                    background-color: rgba(245, 158, 11, 0.08);
+                }
+            }
+
+            .animate-lead-insert {
+                animation: leadRowInsert 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            }
+
+            .animate-lead-lift {
+                animation: leadRowLift 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            }
+        </style>
         <div class="p-4 lg:p-6 flex flex-col gap-6 min-h-full">
             <flux:table>
                 <flux:table.columns>
@@ -65,10 +106,10 @@
                 </flux:table.columns>
                 <flux:table.rows>
                     @foreach ($this->facebookLeadAdsSources as $source)
-                        <flux:table.row wire:key="fb-lead-ads-source-{{ $source->id }}">
+                        <flux:table.row wire:key="fb-lead-ads-source-{{ $source->id }}" class="bg-zinc-50/50 dark:bg-zinc-900/40">
                             <flux:table.cell>
                                 <div class="flex flex-col">
-                                    <span>{{ $source->name }}</span>
+                                    <span class="font-medium">{{ $source->name }}</span>
                                     <flux:text size="sm" variant="subtle">
                                         {{ $source->leads_max_created_at ? __('Last submission :time', ['time' => \Illuminate\Support\Carbon::parse($source->leads_max_created_at)->diffForHumans()]) : __('No submissions yet') }}
                                     </flux:text>
@@ -92,19 +133,44 @@
                         </flux:table.row>
                     @endforeach
                     @forelse ($this->leads as $lead)
-                        <flux:table.row wire:key="lead-{{ $lead->id }}">
+                        @php
+                            $isRecentlyCreated = $this->recentlyCreatedLeadId === $lead->id
+                                || ($lead->created_at && $lead->created_at->diffInSeconds(now()) < 30);
+                            $isRecentlyUpdated = ! $isRecentlyCreated && (
+                                $this->recentlyUpdatedLeadId === $lead->id
+                                || ($lead->updated_at && $lead->updated_at->diffInSeconds(now()) < 30 && $lead->updated_at->gt($lead->created_at->addSeconds(2)))
+                            );
+                        @endphp
+                        <flux:table.row
+                            wire:key="lead-{{ $lead->id }}"
+                            @class([
+                                'transition-all duration-700 ease-out',
+                                'animate-lead-insert bg-emerald-500/10 dark:bg-emerald-500/15 border-l-4 border-l-emerald-500' => $isRecentlyCreated,
+                                'animate-lead-lift bg-amber-500/10 dark:bg-amber-500/15 border-l-4 border-l-amber-500' => $isRecentlyUpdated,
+                            ])
+                        >
                             <flux:table.cell>
                                 <div class="flex items-center gap-2">
                                     @if ($lead->avatarUrl())
                                         <img src="{{ $lead->avatarUrl() }}" alt="" loading="lazy" class="size-6 shrink-0 rounded-full object-cover">
                                     @endif
-                                    {{ $lead->name }}
+                                    <span @class(['font-bold text-zinc-900 dark:text-white' => $isRecentlyUpdated])>
+                                        {{ $lead->name }}
+                                    </span>
                                 </div>
                             </flux:table.cell>
                             <flux:table.cell><flux:badge size="sm" icon="{{ $lead->source->type->icon() }}">{{ $lead->source->type->label() }}</flux:badge></flux:table.cell>
                             <flux:table.cell><flux:badge size="sm" :color="$lead->status->color()">{{ $lead->status->label() }}</flux:badge></flux:table.cell>
-                            <flux:table.cell>{{ ucfirst($lead->priority->value) }}</flux:table.cell>
-                            <flux:table.cell>{{ $lead->assignedUser?->name ?? __('Unassigned') }}</flux:table.cell>
+                            <flux:table.cell>
+                                <span @class(['font-bold text-zinc-900 dark:text-white' => $isRecentlyUpdated])>
+                                    {{ ucfirst($lead->priority->value) }}
+                                </span>
+                            </flux:table.cell>
+                            <flux:table.cell>
+                                <span @class(['font-bold text-zinc-900 dark:text-white' => $isRecentlyUpdated])>
+                                    {{ $lead->assignedUser?->name ?? __('Unassigned') }}
+                                </span>
+                            </flux:table.cell>
                             <flux:table.cell>
                                 <div class="flex justify-end gap-2">
                                     <flux:button size="sm" :href="route('tenant-leads.show', $lead)" wire:navigate>{{ __('View') }}</flux:button>

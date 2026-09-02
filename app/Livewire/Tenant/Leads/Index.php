@@ -83,6 +83,10 @@ class Index extends Component
 
     public bool $showLeadPanel = false;
 
+    public ?string $recentlyCreatedLeadId = null;
+
+    public ?string $recentlyUpdatedLeadId = null;
+
     public function mount(): void
     {
         Gate::authorize('viewAny', Lead::class);
@@ -221,7 +225,7 @@ class Index extends Component
             $assignee = $user;
         }
 
-        $action->handle($tenant, [
+        $createdLead = $action->handle($tenant, [
             'name' => $validated['leadName'],
             'company' => $validated['leadCompany'] ?: null,
             'website' => $validated['leadWebsite'] ?: null,
@@ -240,6 +244,9 @@ class Index extends Component
             'meeting_date' => $validated['leadMeetingDate'] ?: null,
         ], $user, $assignee);
 
+        $this->recentlyCreatedLeadId = $createdLead->id;
+        $this->recentlyUpdatedLeadId = null;
+
         $this->showCreateLeadModal = false;
         $this->refreshBoard();
         Flux::toast(variant: 'success', text: __('Lead created.'));
@@ -251,11 +258,37 @@ class Index extends Component
     public function getListeners(): array
     {
         return [
-            'echo-private:tenant.'.Auth::user()->tenant_id.',.lead.received' => '$refresh',
-            'echo-private:tenant.'.Auth::user()->tenant_id.',.lead.updated' => '$refresh',
-            'lead-panel-updated' => 'refreshBoard',
+            'echo-private:tenant.'.Auth::user()->tenant_id.',.lead.received' => 'onLeadReceived',
+            'echo-private:tenant.'.Auth::user()->tenant_id.',.lead.updated' => 'onLeadUpdated',
+            'lead-panel-updated' => 'onPanelLeadUpdated',
             'lead-panel-deleted' => 'onPanelLeadDeleted',
         ];
+    }
+
+    public function onLeadReceived($payload = null): void
+    {
+        if (is_array($payload) && isset($payload['lead']['id'])) {
+            $this->recentlyCreatedLeadId = $payload['lead']['id'];
+            $this->recentlyUpdatedLeadId = null;
+        }
+        $this->refreshBoard();
+    }
+
+    public function onLeadUpdated($payload = null): void
+    {
+        if (is_array($payload) && isset($payload['lead']['id'])) {
+            $this->recentlyUpdatedLeadId = $payload['lead']['id'];
+        }
+        $this->refreshBoard();
+    }
+
+    public function onPanelLeadUpdated(?string $leadId = null): void
+    {
+        if ($leadId) {
+            $this->recentlyUpdatedLeadId = $leadId;
+            $this->recentlyCreatedLeadId = null;
+        }
+        $this->refreshBoard();
     }
 
     public function updating(string $property): void
@@ -275,7 +308,7 @@ class Index extends Component
     {
         return $this->applyDropdownFilters($this->applyAssignmentScope($this->filteredQuery()))
             ->with(['source', 'assignedUser', 'status'])
-            ->latest()
+            ->latest('updated_at')
             ->paginate(25);
     }
 
