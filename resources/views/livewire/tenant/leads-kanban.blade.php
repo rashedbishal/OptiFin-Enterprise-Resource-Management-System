@@ -26,29 +26,32 @@
             </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-2 md:grid-cols-3 lg:gap-3">
-            <flux:select wire:model.live="priority" size="sm" placeholder="{{ __('All priorities') }}">
-                <flux:select.option value="">{{ __('All priorities') }}</flux:select.option>
-                @foreach ($this->priorityOptions() as $option)
-                    <flux:select.option value="{{ $option }}">{{ ucfirst($option) }}</flux:select.option>
-                @endforeach
-            </flux:select>
+        @php
+            $priorityOptionsFormatted = array_merge(
+                [['value' => '', 'label' => __('All priorities')]],
+                collect($this->priorityOptions())->map(fn($opt) => ['value' => $opt, 'label' => ucfirst($opt)])->toArray()
+            );
+            $sourceTypeOptionsFormatted = array_merge(
+                [['value' => '', 'label' => __('All sources')]],
+                collect($this->sourceTypeOptions())->map(fn($opt) => ['value' => $opt, 'label' => ucfirst(str_replace('_', ' ', $opt))])->toArray()
+            );
+            if ($this->isClientAdmin) {
+                $assignedToOptionsFormatted = array_merge(
+                    [
+                        ['value' => '', 'label' => __('All users')],
+                        ['value' => 'unassigned', 'label' => __('Unassigned')],
+                    ],
+                    collect($this->assignableUsers)->map(fn($u) => ['value' => (string) $u->id, 'label' => $u->name])->toArray()
+                );
+            }
+        @endphp
 
-            <flux:select wire:model.live="sourceType" size="sm" placeholder="{{ __('All sources') }}">
-                <flux:select.option value="">{{ __('All sources') }}</flux:select.option>
-                @foreach ($this->sourceTypeOptions() as $option)
-                    <flux:select.option value="{{ $option }}">{{ ucfirst(str_replace('_', ' ', $option)) }}</flux:select.option>
-                @endforeach
-            </flux:select>
+        <div class="grid grid-cols-2 gap-2 md:grid-cols-3 lg:gap-3">
+            <x-dropdown-select wire:model.live="priority" :placeholder="__('All priorities')" :options="$priorityOptionsFormatted" icon="funnel" />
+            <x-dropdown-select wire:model.live="sourceType" :placeholder="__('All sources')" :options="$sourceTypeOptionsFormatted" icon="tag" />
 
             @if ($this->isClientAdmin)
-                <flux:select wire:model.live="assignedTo" size="sm" placeholder="{{ __('All users') }}">
-                    <flux:select.option value="">{{ __('All users') }}</flux:select.option>
-                    <flux:select.option value="unassigned">{{ __('Unassigned') }}</flux:select.option>
-                    @foreach ($this->assignableUsers as $assignableUser)
-                        <flux:select.option value="{{ $assignableUser->id }}">{{ $assignableUser->name }}</flux:select.option>
-                    @endforeach
-                </flux:select>
+                <x-dropdown-select wire:model.live="assignedTo" :placeholder="__('All users')" :options="$assignedToOptionsFormatted" icon="user" />
             @endif
         </div>
     </div>
