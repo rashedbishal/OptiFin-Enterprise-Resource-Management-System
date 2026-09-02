@@ -394,12 +394,13 @@ class Show extends Component
             'leadDealValue' => ['nullable', 'numeric', 'min:0', 'max:999999999999.99', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
             'leadWinProbability' => ['nullable', 'integer', 'min:0', 'max:100'],
             'leadNextFollowUpAt' => ['nullable', 'date', 'after_or_equal:today'],
-            'leadMeetingDate' => ['nullable', 'date'],
+            'leadMeetingDate' => ['nullable', 'date', 'after_or_equal:today'],
         ], [
             'leadServiceInterest.regex' => __('Service interested contains characters that are not allowed.'),
             'leadEstimatedBudget.regex' => __('Enter a plain amount with up to 2 decimal places.'),
             'leadDealValue.regex' => __('Enter a plain amount with up to 2 decimal places.'),
             'leadNextFollowUpAt.after_or_equal' => __('Next follow-up date cannot be in the past.'),
+            'leadMeetingDate.after_or_equal' => __('Meeting date cannot be in the past.'),
         ]);
 
         $this->applyDetailChanges([

@@ -19,8 +19,8 @@
                 <flux:input.group.suffix>%</flux:input.group.suffix>
             </flux:input.group>
 
-            <flux:input wire:model="leadNextFollowUpAt" type="date" :label="__('Next Follow-up Date')" />
-            <flux:input wire:model="leadMeetingDate" type="date" :label="__('Meeting Date')" />
+            <flux:input wire:model="leadNextFollowUpAt" type="date" min="{{ now()->toDateString() }}" :label="__('Next Follow-up Date')" />
+            <flux:input wire:model="leadMeetingDate" type="date" min="{{ now()->toDateString() }}" :label="__('Meeting Date')" />
 
             <div>
                 <flux:button type="submit" variant="primary" size="sm">{{ __('Save') }}</flux:button>

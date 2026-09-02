@@ -57,7 +57,7 @@ test('deal details can be filled in on a lead that never had them', function () 
     $lead = Lead::factory()->create([
         'tenant_id' => $tenant->id,
         'service_interest' => null, 'estimated_budget' => null, 'deal_value' => null,
-        'win_probability' => null, 'next_follow_up_at' => null,
+        'win_probability' => null, 'next_follow_up_at' => null, 'meeting_date' => null,
     ]);
 
     Livewire::actingAs($clientAdmin)
@@ -67,6 +67,7 @@ test('deal details can be filled in on a lead that never had them', function () 
         ->set('leadDealValue', '250000')
         ->set('leadWinProbability', '50')
         ->set('leadNextFollowUpAt', now()->addDays(3)->toDateString())
+        ->set('leadMeetingDate', now()->addDays(5)->toDateString())
         ->call('updateDeal')
         ->assertHasNoErrors();
 
@@ -76,9 +77,23 @@ test('deal details can be filled in on a lead that never had them', function () 
     expect((float) $lead->deal_value)->toBe(250000.0);
     expect($lead->win_probability)->toBe(50);
     expect($lead->next_follow_up_at->toDateString())->toBe(now()->addDays(3)->toDateString());
+    expect($lead->meeting_date->toDateString())->toBe(now()->addDays(5)->toDateString());
 
     $log = LeadDetailUpdateLog::where('lead_id', $lead->id)->firstOrFail();
-    expect($log->changed_fields)->toEqualCanonicalizing(['service_interest', 'estimated_budget', 'deal_value', 'win_probability', 'next_follow_up_at']);
+    expect($log->changed_fields)->toEqualCanonicalizing(['service_interest', 'estimated_budget', 'deal_value', 'win_probability', 'next_follow_up_at', 'meeting_date']);
+});
+
+test('a meeting date in the past is rejected when editing deal details', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => null]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->set('leadMeetingDate', now()->subDay()->toDateString())
+        ->call('updateDeal')
+        ->assertHasErrors(['leadMeetingDate' => 'after_or_equal']);
+
+    expect($lead->fresh()->meeting_date)->toBeNull();
 });
 
 test('saving with no actual changes does not create an activity log entry', function () {
