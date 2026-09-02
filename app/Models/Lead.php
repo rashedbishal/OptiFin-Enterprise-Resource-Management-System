@@ -42,6 +42,7 @@ use Illuminate\Support\Collection;
  * @property string|null $deal_value
  * @property int|null $win_probability
  * @property Carbon|null $next_follow_up_at
+ * @property Carbon|null $meeting_date
  * @property Carbon|null $assigned_at
  * @property Carbon|null $first_contacted_at
  * @property Carbon|null $closed_at
@@ -52,7 +53,7 @@ use Illuminate\Support\Collection;
 #[Fillable([
     'tenant_id', 'source_id', 'assigned_to', 'name', 'company', 'website', 'industry', 'location',
     'service_interest', 'email', 'phone', 'message', 'html_body', 'source_data', 'status_id', 'priority',
-    'notes', 'estimated_budget', 'deal_value', 'win_probability', 'next_follow_up_at',
+    'notes', 'estimated_budget', 'deal_value', 'win_probability', 'next_follow_up_at', 'meeting_date',
     'assigned_at', 'first_contacted_at', 'closed_at',
 ])]
 class Lead extends Model
@@ -72,6 +73,7 @@ class Lead extends Model
             'deal_value' => 'decimal:2',
             'win_probability' => 'integer',
             'next_follow_up_at' => 'date',
+            'meeting_date' => 'date',
             'assigned_at' => 'datetime',
             'first_contacted_at' => 'datetime',
             'closed_at' => 'datetime',

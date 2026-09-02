@@ -51,6 +51,7 @@ class CreateManualLead
                 'deal_value' => $data['deal_value'],
                 'win_probability' => $data['win_probability'],
                 'next_follow_up_at' => $data['next_follow_up_at'],
+                'meeting_date' => $data['meeting_date'] ?? null,
             ]);
 
             if ($assignee) {

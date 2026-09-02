@@ -308,6 +308,7 @@
                                 </flux:input.group>
 
                                 <flux:input wire:model="leadNextFollowUpAt" type="date" :label="__('Next Follow-up Date')" />
+                                <flux:input wire:model="leadMeetingDate" type="date" :label="__('Meeting Date')" />
                             </div>
                         </div>
 

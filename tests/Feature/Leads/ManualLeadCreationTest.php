@@ -25,6 +25,7 @@ test('a client admin can create a manual lead with full CRM details', function (
         ->set('leadDealValue', '250000')
         ->set('leadWinProbability', '50')
         ->set('leadNextFollowUpAt', now()->addDays(3)->toDateString())
+        ->set('leadMeetingDate', now()->addDays(5)->toDateString())
         ->call('saveLead')
         ->assertHasNoErrors();
 
@@ -42,6 +43,7 @@ test('a client admin can create a manual lead with full CRM details', function (
     expect((float) $lead->deal_value)->toBe(250000.0);
     expect($lead->win_probability)->toBe(50);
     expect($lead->next_follow_up_at->toDateString())->toBe(now()->addDays(3)->toDateString());
+    expect($lead->meeting_date->toDateString())->toBe(now()->addDays(5)->toDateString());
     expect($lead->status_id)->toBe(leadStatus('new')->id);
     expect($lead->assigned_to)->toBeNull();
     expect($lead->source->type)->toBe(LeadSourceType::Manual);
@@ -241,6 +243,21 @@ test('a next follow-up date in the past is rejected', function () {
         ->set('leadNextFollowUpAt', now()->subDay()->toDateString())
         ->call('saveLead')
         ->assertHasErrors(['leadNextFollowUpAt' => 'after_or_equal']);
+
+    expect(Lead::where('tenant_id', $tenant->id)->exists())->toBeFalse();
+});
+
+test('a meeting date in the past is rejected', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class)
+        ->call('createLead')
+        ->set('leadName', 'Valid Name')
+        ->set('leadPhone', '+8801700000094')
+        ->set('leadMeetingDate', now()->subDay()->toDateString())
+        ->call('saveLead')
+        ->assertHasErrors(['leadMeetingDate' => 'after_or_equal']);
 
     expect(Lead::where('tenant_id', $tenant->id)->exists())->toBeFalse();
 });

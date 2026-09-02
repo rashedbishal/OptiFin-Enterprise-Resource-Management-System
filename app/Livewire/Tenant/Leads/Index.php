@@ -68,6 +68,8 @@ class Index extends Component
 
     public string $leadNextFollowUpAt = '';
 
+    public string $leadMeetingDate = '';
+
     /**
      * Caps how many leads are fetched for the Kanban board / mobile list in
      * one query — grouped in PHP afterwards, since a per-column SQL limit
@@ -147,7 +149,7 @@ class Index extends Component
         $this->reset(
             'leadName', 'leadCompany', 'leadWebsite', 'leadIndustry', 'leadLocation', 'leadServiceInterest',
             'leadEmail', 'leadPhone', 'leadMessage', 'leadAssigneeId',
-            'leadEstimatedBudget', 'leadDealValue', 'leadWinProbability', 'leadNextFollowUpAt',
+            'leadEstimatedBudget', 'leadDealValue', 'leadWinProbability', 'leadNextFollowUpAt', 'leadMeetingDate',
         );
         $this->leadStatus = (string) Auth::user()->tenant->initialLeadStatus()?->id;
         $this->leadPriority = LeadPriority::Medium->value;
@@ -188,6 +190,7 @@ class Index extends Component
             'leadDealValue' => ['nullable', 'numeric', 'min:0', 'max:999999999999.99', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
             'leadWinProbability' => ['nullable', 'integer', 'min:0', 'max:100'],
             'leadNextFollowUpAt' => ['nullable', 'date', 'after_or_equal:today'],
+            'leadMeetingDate' => ['nullable', 'date', 'after_or_equal:today'],
         ], [
             'leadName.regex' => __('Contact person may only contain letters, spaces, apostrophes, periods and hyphens.'),
             'leadCompany.regex' => __('Company name contains characters that are not allowed.'),
@@ -199,6 +202,7 @@ class Index extends Component
             'leadEstimatedBudget.regex' => __('Enter a plain amount with up to 2 decimal places.'),
             'leadDealValue.regex' => __('Enter a plain amount with up to 2 decimal places.'),
             'leadNextFollowUpAt.after_or_equal' => __('Next follow-up date cannot be in the past.'),
+            'leadMeetingDate.after_or_equal' => __('Meeting date cannot be in the past.'),
         ]);
 
         $user = Auth::user();
@@ -233,6 +237,7 @@ class Index extends Component
             'deal_value' => $validated['leadDealValue'] ?: null,
             'win_probability' => $validated['leadWinProbability'] ?: null,
             'next_follow_up_at' => $validated['leadNextFollowUpAt'] ?: null,
+            'meeting_date' => $validated['leadMeetingDate'] ?: null,
         ], $user, $assignee);
 
         $this->showCreateLeadModal = false;
