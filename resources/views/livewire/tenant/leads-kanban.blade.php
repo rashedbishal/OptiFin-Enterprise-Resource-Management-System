@@ -1,43 +1,48 @@
 <div class="flex flex-1 flex-col gap-6">
-    <x-breadcrumbs :items="[
-        ['label' => __('Dashboard'), 'href' => route('dashboard')],
-        ['label' => __('Leads')],
-    ]" />
+    {{-- Sticky header: breadcrumbs, heading, actions, and filters stay
+    pinned in view while the board beneath scrolls both vertically (the
+    page) and horizontally (the board's own scrollbox below). --}}
+    <div class="sticky top-0 z-20 flex flex-col gap-4 bg-white pb-4 dark:bg-zinc-800">
+        <x-breadcrumbs :items="[
+            ['label' => __('Dashboard'), 'href' => route('dashboard')],
+            ['label' => __('Leads')],
+        ]" />
 
-    <div class="flex items-center justify-between">
-        <flux:heading size="xl">{{ __('Leads') }}</flux:heading>
-        <div class="flex gap-2">
-            @if ($this->canCreateLead)
-                <flux:button variant="primary" icon="plus" wire:click="createLead">{{ __('New Lead') }}</flux:button>
-            @endif
-            <flux:button icon="arrow-down-tray" wire:click="export">{{ __('Export CSV') }}</flux:button>
+        <div class="flex items-center justify-between">
+            <flux:heading size="xl">{{ __('Leads') }}</flux:heading>
+            <div class="flex gap-2">
+                @if ($this->canCreateLead)
+                    <flux:button variant="primary" icon="plus" wire:click="createLead">{{ __('New Lead') }}</flux:button>
+                @endif
+                <flux:button icon="arrow-down-tray" wire:click="export">{{ __('Export CSV') }}</flux:button>
+            </div>
         </div>
-    </div>
 
-    <div class="grid grid-cols-2 gap-3 md:grid-cols-3">
-        <flux:select wire:model.live="priority" placeholder="{{ __('All priorities') }}">
-            <flux:select.option value="">{{ __('All priorities') }}</flux:select.option>
-            @foreach ($this->priorityOptions() as $option)
-                <flux:select.option value="{{ $option }}">{{ ucfirst($option) }}</flux:select.option>
-            @endforeach
-        </flux:select>
-
-        <flux:select wire:model.live="sourceType" placeholder="{{ __('All sources') }}">
-            <flux:select.option value="">{{ __('All sources') }}</flux:select.option>
-            @foreach ($this->sourceTypeOptions() as $option)
-                <flux:select.option value="{{ $option }}">{{ ucfirst(str_replace('_', ' ', $option)) }}</flux:select.option>
-            @endforeach
-        </flux:select>
-
-        @if ($this->isClientAdmin)
-            <flux:select wire:model.live="assignedTo" placeholder="{{ __('All users') }}">
-                <flux:select.option value="">{{ __('All users') }}</flux:select.option>
-                <flux:select.option value="unassigned">{{ __('Unassigned') }}</flux:select.option>
-                @foreach ($this->assignableUsers as $assignableUser)
-                    <flux:select.option value="{{ $assignableUser->id }}">{{ $assignableUser->name }}</flux:select.option>
+        <div class="grid grid-cols-2 gap-3 md:grid-cols-3">
+            <flux:select wire:model.live="priority" placeholder="{{ __('All priorities') }}">
+                <flux:select.option value="">{{ __('All priorities') }}</flux:select.option>
+                @foreach ($this->priorityOptions() as $option)
+                    <flux:select.option value="{{ $option }}">{{ ucfirst($option) }}</flux:select.option>
                 @endforeach
             </flux:select>
-        @endif
+
+            <flux:select wire:model.live="sourceType" placeholder="{{ __('All sources') }}">
+                <flux:select.option value="">{{ __('All sources') }}</flux:select.option>
+                @foreach ($this->sourceTypeOptions() as $option)
+                    <flux:select.option value="{{ $option }}">{{ ucfirst(str_replace('_', ' ', $option)) }}</flux:select.option>
+                @endforeach
+            </flux:select>
+
+            @if ($this->isClientAdmin)
+                <flux:select wire:model.live="assignedTo" placeholder="{{ __('All users') }}">
+                    <flux:select.option value="">{{ __('All users') }}</flux:select.option>
+                    <flux:select.option value="unassigned">{{ __('Unassigned') }}</flux:select.option>
+                    @foreach ($this->assignableUsers as $assignableUser)
+                        <flux:select.option value="{{ $assignableUser->id }}">{{ $assignableUser->name }}</flux:select.option>
+                    @endforeach
+                </flux:select>
+            @endif
+        </div>
     </div>
 
     @if ($this->facebookLeadAdsSources->isNotEmpty())
@@ -77,12 +82,13 @@
     @else
         <div wire:loading.class.delay="opacity-70" wire:target="moveLead">
             {{-- Desktop / tablet: Kanban board, one column per pipeline status.
-            Deliberately no overflow/max-height here: columns grow to their
-            natural content height and the row overflows horizontally into
-            the page itself, so the whole page scrolls (both axes) instead
-            of a cramped inner scrollbox stopping wherever the cards end. --}}
+            Deliberately no max-height here: columns grow to their natural
+            content height, so the board never crops off cards at a fixed
+            box height. Horizontal overflow is scoped to this row itself
+            (rather than bubbling up to the whole page) so the sticky
+            header above stays put no matter which way this scrolls. --}}
             <div
-                class="hidden lg:flex lg:items-start lg:gap-4"
+                class="hidden overflow-x-auto lg:flex lg:items-start lg:gap-4"
                 x-data="{
                     scrollEl: null,
                     edge: 220,
@@ -91,8 +97,7 @@
                     rafId: null,
                     isDragging: false,
                     init() {
-                        // The scrollable region is the main content area (flux:main)
-                        this.scrollEl = this.$el.closest('[data-flux-main]');
+                        this.scrollEl = this.$el;
                     },
                     handleDrag(event) {
                         if (event && typeof event.clientX === 'number' && event.clientX !== 0) {
@@ -100,14 +105,12 @@
                         }
                         if (! this.isDragging) {
                             this.isDragging = true;
-                            // The right edge of the scroll container sits flush against
-                            // the real browser viewport edge (unlike the left, which is
-                            // buffered by the sidebar), so the browser's own native
-                            // drag-autoscroll kicks in there too and stacks on top of
-                            // ours, producing a sudden extra burst of speed. Dropping
-                            // overflow disqualifies this element as a native autoscroll
-                            // target for the duration of the drag; our own scrollLeft
-                            // writes below still move the content either way.
+                            // The browser's own native drag-autoscroll can also target
+                            // this element and stack on top of ours near an edge,
+                            // producing a sudden extra burst of speed. Dropping
+                            // overflow disqualifies it as a native autoscroll target
+                            // for the duration of the drag; our own scrollLeft writes
+                            // below still move the content either way.
                             this.scrollEl?.style.setProperty('overflow', 'hidden');
                         }
                         if (! this.rafId) {
