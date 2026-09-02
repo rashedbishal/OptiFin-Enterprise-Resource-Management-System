@@ -47,6 +47,24 @@
     }
 }
 
+/*
+Flux's own flyout transition (flux.css) is only 0.15s opening / 0.075s
+closing — real, but too quick to read as a "slide" rather than a snap.
+Slow it down and add easing, scoped to [data-flux-flyout] only (one
+extra attribute selector than Flux's own dialog/dialog[open] rules, so
+this wins on specificity) so regular centered modals keep their original
+scale-pop feel untouched.
+*/
+[data-flux-modal] > dialog[data-flux-flyout],
+[data-flux-modal] > dialog[data-flux-flyout]::backdrop {
+    transition: all 0.25s ease-in allow-discrete;
+}
+
+[data-flux-modal] > dialog[data-flux-flyout][open],
+[data-flux-modal] > dialog[data-flux-flyout][open]::backdrop {
+    transition: all 0.32s ease-out allow-discrete;
+}
+
 [data-flux-modal] > dialog::backdrop {
     background-color: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(4px);
