@@ -1,16 +1,6 @@
-<div class="flex flex-1 flex-col gap-6">
-    {{-- Sticky header: breadcrumbs, heading, actions, and filters stay
-    pinned in view while the board beneath scrolls both vertically (the
-    page) and horizontally (the board's own scrollbox below). The negative
-    top margin/matching top padding cancel out flux:main's own top inset,
-    so this sits flush against the app's fixed top bar instead of leaving
-    a gap above it — both at rest and once stuck. Sized down below lg
-    since the heading/actions/filters otherwise eat too much of a
-    tablet/mobile viewport before any leads are visible. Forced onto its
-    own compositor layer ([transform:translateZ(0)]) — without it, some
-    browsers/devtools mobile emulation can paint scrolled-past content
-    through this element for a frame instead of it staying solid. --}}
-    <div class="sticky top-0 z-10 -mx-4 flex flex-col gap-2 bg-white px-4 py-3 lg:-mx-8 lg:gap-3.5 lg:px-8 lg:py-4 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
+<div class="flex flex-1 flex-col h-full min-h-0 overflow-hidden">
+    {{-- Header: breadcrumbs, heading, actions, and filters stay fixed at top. --}}
+    <div class="shrink-0 z-10 flex flex-col gap-2 bg-white px-4 py-3 lg:gap-3.5 lg:px-8 lg:py-4 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
         <x-breadcrumbs class="hidden sm:flex" :items="[
             ['label' => __('Dashboard'), 'href' => route('dashboard')],
             ['label' => __('Leads')],
@@ -56,190 +46,170 @@
         </div>
     </div>
 
-    @if ($this->facebookLeadAdsSources->isNotEmpty())
-        <div class="flex flex-col gap-2">
-            <flux:text variant="strong" size="sm">{{ __('Facebook Lead Ads') }}</flux:text>
-            <div class="flex flex-wrap gap-3">
-                @foreach ($this->facebookLeadAdsSources as $source)
-                    <div wire:key="fb-source-{{ $source->id }}" class="flex w-full items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white p-3 sm:w-72 dark:border-zinc-700 dark:bg-zinc-800">
-                        <div class="min-w-0">
-                            <flux:text variant="strong" class="block truncate">{{ $source->name }}</flux:text>
-                            <flux:text size="sm" variant="subtle">
-                                {{ trans_choice(':count lead|:count leads', $source->leads_count, ['count' => $source->leads_count]) }}
-                                @if ($source->leads_max_created_at)
-                                    &middot; {{ \Illuminate\Support\Carbon::parse($source->leads_max_created_at)->diffForHumans() }}
-                                @endif
-                            </flux:text>
-                        </div>
-                        @if ($source->leads_count > 0)
-                            <flux:button size="sm" :href="route('tenant-leads.source', $source)" wire:navigate>{{ __('View All') }}</flux:button>
-                        @elseif ($this->isClientAdmin)
-                            <flux:button size="sm" variant="danger" wire:click="deleteSource('{{ $source->id }}')" wire:confirm="{{ __('Delete this lead source?') }}">
-                                {{ __('Delete') }}
-                            </flux:button>
-                        @endif
-                    </div>
-                @endforeach
-            </div>
-        </div>
-    @endif
-
-    @if ($this->boardLeads->isEmpty() && $this->facebookLeadAdsSources->isEmpty())
-        <div class="flex flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-zinc-200 py-16 text-center dark:border-zinc-700">
-            <flux:icon.inbox class="size-8 text-zinc-300 dark:text-zinc-600" />
-            <flux:text variant="strong">{{ __('No leads yet') }}</flux:text>
-            <flux:text size="sm" variant="subtle">{{ __('New leads from your connected channels will show up here.') }}</flux:text>
-        </div>
-    @else
-        <div wire:loading.class.delay="opacity-70" wire:target="moveLead">
-            {{-- Desktop / tablet: Kanban board, one column per pipeline status.
-            Deliberately no max-height here: columns grow to their natural
-            content height, so the board never crops off cards at a fixed
-            box height. Horizontal overflow is scoped to this row itself
-            (rather than bubbling up to the whole page) so the sticky
-            header above stays put no matter which way this scrolls. --}}
-            <div
-                class="hidden overflow-x-auto lg:flex lg:items-start lg:gap-4"
-                x-data="{
-                    scrollEl: null,
-                    edge: 220,
-                    maxSpeed: 9,
-                    lastClientX: null,
-                    rafId: null,
-                    isDragging: false,
-                    init() {
-                        this.scrollEl = this.$el;
-                    },
-                    handleDrag(event) {
-                        if (event && typeof event.clientX === 'number' && event.clientX !== 0) {
-                            this.lastClientX = event.clientX;
-                        }
-                        if (! this.isDragging) {
-                            this.isDragging = true;
-                            // The browser's own native drag-autoscroll can also target
-                            // this element and stack on top of ours near an edge,
-                            // producing a sudden extra burst of speed. Dropping
-                            // overflow disqualifies it as a native autoscroll target
-                            // for the duration of the drag; our own scrollLeft writes
-                            // below still move the content either way.
-                            this.scrollEl?.style.setProperty('overflow', 'hidden');
-                        }
-                        if (! this.rafId) {
-                            this.rafId = requestAnimationFrame(() => this.doScroll());
-                        }
-                    },
-                    stopDrag() {
-                        this.isDragging = false;
-                        this.lastClientX = null;
-                        this.scrollEl?.style.removeProperty('overflow');
-                        if (this.rafId) {
-                            cancelAnimationFrame(this.rafId);
-                            this.rafId = null;
-                        }
-                    },
-                    doScroll() {
-                        if (! this.isDragging || ! this.scrollEl || this.lastClientX === null) {
-                            this.rafId = null;
-                            return;
-                        }
-                        const rect = this.scrollEl.getBoundingClientRect();
-                        const clientX = this.lastClientX;
-                        const leftThreshold = rect.left + this.edge;
-                        const rightThreshold = rect.right - this.edge;
-
-                        // Ease-in (quadratic) so scrolling ramps up gently near the
-                        // edge instead of jumping straight to near-max speed.
-                        if (clientX < leftThreshold) {
-                            // Pointer is near the left edge of main content, over the sidebar, or past the left screen edge
-                            const dist = leftThreshold - clientX;
-                            const speedRatio = Math.min(1, Math.max(0, dist / this.edge)) ** 2;
-                            this.scrollEl.scrollLeft -= this.maxSpeed * speedRatio;
-                        } else if (clientX > rightThreshold) {
-                            // Pointer is near or past the right edge of main content
-                            const dist = clientX - rightThreshold;
-                            const speedRatio = Math.min(1, Math.max(0, dist / this.edge)) ** 2;
-                            this.scrollEl.scrollLeft += this.maxSpeed * speedRatio;
-                        }
-
-                        this.rafId = requestAnimationFrame(() => this.doScroll());
-                    },
-                }"
-                x-on:dragstart.window.capture="handleDrag($event)"
-                x-on:dragover.window.capture.prevent="handleDrag($event)"
-                x-on:dragend.window.capture="stopDrag()"
-                x-on:drop.window.capture.prevent="stopDrag()"
-                x-on:mouseleave.window="stopDrag()"
-                x-on:mouseup.window="stopDrag()"
-            >
-                @foreach ($this->tenantLeadStatuses as $statusCase)
-                    @php
-                        $columnLeads = $this->boardLeads->get($statusCase->id, collect());
-                        $totalCount = collect($this->boardLeadCounts)->firstWhere('status', $statusCase->id)['count'] ?? 0;
-                    @endphp
-                    <div
-                        wire:key="column-{{ $statusCase->id }}"
-                        x-data="{ dragDepth: 0 }"
-                        x-on:dragover.prevent
-                        x-on:dragenter.prevent="dragDepth++"
-                        x-on:dragleave="dragDepth = Math.max(0, dragDepth - 1)"
-                        x-on:drop="dragDepth = 0; $wire.moveLead($event.dataTransfer.getData('text/plain'), '{{ $statusCase->id }}')"
-                        {{--
-                            dragenter/dragleave fire on every child element boundary
-                            too (not just the column's own edge), so a plain toggle
-                            flickers the highlight off the moment the pointer passes
-                            over a card. Track nesting depth instead: only clear the
-                            highlight once it's actually left the column, however
-                            many child elements it crossed on the way.
-                        --}}
-                        :class="dragDepth > 0 ? '{{ $statusCase->columnDropTargetClasses() }}' : '{{ $statusCase->columnBackgroundClasses() }}'"
-                        class="flex w-72 min-h-32 shrink-0 flex-col rounded-lg transition-colors"
-                    >
-                        <div class="flex items-center justify-between gap-2 px-3 py-2.5">
-                            <flux:text variant="strong" size="sm">{{ $statusCase->label() }}</flux:text>
-                            <flux:badge size="sm" :color="$statusCase->color()">{{ $totalCount }}</flux:badge>
-                        </div>
-
-                        <div class="flex flex-1 flex-col gap-2 px-3 pb-3">
-                            @forelse ($columnLeads as $lead)
-                                @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'tenantCurrency' => $this->tenantCurrency, 'draggable' => true, 'canMove' => $this->canUpdateLeads, 'tenantStatuses' => $this->tenantLeadStatuses])
-                            @empty
-                                <div class="rounded-md border border-dashed border-zinc-200 py-6 text-center dark:border-zinc-700">
-                                    <flux:text size="sm" variant="subtle">{{ __('No leads') }}</flux:text>
-                                </div>
-                            @endforelse
-
-                            @if ($columnLeads->count() < $totalCount)
-                                <flux:text size="sm" variant="subtle" class="px-1 pt-1">
-                                    {{ __('Showing :shown of :total — refine filters to see the rest.', ['shown' => $columnLeads->count(), 'total' => $totalCount]) }}
+    {{-- Main scrollable area (scrollbar touches right edge & bottom edge) --}}
+    <div class="flex-1 min-h-0 overflow-auto" wire:loading.class.delay="opacity-70" wire:target="moveLead">
+        <div class="p-4 lg:p-6 flex flex-col gap-6 min-h-full">
+        @if ($this->facebookLeadAdsSources->isNotEmpty())
+            <div class="flex flex-col gap-2">
+                <flux:text variant="strong" size="sm">{{ __('Facebook Lead Ads') }}</flux:text>
+                <div class="flex flex-wrap gap-3">
+                    @foreach ($this->facebookLeadAdsSources as $source)
+                        <div wire:key="fb-source-{{ $source->id }}" class="flex w-full items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white p-3 sm:w-72 dark:border-zinc-700 dark:bg-zinc-800">
+                            <div class="min-w-0">
+                                <flux:text variant="strong" class="block truncate">{{ $source->name }}</flux:text>
+                                <flux:text size="sm" variant="subtle">
+                                    {{ trans_choice(':count lead|:count leads', $source->leads_count, ['count' => $source->leads_count]) }}
+                                    @if ($source->leads_max_created_at)
+                                        &middot; {{ \Illuminate\Support\Carbon::parse($source->leads_max_created_at)->diffForHumans() }}
+                                    @endif
                                 </flux:text>
+                            </div>
+                            @if ($source->leads_count > 0)
+                                <flux:button size="sm" :href="route('tenant-leads.source', $source)" wire:navigate>{{ __('View All') }}</flux:button>
+                            @elseif ($this->isClientAdmin)
+                                <flux:button size="sm" variant="danger" wire:click="deleteSource('{{ $source->id }}')" wire:confirm="{{ __('Delete this lead source?') }}">
+                                    {{ __('Delete') }}
+                                </flux:button>
                             @endif
                         </div>
-                    </div>
-                @endforeach
+                    @endforeach
+                </div>
             </div>
+        @endif
 
-            {{-- Mobile: status-grouped vertical list, no drag-and-drop — each
-            card's "…" menu is the way to move it between statuses. --}}
-            <div class="flex flex-col gap-6 lg:hidden">
-                @foreach ($this->tenantLeadStatuses as $statusCase)
-                    @php $columnLeads = $this->boardLeads->get($statusCase->id, collect()); @endphp
-                    @if ($columnLeads->isNotEmpty())
-                        <div wire:key="mobile-group-{{ $statusCase->id }}" class="flex flex-col gap-2">
-                            <div class="flex items-center gap-2 px-1">
+        @if ($this->boardLeads->isEmpty() && $this->facebookLeadAdsSources->isEmpty())
+            <div class="flex flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-zinc-200 py-16 text-center dark:border-zinc-700">
+                <flux:icon.inbox class="size-8 text-zinc-300 dark:text-zinc-600" />
+                <flux:text variant="strong">{{ __('No leads yet') }}</flux:text>
+                <flux:text size="sm" variant="subtle">{{ __('New leads from your connected channels will show up here.') }}</flux:text>
+            </div>
+        @else
+            <div>
+                {{-- Desktop / tablet: Kanban board, one column per pipeline status --}}
+                <div
+                    class="hidden lg:flex lg:items-start lg:gap-4 min-w-max align-top"
+                    x-data="{
+                        scrollEl: null,
+                        edge: 220,
+                        maxSpeed: 9,
+                        lastClientX: null,
+                        rafId: null,
+                        isDragging: false,
+                        init() {
+                            this.scrollEl = this.$el.closest('.overflow-auto') || this.$el;
+                        },
+                        handleDrag(event) {
+                            if (event && typeof event.clientX === 'number' && event.clientX !== 0) {
+                                this.lastClientX = event.clientX;
+                            }
+                            if (! this.isDragging) {
+                                this.isDragging = true;
+                                this.scrollEl?.style.setProperty('overflow', 'hidden');
+                            }
+                            if (! this.rafId) {
+                                this.rafId = requestAnimationFrame(() => this.doScroll());
+                            }
+                        },
+                        stopDrag() {
+                            this.isDragging = false;
+                            this.lastClientX = null;
+                            this.scrollEl?.style.removeProperty('overflow');
+                            if (this.rafId) {
+                                cancelAnimationFrame(this.rafId);
+                                this.rafId = null;
+                            }
+                        },
+                        doScroll() {
+                            if (! this.isDragging || ! this.scrollEl || this.lastClientX === null) {
+                                this.rafId = null;
+                                return;
+                            }
+                            const rect = this.scrollEl.getBoundingClientRect();
+                            const clientX = this.lastClientX;
+                            const leftThreshold = rect.left + this.edge;
+                            const rightThreshold = rect.right - this.edge;
+
+                            if (clientX < leftThreshold) {
+                                const dist = leftThreshold - clientX;
+                                const speedRatio = Math.min(1, Math.max(0, dist / this.edge)) ** 2;
+                                this.scrollEl.scrollLeft -= this.maxSpeed * speedRatio;
+                            } else if (clientX > rightThreshold) {
+                                const dist = clientX - rightThreshold;
+                                const speedRatio = Math.min(1, Math.max(0, dist / this.edge)) ** 2;
+                                this.scrollEl.scrollLeft += this.maxSpeed * speedRatio;
+                            }
+
+                            this.rafId = requestAnimationFrame(() => this.doScroll());
+                        },
+                    }"
+                    x-on:dragstart.window.capture="handleDrag($event)"
+                    x-on:dragover.window.capture.prevent="handleDrag($event)"
+                    x-on:dragend.window.capture="stopDrag()"
+                    x-on:drop.window.capture.prevent="stopDrag()"
+                    x-on:mouseleave.window="stopDrag()"
+                    x-on:mouseup.window="stopDrag()"
+                >
+                    @foreach ($this->tenantLeadStatuses as $statusCase)
+                        @php
+                            $columnLeads = $this->boardLeads->get($statusCase->id, collect());
+                            $totalCount = collect($this->boardLeadCounts)->firstWhere('status', $statusCase->id)['count'] ?? 0;
+                        @endphp
+                        <div
+                            wire:key="column-{{ $statusCase->id }}"
+                            x-data="{ dragDepth: 0 }"
+                            x-on:dragover.prevent
+                            x-on:dragenter.prevent="dragDepth++"
+                            x-on:dragleave="dragDepth = Math.max(0, dragDepth - 1)"
+                            x-on:drop="dragDepth = 0; $wire.moveLead($event.dataTransfer.getData('text/plain'), '{{ $statusCase->id }}')"
+                            :class="dragDepth > 0 ? '{{ $statusCase->columnDropTargetClasses() }}' : '{{ $statusCase->columnBackgroundClasses() }}'"
+                            class="flex w-72 min-h-32 shrink-0 flex-col rounded-lg transition-colors"
+                        >
+                            <div class="flex items-center justify-between gap-2 px-3 py-2.5">
                                 <flux:text variant="strong" size="sm">{{ $statusCase->label() }}</flux:text>
-                                <flux:badge size="sm" :color="$statusCase->color()">{{ $columnLeads->count() }}</flux:badge>
+                                <flux:badge size="sm" :color="$statusCase->color()">{{ $totalCount }}</flux:badge>
                             </div>
-                            <div class="flex flex-col gap-2">
-                                @foreach ($columnLeads as $lead)
-                                    @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'tenantCurrency' => $this->tenantCurrency, 'draggable' => false, 'canMove' => $this->canUpdateLeads, 'tenantStatuses' => $this->tenantLeadStatuses])
-                                @endforeach
+
+                            <div class="flex flex-1 flex-col gap-2 px-3 pb-3">
+                                @forelse ($columnLeads as $lead)
+                                    @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'tenantCurrency' => $this->tenantCurrency, 'draggable' => true, 'canMove' => $this->canUpdateLeads, 'tenantStatuses' => $this->tenantLeadStatuses])
+                                @empty
+                                    <div class="rounded-md border border-dashed border-zinc-200 py-6 text-center dark:border-zinc-700">
+                                        <flux:text size="sm" variant="subtle">{{ __('No leads') }}</flux:text>
+                                    </div>
+                                @endforelse
+
+                                @if ($columnLeads->count() < $totalCount)
+                                    <flux:text size="sm" variant="subtle" class="px-1 pt-1">
+                                        {{ __('Showing :shown of :total — refine filters to see the rest.', ['shown' => $columnLeads->count(), 'total' => $totalCount]) }}
+                                    </flux:text>
+                                @endif
                             </div>
                         </div>
-                    @endif
-                @endforeach
+                    @endforeach
+                </div>
+
+                {{-- Mobile: status-grouped vertical list --}}
+                <div class="flex flex-col gap-6 lg:hidden">
+                    @foreach ($this->tenantLeadStatuses as $statusCase)
+                        @php $columnLeads = $this->boardLeads->get($statusCase->id, collect()); @endphp
+                        @if ($columnLeads->isNotEmpty())
+                            <div wire:key="mobile-group-{{ $statusCase->id }}" class="flex flex-col gap-2">
+                                <div class="flex items-center gap-2 px-1">
+                                    <flux:text variant="strong" size="sm">{{ $statusCase->label() }}</flux:text>
+                                    <flux:badge size="sm" :color="$statusCase->color()">{{ $columnLeads->count() }}</flux:badge>
+                                </div>
+                                <div class="flex flex-col gap-2">
+                                    @foreach ($columnLeads as $lead)
+                                        @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'tenantCurrency' => $this->tenantCurrency, 'draggable' => false, 'canMove' => $this->canUpdateLeads, 'tenantStatuses' => $this->tenantLeadStatuses])
+                                    @endforeach
+                                </div>
+                            </div>
+                        @endif
+                    @endforeach
             </div>
+        @endif
         </div>
-    @endif
+    </div>
 
     @if ($this->canCreateLead)
         <flux:modal wire:model.self="showCreateLeadModal" :dismissible="false" scroll="body" class="w-full md:max-w-[46rem] lg:max-w-[80rem]">

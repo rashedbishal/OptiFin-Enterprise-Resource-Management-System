@@ -1,5 +1,6 @@
-<div class="flex flex-1 flex-col gap-3.5 lg:gap-6">
-    <div class="sticky top-0 z-10 -mx-4 flex flex-col gap-2 bg-white px-4 py-3 lg:-mx-8 lg:gap-3.5 lg:px-8 lg:py-4 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
+<div class="flex flex-1 flex-col h-full min-h-0 overflow-hidden">
+    {{-- Header: breadcrumbs, heading, actions, and filters stay fixed at top. --}}
+    <div class="shrink-0 z-10 flex flex-col gap-2 bg-white px-4 py-3 lg:gap-3.5 lg:px-8 lg:py-4 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
         <x-breadcrumbs class="hidden sm:flex" :items="[
             ['label' => __('Dashboard'), 'href' => route('dashboard')],
             ['label' => __('Leads')],
@@ -50,79 +51,84 @@
         </div>
     </div>
 
-    <flux:table>
-        <flux:table.columns>
-            <flux:table.column>{{ __('Name') }}</flux:table.column>
-            <flux:table.column>{{ __('Source') }}</flux:table.column>
-            <flux:table.column>{{ __('Status') }}</flux:table.column>
-            <flux:table.column>{{ __('Priority') }}</flux:table.column>
-            <flux:table.column>{{ __('Assigned To') }}</flux:table.column>
-            <flux:table.column></flux:table.column>
-        </flux:table.columns>
-        <flux:table.rows>
-            @foreach ($this->facebookLeadAdsSources as $source)
-                <flux:table.row wire:key="fb-lead-ads-source-{{ $source->id }}">
-                    <flux:table.cell>
-                        <div class="flex flex-col">
-                            <span>{{ $source->name }}</span>
-                            <flux:text size="sm" variant="subtle">
-                                {{ $source->leads_max_created_at ? __('Last submission :time', ['time' => \Illuminate\Support\Carbon::parse($source->leads_max_created_at)->diffForHumans()]) : __('No submissions yet') }}
-                            </flux:text>
-                        </div>
-                    </flux:table.cell>
-                    <flux:table.cell><flux:badge size="sm" icon="{{ $source->type->icon() }}">{{ $source->type->label() }}</flux:badge></flux:table.cell>
-                    <flux:table.cell><flux:badge size="sm" color="zinc">{{ trans_choice(':count lead|:count leads', $source->leads_count, ['count' => $source->leads_count]) }}</flux:badge></flux:table.cell>
-                    <flux:table.cell>—</flux:table.cell>
-                    <flux:table.cell>—</flux:table.cell>
-                    <flux:table.cell>
-                        <div class="flex justify-end gap-2">
-                            @if ($source->leads_count > 0)
-                                <flux:button size="sm" :href="route('tenant-leads.source', $source)" wire:navigate>{{ __('View All') }}</flux:button>
-                            @elseif ($this->canDeleteLeads)
-                                <flux:button size="sm" variant="danger" wire:click="deleteSource('{{ $source->id }}')" wire:confirm="{{ __('Delete this lead source?') }}">
-                                    {{ __('Delete') }}
-                                </flux:button>
-                            @endif
-                        </div>
-                    </flux:table.cell>
-                </flux:table.row>
-            @endforeach
-            @forelse ($this->leads as $lead)
-                <flux:table.row wire:key="lead-{{ $lead->id }}">
-                    <flux:table.cell>
-                        <div class="flex items-center gap-2">
-                            @if ($lead->avatarUrl())
-                                <img src="{{ $lead->avatarUrl() }}" alt="" loading="lazy" class="size-6 shrink-0 rounded-full object-cover">
-                            @endif
-                            {{ $lead->name }}
-                        </div>
-                    </flux:table.cell>
-                    <flux:table.cell><flux:badge size="sm" icon="{{ $lead->source->type->icon() }}">{{ $lead->source->type->label() }}</flux:badge></flux:table.cell>
-                    <flux:table.cell><flux:badge size="sm" :color="$lead->status->color()">{{ $lead->status->label() }}</flux:badge></flux:table.cell>
-                    <flux:table.cell>{{ ucfirst($lead->priority->value) }}</flux:table.cell>
-                    <flux:table.cell>{{ $lead->assignedUser?->name ?? __('Unassigned') }}</flux:table.cell>
-                    <flux:table.cell>
-                        <div class="flex justify-end gap-2">
-                            <flux:button size="sm" :href="route('tenant-leads.show', $lead)" wire:navigate>{{ __('View') }}</flux:button>
-                            @if ($this->canDeleteLeads && in_array($lead->source->type->value, ['email', 'website_form', 'manual']))
-                                <flux:button size="sm" variant="danger" wire:click="delete('{{ $lead->id }}')" wire:confirm="{{ __('Delete this lead?') }}">
-                                    {{ __('Delete') }}
-                                </flux:button>
-                            @endif
-                        </div>
-                    </flux:table.cell>
-                </flux:table.row>
-            @empty
-                @if ($this->facebookLeadAdsSources->isEmpty())
-                    <flux:table.row>
-                        <flux:table.cell colspan="6">{{ __('No leads yet.') }}</flux:table.cell>
-                    </flux:table.row>
-                @endif
-            @endforelse
-        </flux:table.rows>
-    </flux:table>
+    {{-- Table content area (scrollbar touches right edge & bottom edge) --}}
+    <div class="flex-1 min-h-0 overflow-auto">
+        <div class="p-4 lg:p-6 flex flex-col gap-6 min-h-full">
+            <flux:table>
+                <flux:table.columns>
+                    <flux:table.column>{{ __('Name') }}</flux:table.column>
+                    <flux:table.column>{{ __('Source') }}</flux:table.column>
+                    <flux:table.column>{{ __('Status') }}</flux:table.column>
+                    <flux:table.column>{{ __('Priority') }}</flux:table.column>
+                    <flux:table.column>{{ __('Assigned To') }}</flux:table.column>
+                    <flux:table.column></flux:table.column>
+                </flux:table.columns>
+                <flux:table.rows>
+                    @foreach ($this->facebookLeadAdsSources as $source)
+                        <flux:table.row wire:key="fb-lead-ads-source-{{ $source->id }}">
+                            <flux:table.cell>
+                                <div class="flex flex-col">
+                                    <span>{{ $source->name }}</span>
+                                    <flux:text size="sm" variant="subtle">
+                                        {{ $source->leads_max_created_at ? __('Last submission :time', ['time' => \Illuminate\Support\Carbon::parse($source->leads_max_created_at)->diffForHumans()]) : __('No submissions yet') }}
+                                    </flux:text>
+                                </div>
+                            </flux:table.cell>
+                            <flux:table.cell><flux:badge size="sm" icon="{{ $source->type->icon() }}">{{ $source->type->label() }}</flux:badge></flux:table.cell>
+                            <flux:table.cell><flux:badge size="sm" color="zinc">{{ trans_choice(':count lead|:count leads', $source->leads_count, ['count' => $source->leads_count]) }}</flux:badge></flux:table.cell>
+                            <flux:table.cell>—</flux:table.cell>
+                            <flux:table.cell>—</flux:table.cell>
+                            <flux:table.cell>
+                                <div class="flex justify-end gap-2">
+                                    @if ($source->leads_count > 0)
+                                        <flux:button size="sm" :href="route('tenant-leads.source', $source)" wire:navigate>{{ __('View All') }}</flux:button>
+                                    @elseif ($this->canDeleteLeads)
+                                        <flux:button size="sm" variant="danger" wire:click="deleteSource('{{ $source->id }}')" wire:confirm="{{ __('Delete this lead source?') }}">
+                                            {{ __('Delete') }}
+                                        </flux:button>
+                                    @endif
+                                </div>
+                            </flux:table.cell>
+                        </flux:table.row>
+                    @endforeach
+                    @forelse ($this->leads as $lead)
+                        <flux:table.row wire:key="lead-{{ $lead->id }}">
+                            <flux:table.cell>
+                                <div class="flex items-center gap-2">
+                                    @if ($lead->avatarUrl())
+                                        <img src="{{ $lead->avatarUrl() }}" alt="" loading="lazy" class="size-6 shrink-0 rounded-full object-cover">
+                                    @endif
+                                    {{ $lead->name }}
+                                </div>
+                            </flux:table.cell>
+                            <flux:table.cell><flux:badge size="sm" icon="{{ $lead->source->type->icon() }}">{{ $lead->source->type->label() }}</flux:badge></flux:table.cell>
+                            <flux:table.cell><flux:badge size="sm" :color="$lead->status->color()">{{ $lead->status->label() }}</flux:badge></flux:table.cell>
+                            <flux:table.cell>{{ ucfirst($lead->priority->value) }}</flux:table.cell>
+                            <flux:table.cell>{{ $lead->assignedUser?->name ?? __('Unassigned') }}</flux:table.cell>
+                            <flux:table.cell>
+                                <div class="flex justify-end gap-2">
+                                    <flux:button size="sm" :href="route('tenant-leads.show', $lead)" wire:navigate>{{ __('View') }}</flux:button>
+                                    @if ($this->canDeleteLeads && in_array($lead->source->type->value, ['email', 'website_form', 'manual']))
+                                        <flux:button size="sm" variant="danger" wire:click="delete('{{ $lead->id }}')" wire:confirm="{{ __('Delete this lead?') }}">
+                                            {{ __('Delete') }}
+                                        </flux:button>
+                                    @endif
+                                </div>
+                            </flux:table.cell>
+                        </flux:table.row>
+                    @empty
+                        @if ($this->facebookLeadAdsSources->isEmpty())
+                            <flux:table.row>
+                                <flux:table.cell colspan="6">{{ __('No leads yet.') }}</flux:table.cell>
+                            </flux:table.row>
+                        @endif
+                    @endforelse
+                </flux:table.rows>
+            </flux:table>
 
-    {{ $this->leads->links() }}
+            {{ $this->leads->links() }}
+        </div>
+    </div>
 
     @if ($this->canCreateLead)
         <flux:modal wire:model.self="showCreateLeadModal" :dismissible="false" scroll="body" class="w-full md:max-w-[46rem] lg:max-w-[80rem]">
