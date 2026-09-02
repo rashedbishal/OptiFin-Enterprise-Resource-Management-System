@@ -54,7 +54,21 @@ Slow it down and add easing, scoped to [data-flux-flyout] only (one
 extra attribute selector than Flux's own dialog/dialog[open] rules, so
 this wins on specificity) so regular centered modals keep their original
 scale-pop feel untouched.
+
+Flux's default --flux-flyout-translate is only translateX(50px) — a
+50px nudge is invisible against a panel that's already ~1500px wide, so
+it read as a snap/fade rather than a slide. Override it to translateX(100%)
+so the panel starts fully off-screen past its own right edge and travels
+its whole width into place (right-to-left on open, left-to-right on
+close) — this app has no RTL support, so the direction is fixed.
+This is an unlayered rule, so it overrides Flux's utility-class-set
+custom property regardless of selector specificity (Tailwind utilities
+live in @layer utilities, which always loses to unlayered CSS).
 */
+[data-flux-modal] > dialog[data-flux-flyout] {
+    --flux-flyout-translate: translateX(100%);
+}
+
 [data-flux-modal] > dialog[data-flux-flyout],
 [data-flux-modal] > dialog[data-flux-flyout]::backdrop {
     transition: all 0.25s ease-in allow-discrete;
