@@ -91,8 +91,10 @@
                     x-data="{
                         scrollEl: null,
                         edge: 220,
-                        maxSpeed: 9,
+                        topEdge: 140,
+                        maxSpeed: 10,
                         lastClientX: null,
+                        lastClientY: null,
                         rafId: null,
                         isDragging: false,
                         init() {
@@ -102,9 +104,11 @@
                             if (event && typeof event.clientX === 'number' && event.clientX !== 0) {
                                 this.lastClientX = event.clientX;
                             }
+                            if (event && typeof event.clientY === 'number' && event.clientY !== 0) {
+                                this.lastClientY = event.clientY;
+                            }
                             if (! this.isDragging) {
                                 this.isDragging = true;
-                                this.scrollEl?.style.setProperty('overflow', 'hidden');
                             }
                             if (! this.rafId) {
                                 this.rafId = requestAnimationFrame(() => this.doScroll());
@@ -113,30 +117,51 @@
                         stopDrag() {
                             this.isDragging = false;
                             this.lastClientX = null;
-                            this.scrollEl?.style.removeProperty('overflow');
+                            this.lastClientY = null;
                             if (this.rafId) {
                                 cancelAnimationFrame(this.rafId);
                                 this.rafId = null;
                             }
                         },
                         doScroll() {
-                            if (! this.isDragging || ! this.scrollEl || this.lastClientX === null) {
+                            if (! this.isDragging || ! this.scrollEl) {
                                 this.rafId = null;
                                 return;
                             }
                             const rect = this.scrollEl.getBoundingClientRect();
-                            const clientX = this.lastClientX;
-                            const leftThreshold = rect.left + this.edge;
-                            const rightThreshold = rect.right - this.edge;
 
-                            if (clientX < leftThreshold) {
-                                const dist = leftThreshold - clientX;
-                                const speedRatio = Math.min(1, Math.max(0, dist / this.edge)) ** 2;
-                                this.scrollEl.scrollLeft -= this.maxSpeed * speedRatio;
-                            } else if (clientX > rightThreshold) {
-                                const dist = clientX - rightThreshold;
-                                const speedRatio = Math.min(1, Math.max(0, dist / this.edge)) ** 2;
-                                this.scrollEl.scrollLeft += this.maxSpeed * speedRatio;
+                            // Horizontal edge auto-scroll (left / right)
+                            if (this.lastClientX !== null) {
+                                const clientX = this.lastClientX;
+                                const leftThreshold = rect.left + this.edge;
+                                const rightThreshold = rect.right - this.edge;
+
+                                if (clientX < leftThreshold) {
+                                    const dist = leftThreshold - clientX;
+                                    const speedRatio = Math.min(1, Math.max(0, dist / this.edge)) ** 2;
+                                    this.scrollEl.scrollLeft -= this.maxSpeed * speedRatio;
+                                } else if (clientX > rightThreshold) {
+                                    const dist = clientX - rightThreshold;
+                                    const speedRatio = Math.min(1, Math.max(0, dist / this.edge)) ** 2;
+                                    this.scrollEl.scrollLeft += this.maxSpeed * speedRatio;
+                                }
+                            }
+
+                            // Vertical edge auto-scroll (up / down)
+                            if (this.lastClientY !== null) {
+                                const clientY = this.lastClientY;
+                                const topThreshold = rect.top + this.topEdge;
+                                const bottomThreshold = rect.bottom - this.topEdge;
+
+                                if (clientY < topThreshold) {
+                                    const dist = topThreshold - clientY;
+                                    const speedRatio = Math.min(1, Math.max(0, dist / this.topEdge)) ** 2;
+                                    this.scrollEl.scrollTop -= (this.maxSpeed * 1.5) * speedRatio;
+                                } else if (clientY > bottomThreshold) {
+                                    const dist = clientY - bottomThreshold;
+                                    const speedRatio = Math.min(1, Math.max(0, dist / this.topEdge)) ** 2;
+                                    this.scrollEl.scrollTop += (this.maxSpeed * 1.5) * speedRatio;
+                                }
                             }
 
                             this.rafId = requestAnimationFrame(() => this.doScroll());

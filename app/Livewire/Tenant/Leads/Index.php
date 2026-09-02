@@ -139,7 +139,7 @@ class Index extends Component
     #[Computed]
     public function tenantCurrency(): string
     {
-        return Auth::user()->tenant->currency;
+        return Auth::user()?->tenant?->currency ?? 'USD';
     }
 
     public function createLead(): void
