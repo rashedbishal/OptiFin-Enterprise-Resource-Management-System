@@ -1,7 +1,7 @@
-<flux:card class="h-full">
+<flux:card>
     <flux:heading size="lg" class="mb-4">{{ __('Company') }}</flux:heading>
     @if ($editable)
-        <form wire:submit="updateCompany" class="flex h-full flex-col gap-3">
+        <form wire:submit="updateCompany" class="flex flex-col gap-3">
             <flux:input wire:model="leadCompany" :label="__('Company / Organization')" />
             <flux:input wire:model="leadWebsite" type="url" :label="__('Website URL')" />
 
@@ -9,7 +9,7 @@
                 <flux:input wire:model="leadIndustry" :label="__('Industry Sector')" />
                 <flux:input wire:model="leadLocation" :label="__('Location / City')" />
             </div>
-            <div class="mt-auto pt-3">
+            <div>
                 <flux:button type="submit" variant="primary" size="sm">{{ __('Save') }}</flux:button>
             </div>
         </form>

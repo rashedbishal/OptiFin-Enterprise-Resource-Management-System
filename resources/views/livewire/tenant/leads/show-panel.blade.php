@@ -2,34 +2,47 @@
     @include('livewire.tenant.leads.partials.header', ['lead' => $lead, 'canDelete' => $this->canDelete, 'compact' => true])
     @include('livewire.tenant.leads.partials.status-badges', ['lead' => $lead])
 
-    {{-- A single flat auto-fit grid, not nested breakpoint-specific grids: the
-    number of columns scales continuously with the flyout's actual available
-    width (1, 2, 3... as it grows) instead of jumping at a few fixed
-    breakpoints, so extra width above ~1280px keeps getting used instead of
-    the layout plateauing. Every card is the same minmax(22rem, 1fr) track —
-    detail-card/activity-card don't need double width, since their own
-    conversation/timeline content already scrolls internally via `compact`. --}}
-    {{-- No `items-start`: every card in a row stretches to match the
-    tallest one (grid's default `align-items: stretch`), so row edges line
-    up instead of each card sizing to its own content. --}}
-    <div class="grid grid-cols-[repeat(auto-fit,minmax(19rem,1fr))] gap-5">
-        @include('livewire.tenant.leads.partials.detail-card', ['lead' => $lead, 'timeline' => $this->timeline, 'bodyView' => $bodyView, 'compact' => true])
-        @include('livewire.tenant.leads.partials.activity-card', ['activity' => $this->activity, 'compact' => true])
+    {{-- Masonry, not a uniform-row grid: these cards have genuinely
+    different natural heights (Details/Activity are a few lines; Deal is a
+    full form), and forcing them into equal-height rows just padded the
+    short ones with dead white space. CSS multi-column lets each card keep
+    its own height while still tiling neatly — `column-width` picks the
+    column count from available width the same way auto-fit did, and
+    `break-inside-avoid` stops a card from being split across columns. --}}
+    <div class="gap-5 [column-width:19rem]">
+        <div class="mb-5 break-inside-avoid">
+            @include('livewire.tenant.leads.partials.detail-card', ['lead' => $lead, 'timeline' => $this->timeline, 'bodyView' => $bodyView, 'compact' => true])
+        </div>
+        <div class="mb-5 break-inside-avoid">
+            @include('livewire.tenant.leads.partials.activity-card', ['activity' => $this->activity, 'compact' => true])
+        </div>
 
         @if ($this->canUpdate)
-            @include('livewire.tenant.leads.partials.contact-form')
+            <div class="mb-5 break-inside-avoid">
+                @include('livewire.tenant.leads.partials.contact-form')
+            </div>
         @endif
-        @include('livewire.tenant.leads.partials.company-form', ['lead' => $lead, 'editable' => $this->canUpdate])
-        @include('livewire.tenant.leads.partials.deal-form', ['lead' => $lead, 'editable' => $this->canUpdate])
+        <div class="mb-5 break-inside-avoid">
+            @include('livewire.tenant.leads.partials.company-form', ['lead' => $lead, 'editable' => $this->canUpdate])
+        </div>
+        <div class="mb-5 break-inside-avoid">
+            @include('livewire.tenant.leads.partials.deal-form', ['lead' => $lead, 'editable' => $this->canUpdate])
+        </div>
 
         @if ($this->canUpdate)
-            @include('livewire.tenant.leads.partials.status-form', ['statusOptions' => $this->statusOptions(), 'priorityOptions' => $this->priorityOptions()])
+            <div class="mb-5 break-inside-avoid">
+                @include('livewire.tenant.leads.partials.status-form', ['statusOptions' => $this->statusOptions(), 'priorityOptions' => $this->priorityOptions()])
+            </div>
         @endif
         @if ($this->canAssign)
-            @include('livewire.tenant.leads.partials.assignment-form', ['assignableUsers' => $this->assignableUsers])
+            <div class="mb-5 break-inside-avoid">
+                @include('livewire.tenant.leads.partials.assignment-form', ['assignableUsers' => $this->assignableUsers])
+            </div>
         @endif
         @if ($this->canUpdate)
-            @include('livewire.tenant.leads.partials.note-form')
+            <div class="mb-5 break-inside-avoid">
+                @include('livewire.tenant.leads.partials.note-form')
+            </div>
         @endif
     </div>
 </div>
