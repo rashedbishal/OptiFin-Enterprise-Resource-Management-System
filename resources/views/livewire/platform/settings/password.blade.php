@@ -4,7 +4,7 @@
             ['label' => __('Change Password')],
         ]" />
 
-        <flux:heading size="xl">{{ __('Change Password') }}</flux:heading>
+        <flux:heading size="xl" class="hidden lg:block">{{ __('Change Password') }}</flux:heading>
 
         <form wire:submit="updatePassword" class="flex flex-col gap-6">
             <flux:input wire:model="current_password" :label="__('Current password')" type="password" viewable />

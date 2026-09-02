@@ -7,7 +7,7 @@
 
         <div class="flex items-center justify-between">
             <div>
-                <flux:heading size="xl">{{ $tenant->name }}</flux:heading>
+                <flux:heading size="xl" class="hidden lg:block">{{ $tenant->name }}</flux:heading>
                 <flux:text>{{ $tenant->tenant_code }}</flux:text>
             </div>
 
