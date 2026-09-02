@@ -289,7 +289,7 @@
         </flux:modal>
     @endif
 
-    <flux:modal variant="flyout" wire:model.self="showLeadPanel" class="w-full sm:max-w-lg lg:max-w-2xl xl:max-w-4xl 2xl:max-w-5xl">
+    <flux:modal variant="flyout" wire:model.self="showLeadPanel" class="w-full sm:max-w-lg lg:max-w-3xl xl:max-w-6xl 2xl:max-w-7xl">
         @if ($this->selectedLead)
             <livewire:tenant.leads.show :lead="$this->selectedLead" :panel="true" :key="'lead-panel-'.$this->selectedLead->id" />
         @endif
