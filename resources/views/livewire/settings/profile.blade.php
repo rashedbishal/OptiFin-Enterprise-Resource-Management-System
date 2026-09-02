@@ -1,4 +1,4 @@
-<section class="w-full">
+<section class="w-full p-4 sm:p-6 lg:p-8 overflow-y-auto min-h-0">
     @include('partials.settings-heading')
 
     <flux:heading level="2" class="sr-only">{{ __('Profile settings') }}</flux:heading>

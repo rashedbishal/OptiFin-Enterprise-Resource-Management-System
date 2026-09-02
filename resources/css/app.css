@@ -167,10 +167,29 @@ Provides smooth, professional, lightweight scrollbars in light & dark modes.
 
 input:focus[data-flux-control],
 textarea:focus[data-flux-control],
-select:focus[data-flux-control] {
-    @apply outline-hidden ring-2 ring-accent ring-offset-2 ring-offset-accent-foreground;
+/*
+Custom Horizontal Cell Padding for Tables across the entire application.
+Ensures first & last columns have comfortable breathing space and do not touch edges.
+*/
+[data-flux-table] th,
+[data-flux-table] td,
+[data-flux-column],
+[data-flux-cell] {
+    padding-left: 1.25rem !important;
+    padding-right: 1.25rem !important;
 }
 
-/* \[:where(&)\]:size-4 {
-    @apply size-4;
-} */
+[data-flux-table] th:first-child,
+[data-flux-table] td:first-child,
+[data-flux-column]:first-child,
+[data-flux-cell]:first-child {
+    padding-left: 1.5rem !important;
+}
+
+[data-flux-table] th:last-child,
+[data-flux-table] td:last-child,
+[data-flux-column]:last-child,
+[data-flux-cell]:last-child {
+    padding-right: 1.5rem !important;
+}
+

@@ -48,7 +48,7 @@
 
     {{-- Main scrollable area (scrollbar touches right edge & bottom edge) --}}
     <div class="flex-1 min-h-0 overflow-auto" wire:loading.class.delay="opacity-70" wire:target="moveLead">
-        <div class="p-4 lg:p-6 flex flex-col gap-6 min-h-full">
+        <div class="p-4 sm:p-6 lg:p-8 flex flex-col gap-6 min-h-full">
         @if ($this->facebookLeadAdsSources->isNotEmpty())
             <div class="flex flex-col gap-2">
                 <flux:text variant="strong" size="sm">{{ __('Facebook Lead Ads') }}</flux:text>

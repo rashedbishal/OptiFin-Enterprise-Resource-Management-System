@@ -1,4 +1,4 @@
-<div class="flex flex-1 flex-col gap-6">
+<div class="flex flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8 overflow-y-auto min-h-0">
     <x-breadcrumbs :items="[
         ['label' => __('Dashboard'), 'href' => route('dashboard')],
         ['label' => __('Leads'), 'href' => route('tenant-leads.index')],

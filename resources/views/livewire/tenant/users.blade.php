@@ -1,5 +1,4 @@
-<div>
-    <div class="flex flex-1 flex-col gap-6">
+<div class="flex flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8 overflow-y-auto min-h-0">
         <x-breadcrumbs :items="[
             ['label' => __('Dashboard'), 'href' => route('dashboard')],
             ['label' => __('Users')],
@@ -50,7 +49,6 @@
         </flux:table>
 
         {{ $this->users->links() }}
-    </div>
 
     <flux:modal wire:model.self="showModal" class="md:w-96">
         <form wire:submit="save" class="flex flex-col gap-6">

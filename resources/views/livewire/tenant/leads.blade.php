@@ -94,7 +94,7 @@
                 animation: leadRowLift 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
             }
         </style>
-        <div class="p-4 lg:p-6 flex flex-col gap-6 min-h-full">
+        <div class="p-4 sm:p-6 lg:p-8 flex flex-col gap-6 min-h-full">
             <flux:table>
                 <flux:table.columns>
                     <flux:table.column>{{ __('Name') }}</flux:table.column>
