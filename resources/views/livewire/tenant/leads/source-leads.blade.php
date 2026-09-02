@@ -6,7 +6,7 @@
     ]" />
 
     <div class="flex items-center justify-between">
-        <flux:heading size="xl">{{ $this->leadSource->name }}</flux:heading>
+        <flux:heading size="xl" class="hidden lg:block">{{ $this->leadSource->name }}</flux:heading>
         <div class="flex gap-2">
             <flux:button icon="arrow-down-tray" wire:click="downloadXlsx">{{ __('Download XLSX') }}</flux:button>
             <flux:button :href="route('tenant-leads.index')" wire:navigate>{{ __('Back to Leads') }}</flux:button>

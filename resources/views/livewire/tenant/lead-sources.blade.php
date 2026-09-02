@@ -4,7 +4,7 @@
         ['label' => __('Lead Sources')],
     ]" />
 
-    <flux:heading size="xl">{{ __('Lead Sources') }}</flux:heading>
+    <flux:heading size="xl" class="hidden lg:block">{{ __('Lead Sources') }}</flux:heading>
     <flux:text>{{ __('Configured by your account manager. Contact support to add or change a source.') }}</flux:text>
 
     <flux:table>

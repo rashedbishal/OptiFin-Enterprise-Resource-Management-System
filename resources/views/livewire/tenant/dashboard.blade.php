@@ -1,7 +1,7 @@
 <div class="flex flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8 overflow-y-auto min-h-0">
         <x-breadcrumbs :items="[['label' => __('Dashboard')]]" />
 
-        <flux:heading size="xl">{{ $this->tenant->name }}</flux:heading>
+        <flux:heading size="xl" class="hidden lg:block">{{ $this->tenant->name }}</flux:heading>
 
         <div class="grid auto-rows-min gap-4 md:grid-cols-3">
             <flux:card>

@@ -7,7 +7,7 @@
         ]" />
 
         <div class="flex items-center justify-between gap-2">
-            <flux:heading size="lg" class="text-base sm:text-lg lg:text-2xl font-semibold">{{ __('Leads') }}</flux:heading>
+            <flux:heading size="lg" class="hidden lg:block lg:text-2xl font-semibold">{{ __('Leads') }}</flux:heading>
             <div class="flex items-center gap-1.5 sm:gap-2">
                 @if ($this->canCreateLead)
                     <flux:button variant="primary" icon="plus" size="sm" wire:click="createLead">{{ __('New Lead') }}</flux:button>

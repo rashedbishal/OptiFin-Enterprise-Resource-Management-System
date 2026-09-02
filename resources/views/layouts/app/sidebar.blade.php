@@ -1,3 +1,4 @@
+@props(['title' => null])
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}" class="dark">
     <head>
@@ -67,11 +68,15 @@
             <x-desktop-user-menu class="hidden lg:block" :name="auth()->user()->name" />
         </flux:sidebar>
 
-        <!-- Mobile User Menu -->
+        <!-- Mobile User Header -->
         <flux:header class="lg:hidden border-b border-zinc-200 bg-zinc-50 dark:border-zinc-700 dark:bg-zinc-900">
             <flux:sidebar.toggle class="lg:hidden" icon="bars-2" inset="left" />
 
-            <flux:spacer />
+            <div class="flex-1 px-2 min-w-0">
+                <span class="block truncate text-base font-semibold text-zinc-900 dark:text-white">
+                    {{ $title ?? (auth()->user()?->tenant?->name ?? config('app.name')) }}
+                </span>
+            </div>
 
             <flux:dropdown position="top" align="end">
                 <flux:profile

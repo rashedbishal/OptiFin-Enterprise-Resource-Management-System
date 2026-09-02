@@ -6,7 +6,7 @@
         ]" />
 
         <div class="flex items-center justify-between">
-            <flux:heading size="xl">{{ __('Clients') }}</flux:heading>
+            <flux:heading size="xl" class="hidden lg:block">{{ __('Clients') }}</flux:heading>
             <flux:button variant="primary" icon="plus" wire:click="create">{{ __('New Client') }}</flux:button>
         </div>
 
