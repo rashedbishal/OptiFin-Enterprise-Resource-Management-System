@@ -86,9 +86,9 @@
                 x-data="{
                     scrollEl: null,
                     edge: 220,
-                    maxSpeed: 22,
+                    maxSpeed: 9,
                     lastClientX: null,
-                    timer: null,
+                    rafId: null,
                     isDragging: false,
                     init() {
                         // The scrollable region is the main content area (flux:main)
@@ -98,37 +98,56 @@
                         if (event && typeof event.clientX === 'number' && event.clientX !== 0) {
                             this.lastClientX = event.clientX;
                         }
-                        this.isDragging = true;
-                        if (! this.timer) {
-                            this.timer = setInterval(() => this.doScroll(), 16);
+                        if (! this.isDragging) {
+                            this.isDragging = true;
+                            // The right edge of the scroll container sits flush against
+                            // the real browser viewport edge (unlike the left, which is
+                            // buffered by the sidebar), so the browser's own native
+                            // drag-autoscroll kicks in there too and stacks on top of
+                            // ours, producing a sudden extra burst of speed. Dropping
+                            // overflow disqualifies this element as a native autoscroll
+                            // target for the duration of the drag; our own scrollLeft
+                            // writes below still move the content either way.
+                            this.scrollEl?.style.setProperty('overflow', 'hidden');
+                        }
+                        if (! this.rafId) {
+                            this.rafId = requestAnimationFrame(() => this.doScroll());
                         }
                     },
                     stopDrag() {
                         this.isDragging = false;
                         this.lastClientX = null;
-                        if (this.timer) {
-                            clearInterval(this.timer);
-                            this.timer = null;
+                        this.scrollEl?.style.removeProperty('overflow');
+                        if (this.rafId) {
+                            cancelAnimationFrame(this.rafId);
+                            this.rafId = null;
                         }
                     },
                     doScroll() {
-                        if (! this.isDragging || ! this.scrollEl || this.lastClientX === null) return;
+                        if (! this.isDragging || ! this.scrollEl || this.lastClientX === null) {
+                            this.rafId = null;
+                            return;
+                        }
                         const rect = this.scrollEl.getBoundingClientRect();
                         const clientX = this.lastClientX;
                         const leftThreshold = rect.left + this.edge;
                         const rightThreshold = rect.right - this.edge;
 
+                        // Ease-in (quadratic) so scrolling ramps up gently near the
+                        // edge instead of jumping straight to near-max speed.
                         if (clientX < leftThreshold) {
                             // Pointer is near the left edge of main content, over the sidebar, or past the left screen edge
                             const dist = leftThreshold - clientX;
-                            const speedRatio = Math.min(1, Math.max(0.15, dist / this.edge));
+                            const speedRatio = Math.min(1, Math.max(0, dist / this.edge)) ** 2;
                             this.scrollEl.scrollLeft -= this.maxSpeed * speedRatio;
                         } else if (clientX > rightThreshold) {
                             // Pointer is near or past the right edge of main content
                             const dist = clientX - rightThreshold;
-                            const speedRatio = Math.min(1, Math.max(0.15, dist / this.edge));
+                            const speedRatio = Math.min(1, Math.max(0, dist / this.edge)) ** 2;
                             this.scrollEl.scrollLeft += this.maxSpeed * speedRatio;
                         }
+
+                        this.rafId = requestAnimationFrame(() => this.doScroll());
                     },
                 }"
                 x-on:dragstart.window.capture="handleDrag($event)"
