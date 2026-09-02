@@ -7,6 +7,17 @@ use App\Models\PlatformUser;
 use App\Models\Tenant;
 use Livewire\Livewire;
 
+test('removing a selected status asks for confirmation but adding an unselected one does not', function () {
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+    $tenant = Tenant::factory()->create();
+    $custom = LeadStatus::factory()->create(['name' => 'Custom Stage']);
+
+    Livewire::actingAs($motherAdmin, 'platform')
+        ->test(LeadSources::class, ['tenant' => $tenant])
+        ->assertSeeHtml('wire:confirm="Remove New from this client&#039;s pipeline?"')
+        ->assertDontSeeHtml('wire:confirm="Remove Custom Stage');
+});
+
 test('a freshly created tenant has the full catalog selected in catalog order', function () {
     $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
     $tenant = Tenant::factory()->create();
