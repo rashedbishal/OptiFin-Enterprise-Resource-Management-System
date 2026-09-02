@@ -1,7 +1,7 @@
-<flux:card>
+<flux:card class="h-full">
     <flux:heading size="lg" class="mb-4">{{ __('Deal') }}</flux:heading>
     @if ($editable)
-        <form wire:submit="updateDeal" class="flex flex-col gap-3">
+        <form wire:submit="updateDeal" class="flex h-full flex-col gap-3">
             <flux:input wire:model="leadServiceInterest" :label="__('Service Interested')" />
 
             {{-- Paired two-per-row instead of one long stack: cuts this
@@ -28,7 +28,7 @@
                 <flux:input wire:model="leadMeetingDate" type="date" min="{{ now()->toDateString() }}" :label="__('Meeting Date')" />
             </div>
 
-            <div>
+            <div class="mt-auto pt-3">
                 <flux:button type="submit" variant="primary" size="sm">{{ __('Save') }}</flux:button>
             </div>
         </form>

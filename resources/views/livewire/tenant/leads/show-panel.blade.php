@@ -9,7 +9,10 @@
     the layout plateauing. Every card is the same minmax(22rem, 1fr) track —
     detail-card/activity-card don't need double width, since their own
     conversation/timeline content already scrolls internally via `compact`. --}}
-    <div class="grid grid-cols-[repeat(auto-fit,minmax(19rem,1fr))] gap-5 items-start">
+    {{-- No `items-start`: every card in a row stretches to match the
+    tallest one (grid's default `align-items: stretch`), so row edges line
+    up instead of each card sizing to its own content. --}}
+    <div class="grid grid-cols-[repeat(auto-fit,minmax(19rem,1fr))] gap-5">
         @include('livewire.tenant.leads.partials.detail-card', ['lead' => $lead, 'timeline' => $this->timeline, 'bodyView' => $bodyView, 'compact' => true])
         @include('livewire.tenant.leads.partials.activity-card', ['activity' => $this->activity, 'compact' => true])
 
