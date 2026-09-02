@@ -27,7 +27,7 @@ php artisan leads:fetch-emails           # poll IMAP lead sources, create Lead +
 php artisan leads:cleanup-attachments    # delete orphaned lead attachment files
 ```
 
-See `README.md` for the Facebook Lead Ads (Instant Forms) webhook testing/troubleshooting workflow — it's the only other doc in the repo and isn't duplicated here.
+`README.md` covers only a runbook for testing Facebook Lead Ads (Instant Forms) ingestion — no general project docs there.
 
 ## Architecture
 
@@ -51,6 +51,8 @@ See `README.md` for the Facebook Lead Ads (Instant Forms) webhook testing/troubl
 
 ### Lead Management module
 Ported from a sibling project (`OpticoreLeadManagementHub`, Inertia/React) onto this app's Blade/Livewire + Tenant/TenantUser/Role/Module/Permission stack. Models: `Lead`, `LeadSource`, `LeadAssignment`, `LeadStatusLog`, `LeadNote`, `LeadAttachment`. Enums: `LeadSourceType`, `LeadStatus`, `LeadPriority`, `LeadDistributionMode`, `AutoDistributionMethod`. Key pieces: `App\Services\LeadAssignmentService`, webhook capture in `App\Http\Controllers\Api\LeadWebhookController`, IMAP polling via `leads:fetch-emails` → `App\Jobs\ProcessEmailLeadSource`. Lead sources are configured by the Platform Admin at `/admin/clients/{tenant}/lead-sources` (`App\Livewire\Platform\Clients\LeadSources`); the tenant-side `/lead-sources` view is read-only. If extending this module or building another "external capture + per-client config" feature, check the reference project's approach first.
+
+Facebook Lead Ads (Instant Forms) submissions land on the same webhook URL as Messenger (`/api/webhook/facebook/{tenant_code}`) as a `leadgen` change event rather than a `messaging` event, and — unlike attachment downloads — are processed synchronously inside the webhook request, not queued. See `README.md` for the full setup/debugging runbook (`meta:subscribe-leadgen`, `leads:fetch-test`, and the `/admin/clients/{tenant}/lead-sources/{leadSource}/meta-permissions` scope-check route).
 
 ### Skills
 Domain skills exist under `**/skills/**` (Livewire, Flux UI, Fortify, Echo/broadcasting, Tailwind, testing, Laravel best practices). Activate the matching skill proactively when working in that domain rather than waiting to get stuck.

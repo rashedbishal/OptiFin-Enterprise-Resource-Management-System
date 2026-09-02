@@ -85,29 +85,58 @@
                 class="hidden lg:flex lg:items-start lg:gap-4"
                 x-data="{
                     scrollEl: null,
-                    edge: 72,
+                    edge: 220,
                     maxSpeed: 22,
+                    lastClientX: null,
+                    timer: null,
+                    isDragging: false,
                     init() {
-                        // The scrollable region is the page's own main content
-                        // area (see layouts/app.blade.php), never the sidebar —
-                        // it's a sibling outside this element entirely, so edge
-                        // proximity is measured against *this* container's own
-                        // bounds, not the browser window's.
+                        // The scrollable region is the main content area (flux:main)
                         this.scrollEl = this.$el.closest('[data-flux-main]');
                     },
-                    autoScrollWhileDragging(event) {
-                        if (! this.scrollEl) return;
+                    handleDrag(event) {
+                        if (event && typeof event.clientX === 'number' && event.clientX !== 0) {
+                            this.lastClientX = event.clientX;
+                        }
+                        this.isDragging = true;
+                        if (! this.timer) {
+                            this.timer = setInterval(() => this.doScroll(), 16);
+                        }
+                    },
+                    stopDrag() {
+                        this.isDragging = false;
+                        this.lastClientX = null;
+                        if (this.timer) {
+                            clearInterval(this.timer);
+                            this.timer = null;
+                        }
+                    },
+                    doScroll() {
+                        if (! this.isDragging || ! this.scrollEl || this.lastClientX === null) return;
                         const rect = this.scrollEl.getBoundingClientRect();
-                        const fromLeft = event.clientX - rect.left;
-                        const fromRight = rect.right - event.clientX;
-                        if (fromLeft >= 0 && fromLeft < this.edge) {
-                            this.scrollEl.scrollLeft -= this.maxSpeed * (1 - fromLeft / this.edge);
-                        } else if (fromRight >= 0 && fromRight < this.edge) {
-                            this.scrollEl.scrollLeft += this.maxSpeed * (1 - fromRight / this.edge);
+                        const clientX = this.lastClientX;
+                        const leftThreshold = rect.left + this.edge;
+                        const rightThreshold = rect.right - this.edge;
+
+                        if (clientX < leftThreshold) {
+                            // Pointer is near the left edge of main content, over the sidebar, or past the left screen edge
+                            const dist = leftThreshold - clientX;
+                            const speedRatio = Math.min(1, Math.max(0.15, dist / this.edge));
+                            this.scrollEl.scrollLeft -= this.maxSpeed * speedRatio;
+                        } else if (clientX > rightThreshold) {
+                            // Pointer is near or past the right edge of main content
+                            const dist = clientX - rightThreshold;
+                            const speedRatio = Math.min(1, Math.max(0.15, dist / this.edge));
+                            this.scrollEl.scrollLeft += this.maxSpeed * speedRatio;
                         }
                     },
                 }"
-                x-on:dragover.prevent="autoScrollWhileDragging($event)"
+                x-on:dragstart.window.capture="handleDrag($event)"
+                x-on:dragover.window.capture.prevent="handleDrag($event)"
+                x-on:dragend.window.capture="stopDrag()"
+                x-on:drop.window.capture.prevent="stopDrag()"
+                x-on:mouseleave.window="stopDrag()"
+                x-on:mouseup.window="stopDrag()"
             >
                 @foreach ($this->tenantLeadStatuses as $statusCase)
                     @php
