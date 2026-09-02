@@ -1,32 +1,40 @@
 <div class="flex flex-1 flex-col gap-6">
     {{-- Sticky header: breadcrumbs, heading, actions, and filters stay
     pinned in view while the board beneath scrolls both vertically (the
-    page) and horizontally (the board's own scrollbox below). --}}
-    <div class="sticky top-0 z-20 flex flex-col gap-4 bg-white pb-4 dark:bg-zinc-800">
+    page) and horizontally (the board's own scrollbox below). The negative
+    top margin/matching top padding cancel out flux:main's own top inset,
+    so this sits flush against the app's fixed top bar instead of leaving
+    a gap above it — both at rest and once stuck. Sized down below lg
+    since the heading/actions/filters otherwise eat too much of a
+    tablet/mobile viewport before any leads are visible. Forced onto its
+    own compositor layer ([transform:translateZ(0)]) — without it, some
+    browsers/devtools mobile emulation can paint scrolled-past content
+    through this element for a frame instead of it staying solid. --}}
+    <div class="sticky top-0 z-20 -mt-6 flex [transform:translateZ(0)] flex-col gap-2 bg-white pt-6 pb-3 lg:-mt-8 lg:gap-4 lg:pt-8 lg:pb-4 dark:bg-zinc-800">
         <x-breadcrumbs :items="[
             ['label' => __('Dashboard'), 'href' => route('dashboard')],
             ['label' => __('Leads')],
         ]" />
 
         <div class="flex items-center justify-between">
-            <flux:heading size="xl">{{ __('Leads') }}</flux:heading>
+            <flux:heading size="xl" class="text-lg lg:text-2xl">{{ __('Leads') }}</flux:heading>
             <div class="flex gap-2">
                 @if ($this->canCreateLead)
-                    <flux:button variant="primary" icon="plus" wire:click="createLead">{{ __('New Lead') }}</flux:button>
+                    <flux:button variant="primary" icon="plus" size="sm" wire:click="createLead">{{ __('New Lead') }}</flux:button>
                 @endif
-                <flux:button icon="arrow-down-tray" wire:click="export">{{ __('Export CSV') }}</flux:button>
+                <flux:button icon="arrow-down-tray" size="sm" wire:click="export">{{ __('Export CSV') }}</flux:button>
             </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-3 md:grid-cols-3">
-            <flux:select wire:model.live="priority" placeholder="{{ __('All priorities') }}">
+        <div class="grid grid-cols-2 gap-2 md:grid-cols-3 lg:gap-3">
+            <flux:select wire:model.live="priority" size="sm" placeholder="{{ __('All priorities') }}">
                 <flux:select.option value="">{{ __('All priorities') }}</flux:select.option>
                 @foreach ($this->priorityOptions() as $option)
                     <flux:select.option value="{{ $option }}">{{ ucfirst($option) }}</flux:select.option>
                 @endforeach
             </flux:select>
 
-            <flux:select wire:model.live="sourceType" placeholder="{{ __('All sources') }}">
+            <flux:select wire:model.live="sourceType" size="sm" placeholder="{{ __('All sources') }}">
                 <flux:select.option value="">{{ __('All sources') }}</flux:select.option>
                 @foreach ($this->sourceTypeOptions() as $option)
                     <flux:select.option value="{{ $option }}">{{ ucfirst(str_replace('_', ' ', $option)) }}</flux:select.option>
@@ -34,7 +42,7 @@
             </flux:select>
 
             @if ($this->isClientAdmin)
-                <flux:select wire:model.live="assignedTo" placeholder="{{ __('All users') }}">
+                <flux:select wire:model.live="assignedTo" size="sm" placeholder="{{ __('All users') }}">
                     <flux:select.option value="">{{ __('All users') }}</flux:select.option>
                     <flux:select.option value="unassigned">{{ __('Unassigned') }}</flux:select.option>
                     @foreach ($this->assignableUsers as $assignableUser)
