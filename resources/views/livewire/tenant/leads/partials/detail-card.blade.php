@@ -28,7 +28,7 @@
         conversation and should keep its own body/HTML rendering below. --}}
         <flux:separator class="mb-4" />
 
-        <div class="flex max-h-96 flex-col gap-3 overflow-y-auto pe-1">
+        <div class="flex {{ $compact ? 'max-h-48' : 'max-h-96' }} flex-col gap-3 overflow-y-auto pe-1">
             @foreach ($timeline as $item)
                 @if ($item['type'] === 'text')
                     <flux:text class="whitespace-pre-line">{{ $item['text'] }}</flux:text>
@@ -61,7 +61,13 @@
                 class="{{ $compact ? 'h-80' : 'h-[500px]' }} w-full rounded border border-neutral-200 bg-white dark:border-neutral-700"
             ></iframe>
         @elseif ($lead->message)
-            <flux:text class="whitespace-pre-line">{{ $lead->message }}</flux:text>
+            {{-- Capped and internally scrollable, same reasoning as the
+            conversation timeline above: a long plain-text submission (a
+            website form's message field can be arbitrarily long) shouldn't
+            be able to blow out the whole card's height uncapped. --}}
+            <div class="{{ $compact ? 'max-h-48' : 'max-h-96' }} overflow-y-auto pe-1">
+                <flux:text class="whitespace-pre-line">{{ $lead->message }}</flux:text>
+            </div>
         @endif
 
         @if ($lead->attachments->isNotEmpty())
