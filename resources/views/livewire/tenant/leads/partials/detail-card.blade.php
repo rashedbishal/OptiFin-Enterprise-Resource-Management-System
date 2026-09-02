@@ -28,7 +28,23 @@
         conversation and should keep its own body/HTML rendering below. --}}
         <flux:separator class="mb-4" />
 
-        <div class="flex {{ $compact ? 'max-h-48' : 'max-h-96' }} flex-col gap-3 overflow-y-auto pe-1">
+        <div
+            x-data
+            x-init="
+                // This lives inside the flyout dialog, which is display:none
+                // until opened — scrollHeight reads as 0 at Alpine's init
+                // time, before the panel is ever visible, so a plain
+                // x-init scroll-to-bottom silently no-ops. IntersectionObserver
+                // instead fires each time the element actually becomes
+                // visible (i.e. every time the panel opens), which is also
+                // exactly when 'always default to the bottom' should apply.
+                new IntersectionObserver((entries) => {
+                    if (entries[0].isIntersecting) { $el.scrollTop = $el.scrollHeight; }
+                }).observe($el);
+                new MutationObserver(() => { $el.scrollTop = $el.scrollHeight; }).observe($el, { childList: true, subtree: true });
+            "
+            class="flex {{ $compact ? 'max-h-48' : 'max-h-96' }} flex-col gap-3 overflow-y-auto pe-1"
+        >
             @foreach ($timeline as $item)
                 @if ($item['type'] === 'text')
                     <flux:text class="whitespace-pre-line">{{ $item['text'] }}</flux:text>
