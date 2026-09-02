@@ -244,6 +244,11 @@ class Lead extends Model
         return $this->hasMany(LeadStatusLog::class);
     }
 
+    public function detailUpdateLogs(): HasMany
+    {
+        return $this->hasMany(LeadDetailUpdateLog::class);
+    }
+
     public function assignments(): HasMany
     {
         return $this->hasMany(LeadAssignment::class);

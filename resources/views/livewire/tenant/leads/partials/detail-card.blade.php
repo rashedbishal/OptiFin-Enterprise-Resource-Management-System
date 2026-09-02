@@ -18,68 +18,6 @@
         </div>
     </div>
 
-    @php
-        $hasCrmDetails = collect([
-            $lead->website, $lead->industry, $lead->location, $lead->service_interest,
-            $lead->estimated_budget, $lead->deal_value, $lead->win_probability, $lead->next_follow_up_at,
-        ])->filter(fn ($value) => $value !== null && $value !== '')->isNotEmpty();
-    @endphp
-    @if ($hasCrmDetails)
-        <flux:separator class="mb-4" />
-        <div class="mb-4 grid grid-cols-2 gap-x-4 gap-y-3 {{ $compact ? '' : 'sm:grid-cols-3' }}">
-            @if ($lead->website)
-                <div class="col-span-2 min-w-0 {{ $compact ? '' : 'sm:col-span-3' }}">
-                    <flux:text size="sm" variant="subtle">{{ __('Website') }}</flux:text>
-                    <flux:text>
-                        <a href="{{ $lead->website }}" target="_blank" rel="noopener noreferrer" class="block w-fit max-w-full break-all underline">{{ $lead->website }}</a>
-                    </flux:text>
-                </div>
-            @endif
-            @if ($lead->industry)
-                <div class="min-w-0">
-                    <flux:text size="sm" variant="subtle">{{ __('Industry') }}</flux:text>
-                    <flux:text class="block break-words">{{ $lead->industry }}</flux:text>
-                </div>
-            @endif
-            @if ($lead->location)
-                <div class="min-w-0">
-                    <flux:text size="sm" variant="subtle">{{ __('Location') }}</flux:text>
-                    <flux:text class="block break-words">{{ $lead->location }}</flux:text>
-                </div>
-            @endif
-            @if ($lead->service_interest)
-                <div class="col-span-2 min-w-0 {{ $compact ? '' : 'sm:col-span-3' }}">
-                    <flux:text size="sm" variant="subtle">{{ __('Service Interested') }}</flux:text>
-                    <flux:text class="block break-words">{{ $lead->service_interest }}</flux:text>
-                </div>
-            @endif
-            @if ($lead->estimated_budget !== null)
-                <div class="min-w-0">
-                    <flux:text size="sm" variant="subtle">{{ __('Est. Budget') }}</flux:text>
-                    <flux:text class="block break-words">{{ $lead->tenant->currency }} {{ number_format((float) $lead->estimated_budget, 2) }}</flux:text>
-                </div>
-            @endif
-            @if ($lead->deal_value !== null)
-                <div class="min-w-0">
-                    <flux:text size="sm" variant="subtle">{{ __('Deal Value') }}</flux:text>
-                    <flux:text class="block break-words">{{ $lead->tenant->currency }} {{ number_format((float) $lead->deal_value, 2) }}</flux:text>
-                </div>
-            @endif
-            @if ($lead->win_probability !== null)
-                <div class="min-w-0">
-                    <flux:text size="sm" variant="subtle">{{ __('Win Probability') }}</flux:text>
-                    <flux:text class="block">{{ $lead->win_probability }}%</flux:text>
-                </div>
-            @endif
-            @if ($lead->next_follow_up_at)
-                <div class="min-w-0">
-                    <flux:text size="sm" variant="subtle">{{ __('Next Follow-up') }}</flux:text>
-                    <flux:text class="block">{{ $lead->next_follow_up_at->format('M j, Y') }}</flux:text>
-                </div>
-            @endif
-        </div>
-    @endif
-
     @if (count($lead->messageTimeline()) > 0)
         {{-- Webhook-sourced leads (Messenger/Instagram/WhatsApp) can carry
         several text messages and attachments over time — shown here as a
@@ -88,9 +26,7 @@
         on messageTimeline() specifically (not just "has any attachment"):
         an email lead can have attachments too, but it isn't a threaded
         conversation and should keep its own body/HTML rendering below. --}}
-        @unless ($hasCrmDetails)
-            <flux:separator class="mb-4" />
-        @endunless
+        <flux:separator class="mb-4" />
 
         <div class="flex max-h-96 flex-col gap-3 overflow-y-auto pe-1">
             @foreach ($timeline as $item)
@@ -102,9 +38,7 @@
             @endforeach
         </div>
     @elseif ($lead->message || $lead->html_body || $lead->attachments->isNotEmpty())
-        @unless ($hasCrmDetails)
-            <flux:separator class="mb-4" />
-        @endunless
+        <flux:separator class="mb-4" />
 
         @if ($lead->html_body)
             <div class="mb-3 flex gap-2">

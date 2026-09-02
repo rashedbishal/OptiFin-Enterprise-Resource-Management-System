@@ -16,6 +16,9 @@ test('the panel view renders the same core sections as the full lead page', func
         ->assertSee('Add Note')
         ->assertSee('Status')
         ->assertSee('Assignment')
+        ->assertSee('Contact')
+        ->assertSee('Company')
+        ->assertSee('Deal')
         ->assertDontSee('Breadcrumb', escape: false);
 });
 

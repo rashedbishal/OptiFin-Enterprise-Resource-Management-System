@@ -19,6 +19,12 @@
 
         <div class="flex flex-col gap-6">
             @if ($this->canUpdate)
+                @include('livewire.tenant.leads.partials.contact-form')
+            @endif
+            @include('livewire.tenant.leads.partials.company-form', ['lead' => $lead, 'editable' => $this->canUpdate])
+            @include('livewire.tenant.leads.partials.deal-form', ['lead' => $lead, 'editable' => $this->canUpdate])
+
+            @if ($this->canUpdate)
                 @include('livewire.tenant.leads.partials.status-form', ['statusOptions' => $this->statusOptions(), 'priorityOptions' => $this->priorityOptions()])
             @else
                 <flux:card>

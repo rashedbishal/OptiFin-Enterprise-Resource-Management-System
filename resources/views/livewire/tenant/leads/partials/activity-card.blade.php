@@ -8,6 +8,8 @@
                     <flux:text>{{ __('Status changed to :status', ['status' => ucfirst(str_replace('_', ' ', $event['new_status']))]) }}</flux:text>
                 @elseif ($event['type'] === 'assignment')
                     <flux:text>{{ __('Assigned to :name', ['name' => $event['assigned_to']]) }}</flux:text>
+                @elseif ($event['type'] === 'details_updated')
+                    <flux:text>{{ __('Updated: :fields', ['fields' => implode(', ', $event['fields'])]) }}</flux:text>
                 @else
                     <flux:text>{{ $event['note'] }}</flux:text>
                 @endif

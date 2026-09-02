@@ -7,6 +7,7 @@ use App\Events\LeadStatusChanged;
 use App\Events\LeadUpdated;
 use App\Models\Lead;
 use App\Models\LeadAttachment;
+use App\Models\LeadDetailUpdateLog;
 use App\Models\LeadNote;
 use App\Models\LeadStatus;
 use App\Models\LeadStatusLog;
@@ -24,6 +25,31 @@ use Livewire\Component;
 #[Title('Lead Details')]
 class Show extends Component
 {
+    /**
+     * Human labels for the CRM fields Contact/Company/Deal-form edits can
+     * touch, keyed by the Lead column they write to — used to translate
+     * LeadDetailUpdateLog's stored column keys into readable Activity feed
+     * text. Translation happens at render time (see activity() below) so
+     * historical entries keep displaying correctly if wording changes
+     * later, rather than baking a translated string into the log itself.
+     *
+     * @var array<string, string>
+     */
+    private const array FIELD_LABELS = [
+        'name' => 'Contact Person',
+        'phone' => 'Phone',
+        'email' => 'Email',
+        'company' => 'Company',
+        'website' => 'Website',
+        'industry' => 'Industry',
+        'location' => 'Location',
+        'service_interest' => 'Service Interested',
+        'estimated_budget' => 'Est. Budget',
+        'deal_value' => 'Deal Value',
+        'win_probability' => 'Win Probability',
+        'next_follow_up_at' => 'Next Follow-up',
+    ];
+
     public Lead $lead;
 
     public string $status;
@@ -35,6 +61,30 @@ class Show extends Component
     public string $newNote = '';
 
     public string $bodyView = 'text';
+
+    public string $leadName = '';
+
+    public string $leadPhone = '';
+
+    public string $leadEmail = '';
+
+    public string $leadCompany = '';
+
+    public string $leadWebsite = '';
+
+    public string $leadIndustry = '';
+
+    public string $leadLocation = '';
+
+    public string $leadServiceInterest = '';
+
+    public string $leadEstimatedBudget = '';
+
+    public string $leadDealValue = '';
+
+    public string $leadWinProbability = '';
+
+    public string $leadNextFollowUpAt = '';
 
     /**
      * True when this component is embedded in the Kanban board's lead
@@ -53,6 +103,29 @@ class Show extends Component
         $this->status = $lead->status_id;
         $this->priority = $lead->priority->value;
         $this->assigneeId = $lead->assigned_to;
+        $this->fillDetailFieldsFromLead();
+    }
+
+    /**
+     * Populates the Contact/Company/Deal form fields from the lead's
+     * current column values — shared by mount() and refreshLead() so a
+     * live update from another viewer doesn't leave a stale draft sitting
+     * in these fields.
+     */
+    private function fillDetailFieldsFromLead(): void
+    {
+        $this->leadName = $this->lead->name;
+        $this->leadPhone = (string) $this->lead->phone;
+        $this->leadEmail = (string) $this->lead->email;
+        $this->leadCompany = (string) $this->lead->company;
+        $this->leadWebsite = (string) $this->lead->website;
+        $this->leadIndustry = (string) $this->lead->industry;
+        $this->leadLocation = (string) $this->lead->location;
+        $this->leadServiceInterest = (string) $this->lead->service_interest;
+        $this->leadEstimatedBudget = $this->lead->estimated_budget !== null ? (string) $this->lead->estimated_budget : '';
+        $this->leadDealValue = $this->lead->deal_value !== null ? (string) $this->lead->deal_value : '';
+        $this->leadWinProbability = $this->lead->win_probability !== null ? (string) $this->lead->win_probability : '';
+        $this->leadNextFollowUpAt = $this->lead->next_follow_up_at?->toDateString() ?? '';
     }
 
     public function render(): View
@@ -82,6 +155,7 @@ class Show extends Component
         $this->status = $this->lead->status_id;
         $this->priority = $this->lead->priority->value;
         $this->assigneeId = $this->lead->assigned_to;
+        $this->fillDetailFieldsFromLead();
         unset($this->activity, $this->timeline);
     }
 
@@ -186,6 +260,15 @@ class Show extends Component
             ];
         }
 
+        foreach ($this->lead->detailUpdateLogs()->with('changedBy')->get() as $log) {
+            $events[] = [
+                'type' => 'details_updated',
+                'created_at' => $log->created_at,
+                'user' => $log->changedBy?->name,
+                'fields' => array_map(fn (string $key): string => __(self::FIELD_LABELS[$key] ?? $key), $log->changed_fields),
+            ];
+        }
+
         usort($events, fn (array $a, array $b): int => $b['created_at'] <=> $a['created_at']);
 
         return $events;
@@ -226,6 +309,132 @@ class Show extends Component
         $this->lead->update($updates);
 
         event(new LeadStatusChanged($this->lead, $oldStatus, $newStatus, Auth::user()));
+        event(new LeadUpdated($this->lead));
+
+        unset($this->activity);
+
+        if ($this->panel) {
+            $this->dispatch('lead-panel-updated');
+        }
+
+        Flux::toast(variant: 'success', text: __('Lead updated.'));
+    }
+
+    public function updateContact(): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        $validated = $this->validate([
+            'leadName' => ['required', 'string', 'min:2', 'max:255', 'regex:/^[\p{L}\p{M}][\p{L}\p{M}\s\'.-]*$/u'],
+            // Nullable here (unlike the New Lead modal, where it's required):
+            // this form edits an existing lead of unknown origin, and an
+            // email-only webhook lead that never had a phone shouldn't be
+            // blocked from having its company field edited elsewhere.
+            'leadPhone' => ['nullable', 'regex:/^(?=(?:\D*\d){7,})[0-9+\-\s()]{7,20}$/'],
+            'leadEmail' => ['nullable', 'email', 'max:255'],
+        ], [
+            'leadName.regex' => __('Contact person may only contain letters, spaces, apostrophes, periods and hyphens.'),
+            'leadPhone.regex' => __('Enter a valid phone number (at least 7 digits).'),
+        ]);
+
+        $this->applyDetailChanges([
+            'name' => $validated['leadName'],
+            'phone' => $validated['leadPhone'] ?: null,
+            'email' => $validated['leadEmail'] ?: null,
+        ]);
+    }
+
+    public function updateCompany(): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        $validated = $this->validate([
+            'leadCompany' => ['nullable', 'string', 'max:255', 'regex:/^[\p{L}\p{N}][\p{L}\p{N}\s.,&\'()-]*$/u'],
+            'leadWebsite' => ['nullable', 'url', 'max:255', 'regex:#^https?://#i'],
+            'leadIndustry' => ['nullable', 'string', 'max:255', 'regex:#^[\p{L}][\p{L}\s&,/-]*$#u'],
+            'leadLocation' => ['nullable', 'string', 'max:255', 'regex:/^[\p{L}][\p{L}\s,.-]*$/u'],
+        ], [
+            'leadCompany.regex' => __('Company name contains characters that are not allowed.'),
+            'leadWebsite.regex' => __('Website URL must start with http:// or https://.'),
+            'leadIndustry.regex' => __('Industry sector contains characters that are not allowed.'),
+            'leadLocation.regex' => __('Location contains characters that are not allowed.'),
+        ]);
+
+        $this->applyDetailChanges([
+            'company' => $validated['leadCompany'] ?: null,
+            'website' => $validated['leadWebsite'] ?: null,
+            'industry' => $validated['leadIndustry'] ?: null,
+            'location' => $validated['leadLocation'] ?: null,
+        ]);
+    }
+
+    public function updateDeal(): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        $validated = $this->validate([
+            'leadServiceInterest' => ['nullable', 'string', 'max:255', 'regex:#^[\p{L}\p{N}][\p{L}\p{N}\s&,./()-]*$#u'],
+            'leadEstimatedBudget' => ['nullable', 'numeric', 'min:0', 'max:999999999999.99', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
+            'leadDealValue' => ['nullable', 'numeric', 'min:0', 'max:999999999999.99', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
+            'leadWinProbability' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'leadNextFollowUpAt' => ['nullable', 'date', 'after_or_equal:today'],
+        ], [
+            'leadServiceInterest.regex' => __('Service interested contains characters that are not allowed.'),
+            'leadEstimatedBudget.regex' => __('Enter a plain amount with up to 2 decimal places.'),
+            'leadDealValue.regex' => __('Enter a plain amount with up to 2 decimal places.'),
+            'leadNextFollowUpAt.after_or_equal' => __('Next follow-up date cannot be in the past.'),
+        ]);
+
+        $this->applyDetailChanges([
+            'service_interest' => $validated['leadServiceInterest'] ?: null,
+            'estimated_budget' => $validated['leadEstimatedBudget'] ?: null,
+            'deal_value' => $validated['leadDealValue'] ?: null,
+            'win_probability' => $validated['leadWinProbability'] ?: null,
+            'next_follow_up_at' => $validated['leadNextFollowUpAt'] ?: null,
+        ]);
+    }
+
+    /**
+     * Shared by updateContact()/updateCompany()/updateDeal(): fills the
+     * given columns onto the lead and, only if Eloquent's own dirty
+     * tracking says something actually changed, saves it, logs which
+     * columns changed (translated to labels in activity(), not here — see
+     * FIELD_LABELS), and notifies other viewers. Letting fill()+getDirty()
+     * decide "did anything change" avoids hand-rolling type-aware
+     * comparisons for decimal/int/date columns — Eloquent's casts already
+     * normalize those correctly.
+     *
+     * @param  array<string, mixed>  $columns
+     */
+    private function applyDetailChanges(array $columns): void
+    {
+        $this->lead->fill($columns);
+        $changed = array_keys($this->lead->getDirty());
+
+        if ($changed === []) {
+            return;
+        }
+
+        $this->lead->save();
+
+        LeadDetailUpdateLog::create([
+            'lead_id' => $this->lead->id,
+            'changed_by' => Auth::id(),
+            'changed_fields' => $changed,
+        ]);
+
         event(new LeadUpdated($this->lead));
 
         unset($this->activity);
