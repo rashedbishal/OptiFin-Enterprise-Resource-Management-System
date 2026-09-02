@@ -30,6 +30,7 @@ use Illuminate\Support\Collection;
  * @property string|null $industry
  * @property string|null $location
  * @property string|null $service_interest
+ * @property string|null $lead_source
  * @property string|null $email
  * @property string|null $phone
  * @property string|null $message
@@ -52,7 +53,7 @@ use Illuminate\Support\Collection;
  */
 #[Fillable([
     'tenant_id', 'source_id', 'assigned_to', 'name', 'company', 'website', 'industry', 'location',
-    'service_interest', 'email', 'phone', 'message', 'html_body', 'source_data', 'status_id', 'priority',
+    'service_interest', 'lead_source', 'email', 'phone', 'message', 'html_body', 'source_data', 'status_id', 'priority',
     'notes', 'estimated_budget', 'deal_value', 'win_probability', 'next_follow_up_at', 'meeting_date',
     'assigned_at', 'first_contacted_at', 'closed_at',
 ])]

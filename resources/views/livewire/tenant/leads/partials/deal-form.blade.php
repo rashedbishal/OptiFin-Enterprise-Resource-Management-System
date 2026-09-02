@@ -4,6 +4,10 @@
         <form wire:submit="updateDeal" class="flex flex-col gap-3">
             <flux:input wire:model="leadServiceInterest" :label="__('Service Interested')" />
 
+            @if ($isManual)
+                <flux:input wire:model="leadSource" :label="__('Lead Source')" placeholder="{{ __('e.g. Referral, Facebook Ad, Trade Show') }}" />
+            @endif
+
             {{-- Paired two-per-row instead of one long stack: cuts this
             card's height roughly in half so it stops being the tallest card
             in the panel by a wide margin. --}}
@@ -33,13 +37,19 @@
             </div>
         </form>
     @else
-        @php $hasDealDetails = collect([$lead->service_interest, $lead->estimated_budget, $lead->deal_value, $lead->win_probability, $lead->next_follow_up_at, $lead->meeting_date])->filter(fn ($value) => $value !== null && $value !== '')->isNotEmpty(); @endphp
+        @php $hasDealDetails = collect([$lead->service_interest, $isManual ? $lead->lead_source : null, $lead->estimated_budget, $lead->deal_value, $lead->win_probability, $lead->next_follow_up_at, $lead->meeting_date])->filter(fn ($value) => $value !== null && $value !== '')->isNotEmpty(); @endphp
         @if ($hasDealDetails)
             <div class="flex flex-col gap-3">
                 @if ($lead->service_interest)
                     <div>
                         <flux:text size="sm" variant="subtle">{{ __('Service Interested') }}</flux:text>
                         <flux:text class="block break-words">{{ $lead->service_interest }}</flux:text>
+                    </div>
+                @endif
+                @if ($isManual && $lead->lead_source)
+                    <div>
+                        <flux:text size="sm" variant="subtle">{{ __('Lead Source') }}</flux:text>
+                        <flux:text class="block break-words">{{ $lead->lead_source }}</flux:text>
                     </div>
                 @endif
                 @if ($lead->estimated_budget !== null)

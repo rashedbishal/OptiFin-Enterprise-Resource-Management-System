@@ -26,7 +26,7 @@
             @include('livewire.tenant.leads.partials.company-form', ['lead' => $lead, 'editable' => $this->canUpdate])
         </div>
         <div class="mb-5 break-inside-avoid">
-            @include('livewire.tenant.leads.partials.deal-form', ['lead' => $lead, 'editable' => $this->canUpdate])
+            @include('livewire.tenant.leads.partials.deal-form', ['lead' => $lead, 'editable' => $this->canUpdate, 'isManual' => $this->isManualLead])
         </div>
 
         @if ($this->canUpdate)

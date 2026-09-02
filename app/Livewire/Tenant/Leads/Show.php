@@ -3,6 +3,7 @@
 namespace App\Livewire\Tenant\Leads;
 
 use App\Enums\LeadPriority;
+use App\Enums\LeadSourceType;
 use App\Events\LeadStatusChanged;
 use App\Events\LeadUpdated;
 use App\Models\Lead;
@@ -44,6 +45,7 @@ class Show extends Component
         'industry' => 'Industry',
         'location' => 'Location',
         'service_interest' => 'Service Interested',
+        'lead_source' => 'Lead Source',
         'estimated_budget' => 'Est. Budget',
         'deal_value' => 'Deal Value',
         'win_probability' => 'Win Probability',
@@ -78,6 +80,8 @@ class Show extends Component
     public string $leadLocation = '';
 
     public string $leadServiceInterest = '';
+
+    public string $leadSource = '';
 
     public string $leadEstimatedBudget = '';
 
@@ -125,6 +129,7 @@ class Show extends Component
         $this->leadIndustry = (string) $this->lead->industry;
         $this->leadLocation = (string) $this->lead->location;
         $this->leadServiceInterest = (string) $this->lead->service_interest;
+        $this->leadSource = (string) $this->lead->lead_source;
         $this->leadEstimatedBudget = $this->lead->estimated_budget !== null ? (string) $this->lead->estimated_budget : '';
         $this->leadDealValue = $this->lead->deal_value !== null ? (string) $this->lead->deal_value : '';
         $this->leadWinProbability = $this->lead->win_probability !== null ? (string) $this->lead->win_probability : '';
@@ -167,6 +172,20 @@ class Show extends Component
     public function isClientAdmin(): bool
     {
         return Auth::user()->isClientAdmin();
+    }
+
+    /**
+     * Gates the "Lead Source" field: it's plain descriptive metadata (e.g.
+     * "Referral", "Trade Show"), not the LeadSource relation every lead
+     * already has via source_id — asking a webhook-captured lead's viewer
+     * to fill in how it was "sourced" doesn't make sense when the system
+     * already knows exactly which channel captured it, so the field only
+     * exists on leads created through the manual-entry form.
+     */
+    #[Computed]
+    public function isManualLead(): bool
+    {
+        return $this->lead->source->type === LeadSourceType::Manual;
     }
 
     /**
@@ -390,6 +409,7 @@ class Show extends Component
 
         $validated = $this->validate([
             'leadServiceInterest' => ['nullable', 'string', 'max:255', 'regex:#^[\p{L}\p{N}][\p{L}\p{N}\s&,./()-]*$#u'],
+            'leadSource' => ['nullable', 'string', 'max:255', 'regex:#^[\p{L}\p{N}][\p{L}\p{N}\s&,./()-]*$#u'],
             'leadEstimatedBudget' => ['nullable', 'numeric', 'min:0', 'max:999999999999.99', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
             'leadDealValue' => ['nullable', 'numeric', 'min:0', 'max:999999999999.99', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
             'leadWinProbability' => ['nullable', 'integer', 'min:0', 'max:100'],
@@ -397,20 +417,31 @@ class Show extends Component
             'leadMeetingDate' => ['nullable', 'date', 'after_or_equal:today'],
         ], [
             'leadServiceInterest.regex' => __('Service interested contains characters that are not allowed.'),
+            'leadSource.regex' => __('Lead source contains characters that are not allowed.'),
             'leadEstimatedBudget.regex' => __('Enter a plain amount with up to 2 decimal places.'),
             'leadDealValue.regex' => __('Enter a plain amount with up to 2 decimal places.'),
             'leadNextFollowUpAt.after_or_equal' => __('Next follow-up date cannot be in the past.'),
             'leadMeetingDate.after_or_equal' => __('Meeting date cannot be in the past.'),
         ]);
 
-        $this->applyDetailChanges([
+        $columns = [
             'service_interest' => $validated['leadServiceInterest'] ?: null,
             'estimated_budget' => $validated['leadEstimatedBudget'] ?: null,
             'deal_value' => $validated['leadDealValue'] ?: null,
             'win_probability' => $validated['leadWinProbability'] ?: null,
             'next_follow_up_at' => $validated['leadNextFollowUpAt'] ?: null,
             'meeting_date' => $validated['leadMeetingDate'] ?: null,
-        ]);
+        ];
+
+        // Lead Source is only ever shown to (and editable by) manual-entry
+        // leads' viewers — enforced here too, not just by hiding the field,
+        // so it can't be changed via a stale/tampered submission on a lead
+        // that was never manual to begin with.
+        if ($this->isManualLead()) {
+            $columns['lead_source'] = $validated['leadSource'] ?: null;
+        }
+
+        $this->applyDetailChanges($columns);
     }
 
     /**

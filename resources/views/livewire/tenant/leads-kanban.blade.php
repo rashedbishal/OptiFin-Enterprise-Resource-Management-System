@@ -261,6 +261,7 @@
                             </div>
                             <div class="grid gap-4 sm:grid-cols-2">
                                 <flux:input wire:model="leadServiceInterest" :label="__('Service Interested')" placeholder="{{ __('e.g. Custom Web Application & SaaS') }}" class="sm:col-span-2" />
+                                <flux:input wire:model="leadSource" :label="__('Lead Source')" placeholder="{{ __('e.g. Referral, Facebook Ad, Trade Show') }}" class="sm:col-span-2" />
 
                                 <flux:input.group :label="__('Est. Budget')">
                                     <flux:input.group.prefix>{{ $this->tenantCurrency }}</flux:input.group.prefix>

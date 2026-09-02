@@ -18,6 +18,7 @@ test('a client admin can create a manual lead with full CRM details', function (
         ->set('leadIndustry', 'Technology & Digital')
         ->set('leadLocation', 'Dhaka, Bangladesh')
         ->set('leadServiceInterest', 'Custom Web Application & SaaS')
+        ->set('leadSource', 'Referral')
         ->set('leadPhone', '+8801712345678')
         ->set('leadEmail', 'rafiq@apexlogistics.com')
         ->set('leadMessage', 'Interested in a custom SaaS build.')
@@ -36,6 +37,7 @@ test('a client admin can create a manual lead with full CRM details', function (
     expect($lead->industry)->toBe('Technology & Digital');
     expect($lead->location)->toBe('Dhaka, Bangladesh');
     expect($lead->service_interest)->toBe('Custom Web Application & SaaS');
+    expect($lead->lead_source)->toBe('Referral');
     expect($lead->phone)->toBe('+8801712345678');
     expect($lead->email)->toBe('rafiq@apexlogistics.com');
     expect($lead->message)->toBe('Interested in a custom SaaS build.');

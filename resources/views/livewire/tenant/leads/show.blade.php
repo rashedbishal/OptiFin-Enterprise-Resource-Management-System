@@ -24,7 +24,7 @@
             regardless of update permission, and there's no Contact card at
             all (the header already shows name/email/phone read-only). --}}
             @include('livewire.tenant.leads.partials.company-form', ['lead' => $lead, 'editable' => false])
-            @include('livewire.tenant.leads.partials.deal-form', ['lead' => $lead, 'editable' => false])
+            @include('livewire.tenant.leads.partials.deal-form', ['lead' => $lead, 'editable' => false, 'isManual' => $this->isManualLead])
 
             @if ($this->canUpdate)
                 @include('livewire.tenant.leads.partials.status-form', ['statusOptions' => $this->statusOptions(), 'priorityOptions' => $this->priorityOptions()])

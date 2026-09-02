@@ -42,6 +42,7 @@ class CreateManualLead
                 'industry' => $data['industry'],
                 'location' => $data['location'],
                 'service_interest' => $data['service_interest'],
+                'lead_source' => $data['lead_source'] ?? null,
                 'email' => $data['email'],
                 'phone' => $data['phone'],
                 'message' => $data['message'],

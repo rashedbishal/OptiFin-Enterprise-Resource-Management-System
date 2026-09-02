@@ -46,6 +46,8 @@ class Index extends Component
 
     public string $leadServiceInterest = '';
 
+    public string $leadSource = '';
+
     public string $leadEmail = '';
 
     public string $leadPhone = '';
@@ -150,7 +152,7 @@ class Index extends Component
 
         $this->reset(
             'leadName', 'leadCompany', 'leadWebsite', 'leadIndustry', 'leadLocation', 'leadServiceInterest',
-            'leadEmail', 'leadPhone', 'leadMessage', 'leadAssigneeId',
+            'leadSource', 'leadEmail', 'leadPhone', 'leadMessage', 'leadAssigneeId',
             'leadEstimatedBudget', 'leadDealValue', 'leadWinProbability', 'leadNextFollowUpAt', 'leadMeetingDate',
         );
         $this->leadStatus = (string) Auth::user()->tenant->initialLeadStatus()?->id;
@@ -178,6 +180,7 @@ class Index extends Component
             'leadIndustry' => ['nullable', 'string', 'max:255', 'regex:#^[\p{L}][\p{L}\s&,/-]*$#u'],
             'leadLocation' => ['nullable', 'string', 'max:255', 'regex:/^[\p{L}][\p{L}\s,.-]*$/u'],
             'leadServiceInterest' => ['nullable', 'string', 'max:255', 'regex:#^[\p{L}\p{N}][\p{L}\p{N}\s&,./()-]*$#u'],
+            'leadSource' => ['nullable', 'string', 'max:255', 'regex:#^[\p{L}\p{N}][\p{L}\p{N}\s&,./()-]*$#u'],
             'leadEmail' => ['nullable', 'email', 'max:255'],
             // Digits, spaces and the punctuation real phone numbers use
             // (+880 1712-345678, +1 (555) 123-4567); the lookahead requires
@@ -200,6 +203,7 @@ class Index extends Component
             'leadIndustry.regex' => __('Industry sector contains characters that are not allowed.'),
             'leadLocation.regex' => __('Location contains characters that are not allowed.'),
             'leadServiceInterest.regex' => __('Service interested contains characters that are not allowed.'),
+            'leadSource.regex' => __('Lead source contains characters that are not allowed.'),
             'leadPhone.regex' => __('Enter a valid phone number (at least 7 digits).'),
             'leadEstimatedBudget.regex' => __('Enter a plain amount with up to 2 decimal places.'),
             'leadDealValue.regex' => __('Enter a plain amount with up to 2 decimal places.'),
@@ -230,6 +234,7 @@ class Index extends Component
             'industry' => $validated['leadIndustry'] ?: null,
             'location' => $validated['leadLocation'] ?: null,
             'service_interest' => $validated['leadServiceInterest'] ?: null,
+            'lead_source' => $validated['leadSource'] ?: null,
             'email' => $validated['leadEmail'] ?: null,
             'phone' => $validated['leadPhone'],
             'message' => $validated['leadMessage'] ?: null,

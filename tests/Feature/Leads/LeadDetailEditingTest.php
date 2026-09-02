@@ -1,8 +1,10 @@
 <?php
 
+use App\Enums\LeadSourceType;
 use App\Livewire\Tenant\Leads\Show;
 use App\Models\Lead;
 use App\Models\LeadDetailUpdateLog;
+use App\Models\LeadSource;
 use Livewire\Livewire;
 
 test('a client admin can update a lead\'s contact details', function () {
@@ -94,6 +96,44 @@ test('a meeting date in the past is rejected when editing deal details', functio
         ->assertHasErrors(['leadMeetingDate' => 'after_or_equal']);
 
     expect($lead->fresh()->meeting_date)->toBeNull();
+});
+
+test('lead source can be filled in via the sidebar on a manual-entry lead', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $manualSource = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $manualSource->id, 'lead_source' => null]);
+
+    $component = Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead]);
+    expect($component->instance()->isManualLead)->toBeTrue();
+
+    $component->set('leadSource', 'Referral')
+        ->call('updateDeal')
+        ->assertHasNoErrors();
+
+    expect($lead->fresh()->lead_source)->toBe('Referral');
+
+    $log = LeadDetailUpdateLog::where('lead_id', $lead->id)->firstOrFail();
+    expect($log->changed_fields)->toEqualCanonicalizing(['lead_source']);
+});
+
+test('lead source is not shown or editable on a non-manual lead', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'lead_source' => null]);
+    expect($lead->source->type)->not->toBe(LeadSourceType::Manual);
+
+    $component = Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead]);
+    expect($component->instance()->isManualLead)->toBeFalse();
+    $component->assertDontSee('Lead Source');
+
+    // Even a submission that tampers with the property directly (bypassing
+    // the hidden field) must not persist — the gate lives server-side in
+    // updateDeal(), not just in the view.
+    $component->set('leadSource', 'Referral')
+        ->call('updateDeal')
+        ->assertHasNoErrors();
+
+    expect($lead->fresh()->lead_source)->toBeNull();
+    expect(LeadDetailUpdateLog::where('lead_id', $lead->id)->exists())->toBeFalse();
 });
 
 test('saving with no actual changes does not create an activity log entry', function () {
