@@ -4,23 +4,29 @@
         <form wire:submit="updateDeal" class="flex flex-col gap-3">
             <flux:input wire:model="leadServiceInterest" :label="__('Service Interested')" />
 
-            <flux:input.group :label="__('Est. Budget')">
-                <flux:input.group.prefix>{{ $lead->tenant->currency }}</flux:input.group.prefix>
-                <flux:input wire:model="leadEstimatedBudget" type="number" step="0.01" min="0" placeholder="0.00" />
-            </flux:input.group>
+            {{-- Paired two-per-row instead of one long stack: cuts this
+            card's height roughly in half so it stops being the tallest card
+            in the panel by a wide margin. --}}
+            <div class="grid grid-cols-2 gap-3">
+                <flux:input.group :label="__('Est. Budget')">
+                    <flux:input.group.prefix>{{ $lead->tenant->currency }}</flux:input.group.prefix>
+                    <flux:input wire:model="leadEstimatedBudget" type="number" step="0.01" min="0" placeholder="0.00" />
+                </flux:input.group>
 
-            <flux:input.group :label="__('Deal Value')">
-                <flux:input.group.prefix>{{ $lead->tenant->currency }}</flux:input.group.prefix>
-                <flux:input wire:model="leadDealValue" type="number" step="0.01" min="0" placeholder="0.00" />
-            </flux:input.group>
+                <flux:input.group :label="__('Deal Value')">
+                    <flux:input.group.prefix>{{ $lead->tenant->currency }}</flux:input.group.prefix>
+                    <flux:input wire:model="leadDealValue" type="number" step="0.01" min="0" placeholder="0.00" />
+                </flux:input.group>
 
-            <flux:input.group :label="__('Win Probability')">
-                <flux:input wire:model="leadWinProbability" type="number" min="0" max="100" placeholder="50" />
-                <flux:input.group.suffix>%</flux:input.group.suffix>
-            </flux:input.group>
+                <flux:input.group :label="__('Win Probability')">
+                    <flux:input wire:model="leadWinProbability" type="number" min="0" max="100" placeholder="50" />
+                    <flux:input.group.suffix>%</flux:input.group.suffix>
+                </flux:input.group>
 
-            <flux:input wire:model="leadNextFollowUpAt" type="date" min="{{ now()->toDateString() }}" :label="__('Next Follow-up Date')" />
-            <flux:input wire:model="leadMeetingDate" type="date" min="{{ now()->toDateString() }}" :label="__('Meeting Date')" />
+                <flux:input wire:model="leadNextFollowUpAt" type="date" min="{{ now()->toDateString() }}" :label="__('Next Follow-up Date')" />
+
+                <flux:input wire:model="leadMeetingDate" type="date" min="{{ now()->toDateString() }}" :label="__('Meeting Date')" />
+            </div>
 
             <div>
                 <flux:button type="submit" variant="primary" size="sm">{{ __('Save') }}</flux:button>

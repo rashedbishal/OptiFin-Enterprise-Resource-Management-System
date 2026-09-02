@@ -4,8 +4,11 @@
         <form wire:submit="updateCompany" class="flex flex-col gap-3">
             <flux:input wire:model="leadCompany" :label="__('Company / Organization')" />
             <flux:input wire:model="leadWebsite" type="url" :label="__('Website URL')" />
-            <flux:input wire:model="leadIndustry" :label="__('Industry Sector')" />
-            <flux:input wire:model="leadLocation" :label="__('Location / City')" />
+
+            <div class="grid grid-cols-2 gap-3">
+                <flux:input wire:model="leadIndustry" :label="__('Industry Sector')" />
+                <flux:input wire:model="leadLocation" :label="__('Location / City')" />
+            </div>
             <div>
                 <flux:button type="submit" variant="primary" size="sm">{{ __('Save') }}</flux:button>
             </div>
