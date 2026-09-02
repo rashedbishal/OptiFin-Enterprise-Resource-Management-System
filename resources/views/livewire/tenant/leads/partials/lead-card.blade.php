@@ -1,4 +1,4 @@
-@php $draggable ??= false; $canMove ??= false; $nextStatus = $lead->status->nextInPipeline(); @endphp
+@php $draggable ??= false; $canMove ??= false; $nextStatus = $lead->nextPipelineStatus(); @endphp
 
 <div
     wire:key="lead-card-{{ $lead->id }}"
@@ -29,10 +29,10 @@
                 <flux:dropdown position="bottom" align="end">
                     <flux:button size="xs" variant="ghost" icon="ellipsis-horizontal" aria-label="{{ __('Move to…') }}" />
                     <flux:menu>
-                        @foreach (\App\Enums\LeadStatus::cases() as $statusOption)
+                        @foreach ($tenantStatuses as $statusOption)
                             <flux:menu.item
-                                wire:click="moveLead('{{ $lead->id }}', '{{ $statusOption->value }}')"
-                                :disabled="$lead->status === $statusOption"
+                                wire:click="moveLead('{{ $lead->id }}', '{{ $statusOption->id }}')"
+                                :disabled="$lead->status_id === $statusOption->id"
                             >
                                 {{ $statusOption->label() }}
                             </flux:menu.item>
@@ -74,7 +74,7 @@
                     variant="primary"
                     :color="$nextStatus->color()"
                     icon:trailing="arrow-right"
-                    wire:click.stop="moveLead('{{ $lead->id }}', '{{ $nextStatus->value }}')"
+                    wire:click.stop="moveLead('{{ $lead->id }}', '{{ $nextStatus->id }}')"
                 >
                     {{ __('Advance') }}
                 </flux:button>

@@ -8,6 +8,7 @@ use App\Livewire\Platform\Clients\Index as ClientsIndex;
 use App\Livewire\Platform\Clients\LeadSources;
 use App\Livewire\Platform\Clients\Show as ClientsShow;
 use App\Livewire\Platform\Dashboard;
+use App\Livewire\Platform\LeadStatuses\Index as LeadStatusesIndex;
 use App\Livewire\Platform\Modules\Index as ModulesIndex;
 use App\Livewire\Platform\Roles\Index as RolesIndex;
 use App\Livewire\Platform\Settings\Password as SettingsPassword;
@@ -30,6 +31,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::livewire('clients/{tenant}/lead-sources', LeadSources::class)->name('clients.lead-sources');
         Route::get('clients/{tenant}/lead-sources/{leadSource}/meta-permissions', [MetaPermissionsController::class, 'show'])->name('clients.lead-sources.meta-permissions');
         Route::livewire('modules', ModulesIndex::class)->name('modules.index');
+        Route::livewire('lead-statuses', LeadStatusesIndex::class)->name('lead-statuses.index');
         Route::livewire('settings/password', SettingsPassword::class)->name('settings.password');
     });
 });

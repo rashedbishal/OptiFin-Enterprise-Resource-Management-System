@@ -3,7 +3,6 @@
 namespace Database\Factories;
 
 use App\Enums\LeadPriority;
-use App\Enums\LeadStatus;
 use App\Models\Lead;
 use App\Models\LeadSource;
 use App\Models\Tenant;
@@ -34,7 +33,7 @@ class LeadFactory extends Factory
             'email' => fake()->safeEmail(),
             'phone' => fake()->phoneNumber(),
             'message' => fake()->sentence(),
-            'status' => LeadStatus::New,
+            'status_id' => fn (array $attributes) => Tenant::whereKey($attributes['tenant_id'])->first()?->initialLeadStatus()?->id,
             'priority' => LeadPriority::Medium,
         ];
     }

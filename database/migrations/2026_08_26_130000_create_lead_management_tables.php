@@ -4,7 +4,6 @@ use App\Enums\AutoDistributionMethod;
 use App\Enums\LeadDistributionMode;
 use App\Enums\LeadPriority;
 use App\Enums\LeadSourceType;
-use App\Enums\LeadStatus;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -48,7 +47,7 @@ return new class extends Migration
             $table->string('phone')->nullable();
             $table->text('message')->nullable();
             $table->json('source_data')->nullable();
-            $table->enum('status', array_column(LeadStatus::cases(), 'value'))->default(LeadStatus::New->value);
+            $table->enum('status', ['new', 'contacted', 'qualified', 'proposal_sent', 'negotiation', 'won', 'lost', 'unqualified'])->default('new');
             $table->enum('priority', array_column(LeadPriority::cases(), 'value'))->default(LeadPriority::Medium->value);
             $table->text('notes')->nullable();
             $table->timestamp('assigned_at')->nullable();
@@ -72,8 +71,8 @@ return new class extends Migration
             $table->id();
             $table->foreignUlid('lead_id')->constrained('leads')->cascadeOnDelete();
             $table->foreignUlid('changed_by')->nullable()->constrained('tenant_users')->nullOnDelete();
-            $table->enum('old_status', array_column(LeadStatus::cases(), 'value'))->nullable();
-            $table->enum('new_status', array_column(LeadStatus::cases(), 'value'));
+            $table->enum('old_status', ['new', 'contacted', 'qualified', 'proposal_sent', 'negotiation', 'won', 'lost', 'unqualified'])->nullable();
+            $table->enum('new_status', ['new', 'contacted', 'qualified', 'proposal_sent', 'negotiation', 'won', 'lost', 'unqualified']);
             $table->text('note')->nullable();
             $table->timestamps();
         });

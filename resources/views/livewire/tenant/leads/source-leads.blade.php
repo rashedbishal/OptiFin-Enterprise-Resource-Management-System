@@ -60,7 +60,7 @@
                             <flux:table.cell>{{ $fieldValues[$column] ?? '—' }}</flux:table.cell>
                         @endforeach
                         <flux:table.cell>{{ $lead->source_data['form_name'] ?? '—' }}</flux:table.cell>
-                        <flux:table.cell><flux:badge size="sm">{{ ucfirst(str_replace('_', ' ', $lead->status->value)) }}</flux:badge></flux:table.cell>
+                        <flux:table.cell><flux:badge size="sm" :color="$lead->status->color()">{{ $lead->status->label() }}</flux:badge></flux:table.cell>
                         <flux:table.cell>{{ $lead->created_at?->diffForHumans() }}</flux:table.cell>
                         <flux:table.cell>
                             <div class="flex justify-end">

@@ -3,7 +3,7 @@
     <form wire:submit="updateStatus" class="flex flex-col gap-3">
         <flux:select wire:model="status" :label="__('Status')">
             @foreach ($statusOptions as $option)
-                <flux:select.option value="{{ $option }}">{{ ucfirst(str_replace('_', ' ', $option)) }}</flux:select.option>
+                <flux:select.option value="{{ $option->id }}">{{ $option->label() }}</flux:select.option>
             @endforeach
         </flux:select>
         <flux:select wire:model="priority" :label="__('Priority')">

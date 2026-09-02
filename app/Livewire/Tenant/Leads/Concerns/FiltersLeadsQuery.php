@@ -3,8 +3,8 @@
 namespace App\Livewire\Tenant\Leads\Concerns;
 
 use App\Enums\LeadPriority;
-use App\Enums\LeadStatus;
 use App\Models\Lead;
+use App\Models\LeadStatus;
 use App\Models\TenantUser;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
@@ -47,11 +47,11 @@ trait FiltersLeadsQuery
     }
 
     /**
-     * @return array<int, string>
+     * @return array<int, LeadStatus>
      */
     public function statusOptions(): array
     {
-        return LeadStatus::values();
+        return Auth::user()->tenant->leadStatuses->all();
     }
 
     /**
@@ -82,7 +82,7 @@ trait FiltersLeadsQuery
     private function applyDropdownFilters(Builder $query): Builder
     {
         if ($this->status !== '') {
-            $query->byStatus(LeadStatus::from($this->status));
+            $query->byStatus($this->status);
         }
 
         if ($this->priority !== '') {

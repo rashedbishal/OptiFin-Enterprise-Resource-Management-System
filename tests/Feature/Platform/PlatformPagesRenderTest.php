@@ -3,6 +3,7 @@
 use App\Actions\Platform\AssignModuleToTenant;
 use App\Enums\ModuleScope;
 use App\Livewire\Platform\Clients\Show;
+use App\Livewire\Platform\Modules\Index as ModulesIndex;
 use App\Models\Module;
 use App\Models\PlatformUser;
 use App\Models\Tenant;
@@ -20,6 +21,7 @@ test('mother admin can view the platform pages', function (string $route) {
     'admin.roles.index',
     'admin.clients.index',
     'admin.modules.index',
+    'admin.lead-statuses.index',
     'admin.settings.password',
 ]);
 
@@ -58,6 +60,23 @@ test('only an assigned module\'s configure button is enabled', function () {
 
     $component = Livewire::actingAs($motherAdmin, 'platform')->test(Show::class, ['tenant' => $tenant]);
     expect($component->instance()->isModuleAssigned($module))->toBeTrue();
+});
+
+test('the modules index shows a Configuration button only for the Lead Management row', function () {
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+    Module::factory()->create(['name' => 'Unrelated Module', 'slug' => 'unrelated-module']);
+
+    $component = Livewire::actingAs($motherAdmin, 'platform')->test(ModulesIndex::class);
+    $component->assertDontSeeHtml(route('admin.lead-statuses.index'));
+
+    Module::firstOrCreate(
+        ['slug' => 'lead-management'],
+        ['name' => 'Lead Management', 'scope' => ModuleScope::Tenant, 'sort_order' => 0],
+    );
+
+    Livewire::actingAs($motherAdmin, 'platform')
+        ->test(ModulesIndex::class)
+        ->assertSeeHtml(route('admin.lead-statuses.index'));
 });
 
 test('a module without a configuration page yet has no config url', function () {

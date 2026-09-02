@@ -89,6 +89,31 @@ class Tenant extends Model
     }
 
     /**
+     * This tenant's configured lead pipeline, in order — the Platform
+     * Admin selects the subset of the global LeadStatus catalog and its
+     * order on the client's Lead Sources config page.
+     *
+     * @return BelongsToMany<LeadStatus, $this>
+     */
+    public function leadStatuses(): BelongsToMany
+    {
+        return $this->belongsToMany(LeadStatus::class, 'tenant_lead_statuses')
+            ->withPivot('position')
+            ->withTimestamps()
+            ->orderByPivot('position');
+    }
+
+    /**
+     * The pipeline's first stage — every newly captured lead (webhook,
+     * email, manual entry) starts here, replacing the old hardcoded
+     * LeadStatus::New default.
+     */
+    public function initialLeadStatus(): ?LeadStatus
+    {
+        return $this->leadStatuses()->orderByPivot('position')->first();
+    }
+
+    /**
      * The tenant's protected, non-deletable owner role.
      */
     public function ownerRole(): ?Role

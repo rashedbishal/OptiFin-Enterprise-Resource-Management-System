@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\LeadAttachmentStatus;
 use App\Enums\LeadSourceType;
-use App\Enums\LeadStatus;
 use App\Enums\TenantStatus;
 use App\Events\LeadReceived;
 use App\Events\LeadUpdated;
@@ -326,7 +325,7 @@ class LeadWebhookController extends Controller
         $lead = Lead::create(array_merge([
             'tenant_id' => $source->tenant_id,
             'source_id' => $source->id,
-            'status' => LeadStatus::New,
+            'status_id' => $source->tenant->initialLeadStatus()?->id,
         ], $attributes));
 
         $source->update(['last_synced_at' => now()]);

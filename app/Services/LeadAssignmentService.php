@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Enums\AutoDistributionMethod;
 use App\Enums\LeadDistributionMode;
-use App\Enums\LeadStatus;
 use App\Enums\TenantUserType;
 use App\Events\LeadAssigned;
 use App\Models\Lead;
@@ -75,7 +74,7 @@ class LeadAssignmentService
     {
         return $this->eligibleUsers($tenant)
             ->withCount(['assignedLeads' => function (Builder $query): void {
-                $query->whereNotIn('status', [LeadStatus::Won, LeadStatus::Lost]);
+                $query->whereHas('status', fn (Builder $q) => $q->where('is_closed', false));
             }])
             ->orderBy('assigned_leads_count')
             ->orderByRaw('last_assigned_at IS NOT NULL')

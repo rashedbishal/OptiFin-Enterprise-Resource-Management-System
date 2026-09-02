@@ -18,6 +18,39 @@
             </div>
         </div>
 
+        <flux:card class="flex flex-col gap-4">
+            <div>
+                <flux:heading size="lg">{{ __('Lead Pipeline') }}</flux:heading>
+                <flux:text variant="subtle">{{ __('Click a status to add it to this client\'s pipeline — the click order becomes its position. Click a selected status again to remove it.') }}</flux:text>
+            </div>
+
+            <div class="flex flex-wrap gap-2">
+                @foreach ($this->allLeadStatuses as $status)
+                    @php $position = $this->selectedLeadStatuses->search(fn ($selected) => $selected->id === $status->id); @endphp
+                    <flux:button
+                        size="sm"
+                        :variant="$position === false ? 'ghost' : 'primary'"
+                        :color="$position === false ? null : $status->color"
+                        wire:click="toggleLeadStatus('{{ $status->id }}')"
+                    >
+                        @if ($position !== false)
+                            <span class="mr-1 font-semibold">{{ $position + 1 }}.</span>
+                        @endif
+                        {{ $status->name }}
+                    </flux:button>
+                @endforeach
+            </div>
+
+            @if ($this->selectedLeadStatuses->isNotEmpty())
+                <div class="flex flex-col gap-1">
+                    <flux:text size="sm" variant="strong">{{ __('Resulting pipeline order') }}</flux:text>
+                    <flux:text size="sm" variant="subtle">
+                        {{ $this->selectedLeadStatuses->map(fn ($status) => $status->name)->implode(' → ') }}
+                    </flux:text>
+                </div>
+            @endif
+        </flux:card>
+
         <flux:table>
             <flux:table.columns>
                 <flux:table.column>{{ __('Name') }}</flux:table.column>

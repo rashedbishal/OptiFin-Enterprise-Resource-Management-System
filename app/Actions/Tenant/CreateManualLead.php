@@ -45,7 +45,7 @@ class CreateManualLead
                 'email' => $data['email'],
                 'phone' => $data['phone'],
                 'message' => $data['message'],
-                'status' => $data['status'],
+                'status_id' => $data['status_id'],
                 'priority' => $data['priority'],
                 'estimated_budget' => $data['estimated_budget'],
                 'deal_value' => $data['deal_value'],

@@ -3,7 +3,6 @@
 namespace App\Jobs;
 
 use App\Enums\LeadAttachmentStatus;
-use App\Enums\LeadStatus;
 use App\Events\LeadReceived;
 use App\Models\Lead;
 use App\Models\LeadSource;
@@ -120,7 +119,7 @@ class ProcessEmailLeadSource implements ShouldQueue
             'message' => trim($body['message']),
             'html_body' => $body['html'],
             'source_data' => ['subject' => $header->subject ?? null],
-            'status' => LeadStatus::New,
+            'status_id' => $this->source->tenant->initialLeadStatus()?->id,
         ]);
 
         event(new LeadReceived($lead));

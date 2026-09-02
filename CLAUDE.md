@@ -27,7 +27,7 @@ php artisan leads:fetch-emails           # poll IMAP lead sources, create Lead +
 php artisan leads:cleanup-attachments    # delete orphaned lead attachment files
 ```
 
-No `README.md` exists in this repo.
+See `README.md` for the Facebook Lead Ads (Instant Forms) webhook testing/troubleshooting workflow — it's the only other doc in the repo and isn't duplicated here.
 
 ## Architecture
 
@@ -43,6 +43,7 @@ No `README.md` exists in this repo.
 - `routes/admin.php` — platform area, prefixed `/admin`, guard `platform`.
 - `routes/api.php` — public webhook intake for lead capture (Facebook Messenger, WhatsApp, Instagram, website form), keyed by `{tenant_code}` (not a slug column) and protected by `VerifyMetaWebhookSignature`.
 - `routes/channels.php` — Reverb broadcast auth channels (`tenant.{tenantId}`, `lead.{lead}`).
+- `App\Events\LeadReceived` (new lead — also drives auto-assignment and the "new lead" notification, so it must fire exactly once, on creation) vs `App\Events\LeadUpdated` (broadcast-only, for follow-up changes to an existing lead) are deliberately separate events despite both broadcasting to the same channels — don't collapse them.
 
 ### Livewire conventions (see `.ai/rules/livewire.md`, `.ai/rules/views-livewire.md`)
 - A class-based full-page component named `Index` inside a subfolder resolves its view with the trailing `index` segment stripped: `App\Livewire\Tenant\Users\Index` → `resources/views/livewire/tenant/users.blade.php`, **not** `tenant/users/index.blade.php`. Non-`Index` class names keep their full path.

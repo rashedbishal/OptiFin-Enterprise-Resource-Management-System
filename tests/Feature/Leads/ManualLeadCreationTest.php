@@ -1,7 +1,6 @@
 <?php
 
 use App\Enums\LeadSourceType;
-use App\Enums\LeadStatus;
 use App\Livewire\Tenant\Leads\Index;
 use App\Models\Lead;
 use App\Models\LeadSource;
@@ -43,7 +42,7 @@ test('a client admin can create a manual lead with full CRM details', function (
     expect((float) $lead->deal_value)->toBe(250000.0);
     expect($lead->win_probability)->toBe(50);
     expect($lead->next_follow_up_at->toDateString())->toBe(now()->addDays(3)->toDateString());
-    expect($lead->status)->toBe(LeadStatus::New);
+    expect($lead->status_id)->toBe(leadStatus('new')->id);
     expect($lead->assigned_to)->toBeNull();
     expect($lead->source->type)->toBe(LeadSourceType::Manual);
     expect($lead->source->name)->toBe('Manual Entry');

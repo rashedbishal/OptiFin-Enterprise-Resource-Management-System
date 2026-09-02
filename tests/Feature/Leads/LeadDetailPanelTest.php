@@ -1,6 +1,5 @@
 <?php
 
-use App\Enums\LeadStatus;
 use App\Livewire\Tenant\Leads\Show;
 use App\Models\Lead;
 use Livewire\Livewire;
@@ -22,15 +21,15 @@ test('the panel view renders the same core sections as the full lead page', func
 
 test('updating status from the panel notifies the board instead of redirecting', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
-    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status' => LeadStatus::New]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id]);
 
     Livewire::actingAs($clientAdmin)
         ->test(Show::class, ['lead' => $lead, 'panel' => true])
-        ->set('status', LeadStatus::Contacted->value)
+        ->set('status', leadStatus('contacted')->id)
         ->call('updateStatus')
         ->assertDispatched('lead-panel-updated');
 
-    expect($lead->fresh()->status)->toBe(LeadStatus::Contacted);
+    expect($lead->fresh()->status_id)->toBe(leadStatus('contacted')->id);
 });
 
 test('deleting from the panel dispatches an event instead of redirecting', function () {

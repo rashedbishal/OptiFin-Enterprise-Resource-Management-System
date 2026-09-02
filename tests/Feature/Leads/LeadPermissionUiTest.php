@@ -1,6 +1,5 @@
 <?php
 
-use App\Enums\LeadStatus;
 use App\Livewire\Tenant\Leads\Index;
 use App\Livewire\Tenant\Leads\Show;
 use App\Models\Lead;
@@ -9,16 +8,16 @@ use Livewire\Livewire;
 test('a sales rep without update permission cannot change a lead status and gets a friendly message', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
     $rep = clientUserWithLeadPermission($tenant, ['view']);
-    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status' => LeadStatus::New, 'assigned_to' => $rep->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id, 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
         ->test(Show::class, ['lead' => $lead])
-        ->set('status', LeadStatus::Contacted->value)
+        ->set('status', leadStatus('contacted')->id)
         ->call('updateStatus')
         ->assertOk()
         ->assertDispatched('toast-show');
 
-    expect($lead->fresh()->status)->toBe(LeadStatus::New);
+    expect($lead->fresh()->status_id)->toBe(leadStatus('new')->id);
 });
 
 test('the status/note forms are hidden from a viewer without update permission', function () {

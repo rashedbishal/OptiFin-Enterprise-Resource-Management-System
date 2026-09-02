@@ -2,8 +2,8 @@
 
 namespace App\Events;
 
-use App\Enums\LeadStatus;
 use App\Models\Lead;
+use App\Models\LeadStatus;
 use App\Models\TenantUser;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;

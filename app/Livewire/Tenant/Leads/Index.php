@@ -5,12 +5,12 @@ namespace App\Livewire\Tenant\Leads;
 use App\Actions\Tenant\CreateManualLead;
 use App\Enums\LeadPriority;
 use App\Enums\LeadSourceType;
-use App\Enums\LeadStatus;
 use App\Events\LeadStatusChanged;
 use App\Events\LeadUpdated;
 use App\Livewire\Tenant\Leads\Concerns\FiltersLeadsQuery;
 use App\Models\Lead;
 use App\Models\LeadSource;
+use App\Models\LeadStatus;
 use App\Models\LeadStatusLog;
 use App\Models\TenantUser;
 use Flux\Flux;
@@ -149,7 +149,7 @@ class Index extends Component
             'leadEmail', 'leadPhone', 'leadMessage', 'leadAssigneeId',
             'leadEstimatedBudget', 'leadDealValue', 'leadWinProbability', 'leadNextFollowUpAt',
         );
-        $this->leadStatus = LeadStatus::New->value;
+        $this->leadStatus = (string) Auth::user()->tenant->initialLeadStatus()?->id;
         $this->leadPriority = LeadPriority::Medium->value;
         $this->showCreateLeadModal = true;
     }
@@ -161,6 +161,8 @@ class Index extends Component
 
             return;
         }
+
+        $tenant = Auth::user()->tenant;
 
         $validated = $this->validate([
             // Letters (incl. accented/Unicode), spaces, apostrophes, periods
@@ -178,7 +180,7 @@ class Index extends Component
             // at least 7 digits so "(--)  --" can't slip through.
             'leadPhone' => ['required', 'regex:/^(?=(?:\D*\d){7,})[0-9+\-\s()]{7,20}$/'],
             'leadMessage' => ['nullable', 'string', 'max:2000'],
-            'leadStatus' => ['required', Rule::enum(LeadStatus::class)],
+            'leadStatus' => ['required', Rule::exists('tenant_lead_statuses', 'lead_status_id')->where('tenant_id', $tenant->id)],
             'leadPriority' => ['required', Rule::enum(LeadPriority::class)],
             'leadAssigneeId' => ['nullable', 'string'],
             // Plain decimal amounts only (no scientific notation, no thousands separators).
@@ -200,7 +202,6 @@ class Index extends Component
         ]);
 
         $user = Auth::user();
-        $tenant = $user->tenant;
 
         $assignee = null;
 
@@ -226,7 +227,7 @@ class Index extends Component
             'email' => $validated['leadEmail'] ?: null,
             'phone' => $validated['leadPhone'],
             'message' => $validated['leadMessage'] ?: null,
-            'status' => LeadStatus::from($validated['leadStatus']),
+            'status_id' => $validated['leadStatus'],
             'priority' => LeadPriority::from($validated['leadPriority']),
             'estimated_budget' => $validated['leadEstimatedBudget'] ?: null,
             'deal_value' => $validated['leadDealValue'] ?: null,
@@ -268,7 +269,7 @@ class Index extends Component
     public function leads()
     {
         return $this->applyDropdownFilters($this->applyAssignmentScope($this->filteredQuery()))
-            ->with(['source', 'assignedUser'])
+            ->with(['source', 'assignedUser', 'status'])
             ->latest()
             ->paginate(25);
     }
@@ -286,7 +287,7 @@ class Index extends Component
     public function boardLeads()
     {
         $leads = $this->applyDropdownFilters($this->applyAssignmentScope($this->filteredQuery()))
-            ->with(['source', 'assignedUser'])
+            ->with(['source', 'assignedUser', 'status'])
             ->latest()
             ->limit(self::BOARD_LEAD_LIMIT)
             ->get();
@@ -295,7 +296,20 @@ class Index extends Component
         // the values are per-status collections of leads rather than leads
         // themselves, which doesn't fit Eloquent Collection's Model-typed
         // generic.
-        return collect($leads)->groupBy(fn (Lead $lead): string => $lead->status->value);
+        return collect($leads)->groupBy(fn (Lead $lead): string => $lead->status_id);
+    }
+
+    /**
+     * This tenant's configured pipeline, in order — drives the Kanban
+     * board's columns/mobile groups and the "Move to…" menu, replacing the
+     * old fixed `LeadStatus::cases()`.
+     *
+     * @return Collection<int, LeadStatus>
+     */
+    #[Computed]
+    public function tenantLeadStatuses()
+    {
+        return Auth::user()->tenant->leadStatuses;
     }
 
     /**
@@ -307,7 +321,10 @@ class Index extends Component
     #[Computed]
     public function boardLeadCounts(): array
     {
-        return Lead::countsByStatus($this->applyDropdownFilters($this->applyAssignmentScope($this->filteredQuery())));
+        return Lead::countsByStatus(
+            $this->applyDropdownFilters($this->applyAssignmentScope($this->filteredQuery())),
+            $this->tenantLeadStatuses,
+        );
     }
 
     public function refreshBoard(): void
@@ -358,7 +375,7 @@ class Index extends Component
         }
 
         return Lead::where('tenant_id', Auth::user()->tenant_id)
-            ->with(['source', 'assignedUser'])
+            ->with(['source', 'assignedUser', 'status'])
             ->find($this->selectedLeadId);
     }
 
@@ -382,12 +399,6 @@ class Index extends Component
      */
     public function moveLead(string $leadId, string $status): void
     {
-        $newStatus = LeadStatus::tryFrom($status);
-
-        if ($newStatus === null) {
-            return;
-        }
-
         $lead = Lead::where('tenant_id', Auth::user()->tenant_id)->find($leadId);
 
         if (! $lead || Gate::denies('update', $lead)) {
@@ -397,26 +408,32 @@ class Index extends Component
             return;
         }
 
+        $newStatus = $lead->tenant->leadStatuses->firstWhere('id', $status);
+
+        if ($newStatus === null) {
+            return;
+        }
+
         $oldStatus = $lead->status;
 
-        if ($oldStatus === $newStatus) {
+        if ($oldStatus->id === $newStatus->id) {
             return;
         }
 
         LeadStatusLog::create([
             'lead_id' => $lead->id,
             'changed_by' => Auth::id(),
-            'old_status' => $oldStatus,
-            'new_status' => $newStatus,
+            'old_status_id' => $oldStatus->id,
+            'new_status_id' => $newStatus->id,
         ]);
 
-        $updates = ['status' => $newStatus];
+        $updates = ['status_id' => $newStatus->id];
 
-        if ($oldStatus === LeadStatus::New) {
+        if ($oldStatus->id === $lead->tenant->initialLeadStatus()?->id) {
             $updates['first_contacted_at'] = $lead->first_contacted_at ?? now();
         }
 
-        if (in_array($newStatus, [LeadStatus::Won, LeadStatus::Lost], true)) {
+        if ($newStatus->is_closed) {
             $updates['closed_at'] = now();
         }
 
@@ -522,7 +539,7 @@ class Index extends Component
         Gate::authorize('viewAny', Lead::class);
 
         $leads = $this->applyDropdownFilters($this->applyAssignmentScope($this->filteredQuery()))
-            ->with(['source', 'assignedUser'])
+            ->with(['source', 'assignedUser', 'status'])
             ->get();
 
         return response()->streamDownload(function () use ($leads): void {
@@ -540,7 +557,7 @@ class Index extends Component
                     $lead->email,
                     $lead->phone,
                     $lead->source->type->label(),
-                    $lead->status->value,
+                    $lead->status->name,
                     $lead->priority->value,
                     $lead->assignedUser->name ?? 'Unassigned',
                     $lead->created_at?->toDateTimeString(),

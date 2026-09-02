@@ -3,12 +3,12 @@
 namespace App\Livewire\Tenant\Leads;
 
 use App\Enums\LeadPriority;
-use App\Enums\LeadStatus;
 use App\Events\LeadStatusChanged;
 use App\Events\LeadUpdated;
 use App\Models\Lead;
 use App\Models\LeadAttachment;
 use App\Models\LeadNote;
+use App\Models\LeadStatus;
 use App\Models\LeadStatusLog;
 use App\Models\TenantUser;
 use App\Services\LeadAssignmentService;
@@ -50,7 +50,7 @@ class Show extends Component
         Gate::authorize('view', $lead);
 
         $this->lead = $lead;
-        $this->status = $lead->status->value;
+        $this->status = $lead->status_id;
         $this->priority = $lead->priority->value;
         $this->assigneeId = $lead->assigned_to;
     }
@@ -79,7 +79,7 @@ class Show extends Component
     public function refreshLead(): void
     {
         $this->lead->refresh();
-        $this->status = $this->lead->status->value;
+        $this->status = $this->lead->status_id;
         $this->priority = $this->lead->priority->value;
         $this->assigneeId = $this->lead->assigned_to;
         unset($this->activity, $this->timeline);
@@ -156,13 +156,13 @@ class Show extends Component
     {
         $events = [];
 
-        foreach ($this->lead->statusLogs()->with('changedBy')->get() as $log) {
+        foreach ($this->lead->statusLogs()->with(['changedBy', 'oldStatus', 'newStatus'])->get() as $log) {
             $events[] = [
                 'type' => 'status_change',
                 'created_at' => $log->created_at,
                 'user' => $log->changedBy?->name,
-                'old_status' => $log->old_status?->value,
-                'new_status' => $log->new_status->value,
+                'old_status' => $log->oldStatus?->name,
+                'new_status' => $log->newStatus->name,
                 'note' => $log->note,
             ];
         }
@@ -199,27 +199,27 @@ class Show extends Component
             return;
         }
 
-        $newStatus = LeadStatus::from($this->status);
+        $newStatus = LeadStatus::findOrFail($this->status);
         $oldStatus = $this->lead->status;
 
-        if ($oldStatus === $newStatus) {
+        if ($oldStatus->id === $newStatus->id) {
             return;
         }
 
         LeadStatusLog::create([
             'lead_id' => $this->lead->id,
             'changed_by' => Auth::id(),
-            'old_status' => $oldStatus,
-            'new_status' => $newStatus,
+            'old_status_id' => $oldStatus->id,
+            'new_status_id' => $newStatus->id,
         ]);
 
-        $updates = ['status' => $newStatus, 'priority' => LeadPriority::from($this->priority)];
+        $updates = ['status_id' => $newStatus->id, 'priority' => LeadPriority::from($this->priority)];
 
-        if ($oldStatus === LeadStatus::New) {
+        if ($oldStatus->id === $this->lead->tenant->initialLeadStatus()?->id) {
             $updates['first_contacted_at'] = $this->lead->first_contacted_at ?? now();
         }
 
-        if (in_array($newStatus, [LeadStatus::Won, LeadStatus::Lost], true)) {
+        if ($newStatus->is_closed) {
             $updates['closed_at'] = now();
         }
 
@@ -307,9 +307,12 @@ class Show extends Component
         $this->redirect(route('tenant-leads.index'), navigate: true);
     }
 
+    /**
+     * @return array<int, LeadStatus>
+     */
     public function statusOptions(): array
     {
-        return LeadStatus::values();
+        return $this->lead->tenant->leadStatuses->all();
     }
 
     public function priorityOptions(): array

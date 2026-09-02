@@ -60,7 +60,7 @@ class FacebookLeadAdsExport implements FromCollection, WithHeadings, WithMapping
             ...array_map(fn (string $column): ?string => $fieldValues[$column] ?? null, $this->fieldColumns),
             ...[
                 $lead->source_data['form_name'] ?? null,
-                ucfirst(str_replace('_', ' ', $lead->status->value)),
+                $lead->status->label(),
                 $lead->created_at?->toDateTimeString(),
             ],
         ];

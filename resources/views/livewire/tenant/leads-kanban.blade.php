@@ -109,18 +109,18 @@
                 }"
                 x-on:dragover.prevent="autoScrollWhileDragging($event)"
             >
-                @foreach (\App\Enums\LeadStatus::cases() as $statusCase)
+                @foreach ($this->tenantLeadStatuses as $statusCase)
                     @php
-                        $columnLeads = $this->boardLeads->get($statusCase->value, collect());
-                        $totalCount = collect($this->boardLeadCounts)->firstWhere('status', $statusCase->value)['count'] ?? 0;
+                        $columnLeads = $this->boardLeads->get($statusCase->id, collect());
+                        $totalCount = collect($this->boardLeadCounts)->firstWhere('status', $statusCase->id)['count'] ?? 0;
                     @endphp
                     <div
-                        wire:key="column-{{ $statusCase->value }}"
+                        wire:key="column-{{ $statusCase->id }}"
                         x-data="{ dragDepth: 0 }"
                         x-on:dragover.prevent
                         x-on:dragenter.prevent="dragDepth++"
                         x-on:dragleave="dragDepth = Math.max(0, dragDepth - 1)"
-                        x-on:drop="dragDepth = 0; $wire.moveLead($event.dataTransfer.getData('text/plain'), '{{ $statusCase->value }}')"
+                        x-on:drop="dragDepth = 0; $wire.moveLead($event.dataTransfer.getData('text/plain'), '{{ $statusCase->id }}')"
                         {{--
                             dragenter/dragleave fire on every child element boundary
                             too (not just the column's own edge), so a plain toggle
@@ -139,7 +139,7 @@
 
                         <div class="flex flex-1 flex-col gap-2 px-3 pb-3">
                             @forelse ($columnLeads as $lead)
-                                @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'tenantCurrency' => $this->tenantCurrency, 'draggable' => true, 'canMove' => $this->canUpdateLeads])
+                                @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'tenantCurrency' => $this->tenantCurrency, 'draggable' => true, 'canMove' => $this->canUpdateLeads, 'tenantStatuses' => $this->tenantLeadStatuses])
                             @empty
                                 <div class="rounded-md border border-dashed border-zinc-200 py-6 text-center dark:border-zinc-700">
                                     <flux:text size="sm" variant="subtle">{{ __('No leads') }}</flux:text>
@@ -159,17 +159,17 @@
             {{-- Mobile: status-grouped vertical list, no drag-and-drop — each
             card's "…" menu is the way to move it between statuses. --}}
             <div class="flex flex-col gap-6 lg:hidden">
-                @foreach (\App\Enums\LeadStatus::cases() as $statusCase)
-                    @php $columnLeads = $this->boardLeads->get($statusCase->value, collect()); @endphp
+                @foreach ($this->tenantLeadStatuses as $statusCase)
+                    @php $columnLeads = $this->boardLeads->get($statusCase->id, collect()); @endphp
                     @if ($columnLeads->isNotEmpty())
-                        <div wire:key="mobile-group-{{ $statusCase->value }}" class="flex flex-col gap-2">
+                        <div wire:key="mobile-group-{{ $statusCase->id }}" class="flex flex-col gap-2">
                             <div class="flex items-center gap-2 px-1">
                                 <flux:text variant="strong" size="sm">{{ $statusCase->label() }}</flux:text>
                                 <flux:badge size="sm" :color="$statusCase->color()">{{ $columnLeads->count() }}</flux:badge>
                             </div>
                             <div class="flex flex-col gap-2">
                                 @foreach ($columnLeads as $lead)
-                                    @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'tenantCurrency' => $this->tenantCurrency, 'draggable' => false, 'canMove' => $this->canUpdateLeads])
+                                    @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'tenantCurrency' => $this->tenantCurrency, 'draggable' => false, 'canMove' => $this->canUpdateLeads, 'tenantStatuses' => $this->tenantLeadStatuses])
                                 @endforeach
                             </div>
                         </div>
@@ -259,7 +259,7 @@
                             <div class="grid gap-4 sm:grid-cols-2">
                                 <flux:select wire:model="leadStatus" :label="__('Pipeline Stage')">
                                     @foreach ($this->statusOptions() as $option)
-                                        <flux:select.option value="{{ $option }}">{{ ucfirst(str_replace('_', ' ', $option)) }}</flux:select.option>
+                                        <flux:select.option value="{{ $option->id }}">{{ $option->label() }}</flux:select.option>
                                     @endforeach
                                 </flux:select>
                                 <flux:select wire:model="leadPriority" :label="__('Priority')">

@@ -5,7 +5,6 @@ namespace App\Models;
 use App\Concerns\BelongsToTenant;
 use App\Enums\LeadPriority;
 use App\Enums\LeadSourceType;
-use App\Enums\LeadStatus;
 use Carbon\CarbonInterface;
 use Database\Factories\LeadFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -17,12 +16,14 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 
 /**
  * @property string $id
  * @property string $tenant_id
  * @property string $source_id
  * @property string|null $assigned_to
+ * @property string $status_id
  * @property string $name
  * @property string|null $company
  * @property string|null $website
@@ -34,7 +35,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $message
  * @property string|null $html_body
  * @property array<string, mixed>|null $source_data
- * @property LeadStatus $status
+ * @property-read LeadStatus $status
  * @property LeadPriority $priority
  * @property string|null $notes
  * @property string|null $estimated_budget
@@ -50,7 +51,7 @@ use Illuminate\Support\Carbon;
  */
 #[Fillable([
     'tenant_id', 'source_id', 'assigned_to', 'name', 'company', 'website', 'industry', 'location',
-    'service_interest', 'email', 'phone', 'message', 'html_body', 'source_data', 'status', 'priority',
+    'service_interest', 'email', 'phone', 'message', 'html_body', 'source_data', 'status_id', 'priority',
     'notes', 'estimated_budget', 'deal_value', 'win_probability', 'next_follow_up_at',
     'assigned_at', 'first_contacted_at', 'closed_at',
 ])]
@@ -66,7 +67,6 @@ class Lead extends Model
     {
         return [
             'source_data' => 'array',
-            'status' => LeadStatus::class,
             'priority' => LeadPriority::class,
             'estimated_budget' => 'decimal:2',
             'deal_value' => 'decimal:2',
@@ -201,6 +201,39 @@ class Lead extends Model
         return $this->belongsTo(LeadSource::class, 'source_id');
     }
 
+    /**
+     * @return BelongsTo<LeadStatus, $this>
+     */
+    public function status(): BelongsTo
+    {
+        return $this->belongsTo(LeadStatus::class, 'status_id');
+    }
+
+    /**
+     * The next stage in this lead's tenant's configured pipeline, for the
+     * Kanban board's one-click "advance" action — replaces the old fixed
+     * enum's nextInPipeline(), since "next" now depends on a specific
+     * tenant's chosen order rather than a single hardcoded sequence. A
+     * status the admin marked closed (e.g. Won/Lost) has none, even if it
+     * isn't last in the tenant's list — reached by a deliberate choice, not
+     * a "next" step.
+     */
+    public function nextPipelineStatus(): ?LeadStatus
+    {
+        if ($this->status->is_closed) {
+            return null;
+        }
+
+        $pipeline = $this->tenant->leadStatuses;
+        $currentIndex = $pipeline->search(fn (LeadStatus $status): bool => $status->id === $this->status_id);
+
+        if ($currentIndex === false) {
+            return null;
+        }
+
+        return $pipeline->get($currentIndex + 1);
+    }
+
     public function assignedUser(): BelongsTo
     {
         return $this->belongsTo(TenantUser::class, 'assigned_to');
@@ -243,9 +276,9 @@ class Lead extends Model
      * @param  Builder<static>  $query
      */
     #[Scope]
-    protected function byStatus(Builder $query, LeadStatus $status): void
+    protected function byStatus(Builder $query, string $statusId): void
     {
-        $query->where('status', $status);
+        $query->where('status_id', $statusId);
     }
 
     /**
@@ -258,21 +291,25 @@ class Lead extends Model
     }
 
     /**
-     * Get lead counts grouped by status, zero-filled for statuses with no leads.
+     * Get lead counts grouped by status, zero-filled for statuses with no
+     * leads. `$tenantStatuses` is the tenant's configured pipeline (see
+     * Tenant::leadStatuses()) — counts are only ever zero-filled for
+     * statuses actually in that tenant's pipeline, not the whole catalog.
      *
      * @param  Builder<Lead>  $query
+     * @param  Collection<int, LeadStatus>  $tenantStatuses
      * @return array<int, array{status: string, count: int}>
      */
-    public static function countsByStatus(Builder $query): array
+    public static function countsByStatus(Builder $query, Collection $tenantStatuses): array
     {
         $counts = $query
-            ->selectRaw('status, count(*) as count')
-            ->groupBy('status')
-            ->pluck('count', 'status');
+            ->selectRaw('status_id, count(*) as count')
+            ->groupBy('status_id')
+            ->pluck('count', 'status_id');
 
-        return collect(LeadStatus::cases())->map(fn (LeadStatus $status): array => [
-            'status' => $status->value,
-            'count' => (int) ($counts[$status->value] ?? 0),
+        return $tenantStatuses->map(fn (LeadStatus $status): array => [
+            'status' => $status->id,
+            'count' => (int) ($counts[$status->id] ?? 0),
         ])->all();
     }
 }

@@ -4,6 +4,7 @@ namespace App\Livewire\Platform\Clients;
 
 use App\Enums\LeadSourceType;
 use App\Models\LeadSource;
+use App\Models\LeadStatus;
 use App\Models\Tenant;
 use Flux\Flux;
 use Illuminate\Http\Client\ConnectionException;
@@ -83,6 +84,58 @@ class LeadSources extends Component
     public function leadSources()
     {
         return $this->tenant->leadSources()->latest()->get();
+    }
+
+    /**
+     * The full global catalog, for the pipeline picker below.
+     */
+    #[Computed]
+    public function allLeadStatuses()
+    {
+        return LeadStatus::query()->orderBy('sort_order')->orderBy('name')->get();
+    }
+
+    /**
+     * This tenant's current pipeline, in order.
+     */
+    #[Computed]
+    public function selectedLeadStatuses()
+    {
+        return $this->tenant->leadStatuses;
+    }
+
+    /**
+     * Click-to-number pipeline picker: clicking an unselected status
+     * appends it at the next position; clicking an already-selected one
+     * removes it and renumbers the rest so positions stay contiguous
+     * (1..N) — there's never a gap for a later "next click" to land on.
+     */
+    public function toggleLeadStatus(string $statusId): void
+    {
+        Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
+
+        $currentIds = $this->tenant->leadStatuses()->orderByPivot('position')->pluck('lead_statuses.id')->all();
+        $alreadySelected = in_array($statusId, $currentIds, true);
+
+        if ($alreadySelected && count($currentIds) <= 1) {
+            Flux::toast(variant: 'danger', text: __('A client must have at least one pipeline status.'));
+
+            return;
+        }
+
+        $newIds = $alreadySelected
+            ? array_values(array_diff($currentIds, [$statusId]))
+            : [...$currentIds, $statusId];
+
+        $syncData = [];
+
+        foreach ($newIds as $index => $id) {
+            $syncData[$id] = ['position' => $index + 1];
+        }
+
+        $this->tenant->leadStatuses()->sync($syncData);
+
+        unset($this->selectedLeadStatuses);
     }
 
     /**

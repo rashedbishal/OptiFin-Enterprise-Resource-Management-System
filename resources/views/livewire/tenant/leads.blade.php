@@ -18,7 +18,7 @@
         <flux:select wire:model.live="status" placeholder="{{ __('All statuses') }}">
             <flux:select.option value="">{{ __('All statuses') }}</flux:select.option>
             @foreach ($this->statusOptions() as $option)
-                <flux:select.option value="{{ $option }}">{{ ucfirst(str_replace('_', ' ', $option)) }}</flux:select.option>
+                <flux:select.option value="{{ $option->id }}">{{ $option->label() }}</flux:select.option>
             @endforeach
         </flux:select>
 
@@ -95,7 +95,7 @@
                         </div>
                     </flux:table.cell>
                     <flux:table.cell><flux:badge size="sm" icon="{{ $lead->source->type->icon() }}">{{ $lead->source->type->label() }}</flux:badge></flux:table.cell>
-                    <flux:table.cell><flux:badge size="sm">{{ ucfirst(str_replace('_', ' ', $lead->status->value)) }}</flux:badge></flux:table.cell>
+                    <flux:table.cell><flux:badge size="sm" :color="$lead->status->color()">{{ $lead->status->label() }}</flux:badge></flux:table.cell>
                     <flux:table.cell>{{ ucfirst($lead->priority->value) }}</flux:table.cell>
                     <flux:table.cell>{{ $lead->assignedUser?->name ?? __('Unassigned') }}</flux:table.cell>
                     <flux:table.cell>
@@ -201,7 +201,7 @@
                             <div class="grid gap-4 sm:grid-cols-2">
                                 <flux:select wire:model="leadStatus" :label="__('Pipeline Stage')">
                                     @foreach ($this->statusOptions() as $option)
-                                        <flux:select.option value="{{ $option }}">{{ ucfirst(str_replace('_', ' ', $option)) }}</flux:select.option>
+                                        <flux:select.option value="{{ $option->id }}">{{ $option->label() }}</flux:select.option>
                                     @endforeach
                                 </flux:select>
                                 <flux:select wire:model="leadPriority" :label="__('Priority')">

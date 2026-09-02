@@ -3,6 +3,7 @@
 use App\Actions\Platform\AssignModuleToTenant;
 use App\Actions\Platform\CreateClient;
 use App\Enums\ModuleScope;
+use App\Models\LeadStatus;
 use App\Models\Module;
 use App\Models\Permission;
 use App\Models\PlatformUser;
@@ -114,4 +115,16 @@ function clientUserWithLeadPermission(Tenant $tenant, array $permissions = ['vie
         'tenant_id' => $tenant->id,
         'role_id' => $role->id,
     ]);
+}
+
+/**
+ * Looks up one of the 8 legacy statuses the migration seeds into the global
+ * LeadStatus catalog (and every tenant's pipeline, via
+ * AssignModuleToTenant/TenantFactory) by its stable slug — 'new',
+ * 'contacted', 'qualified', 'proposal_sent', 'negotiation', 'won', 'lost',
+ * 'unqualified'.
+ */
+function leadStatus(string $slug): LeadStatus
+{
+    return LeadStatus::where('slug', $slug)->firstOrFail();
 }
