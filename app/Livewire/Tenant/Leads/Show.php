@@ -48,6 +48,7 @@ class Show extends Component
         'deal_value' => 'Deal Value',
         'win_probability' => 'Win Probability',
         'next_follow_up_at' => 'Next Follow-up',
+        'meeting_date' => 'Meeting Date',
     ];
 
     public Lead $lead;
@@ -85,6 +86,8 @@ class Show extends Component
     public string $leadWinProbability = '';
 
     public string $leadNextFollowUpAt = '';
+
+    public string $leadMeetingDate = '';
 
     /**
      * True when this component is embedded in the Kanban board's lead
@@ -126,6 +129,7 @@ class Show extends Component
         $this->leadDealValue = $this->lead->deal_value !== null ? (string) $this->lead->deal_value : '';
         $this->leadWinProbability = $this->lead->win_probability !== null ? (string) $this->lead->win_probability : '';
         $this->leadNextFollowUpAt = $this->lead->next_follow_up_at?->toDateString() ?? '';
+        $this->leadMeetingDate = $this->lead->meeting_date?->toDateString() ?? '';
     }
 
     public function render(): View
@@ -390,6 +394,7 @@ class Show extends Component
             'leadDealValue' => ['nullable', 'numeric', 'min:0', 'max:999999999999.99', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
             'leadWinProbability' => ['nullable', 'integer', 'min:0', 'max:100'],
             'leadNextFollowUpAt' => ['nullable', 'date', 'after_or_equal:today'],
+            'leadMeetingDate' => ['nullable', 'date'],
         ], [
             'leadServiceInterest.regex' => __('Service interested contains characters that are not allowed.'),
             'leadEstimatedBudget.regex' => __('Enter a plain amount with up to 2 decimal places.'),
@@ -403,6 +408,7 @@ class Show extends Component
             'deal_value' => $validated['leadDealValue'] ?: null,
             'win_probability' => $validated['leadWinProbability'] ?: null,
             'next_follow_up_at' => $validated['leadNextFollowUpAt'] ?: null,
+            'meeting_date' => $validated['leadMeetingDate'] ?: null,
         ]);
     }
 

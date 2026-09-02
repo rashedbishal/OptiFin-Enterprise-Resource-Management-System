@@ -20,13 +20,14 @@
             </flux:input.group>
 
             <flux:input wire:model="leadNextFollowUpAt" type="date" :label="__('Next Follow-up Date')" />
+            <flux:input wire:model="leadMeetingDate" type="date" :label="__('Meeting Date')" />
 
             <div>
                 <flux:button type="submit" variant="primary" size="sm">{{ __('Save') }}</flux:button>
             </div>
         </form>
     @else
-        @php $hasDealDetails = collect([$lead->service_interest, $lead->estimated_budget, $lead->deal_value, $lead->win_probability, $lead->next_follow_up_at])->filter(fn ($value) => $value !== null && $value !== '')->isNotEmpty(); @endphp
+        @php $hasDealDetails = collect([$lead->service_interest, $lead->estimated_budget, $lead->deal_value, $lead->win_probability, $lead->next_follow_up_at, $lead->meeting_date])->filter(fn ($value) => $value !== null && $value !== '')->isNotEmpty(); @endphp
         @if ($hasDealDetails)
             <div class="flex flex-col gap-3">
                 @if ($lead->service_interest)
@@ -57,6 +58,12 @@
                     <div>
                         <flux:text size="sm" variant="subtle">{{ __('Next Follow-up') }}</flux:text>
                         <flux:text class="block">{{ $lead->next_follow_up_at->format('M j, Y') }}</flux:text>
+                    </div>
+                @endif
+                @if ($lead->meeting_date)
+                    <div>
+                        <flux:text size="sm" variant="subtle">{{ __('Meeting Date') }}</flux:text>
+                        <flux:text class="block">{{ $lead->meeting_date->format('M j, Y') }}</flux:text>
                     </div>
                 @endif
             </div>
