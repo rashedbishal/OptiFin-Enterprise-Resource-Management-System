@@ -58,19 +58,19 @@
         x-on:click="open = !open"
         :aria-expanded="open"
         {{ $attributes->except(['wire:model', 'wire:model.live', 'label'])->merge([
-            'class' => 'flex w-full items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs sm:text-sm font-medium text-zinc-700 shadow-xs transition hover:border-zinc-300 hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-zinc-700 dark:bg-zinc-800/90 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-700/50 cursor-pointer'
+            'class' => 'flex w-full items-center justify-between gap-2 rounded-lg border border-zinc-300/80 bg-zinc-100/90 px-3 py-1.5 text-xs sm:text-sm font-medium text-zinc-800 shadow-xs transition hover:border-zinc-400 hover:bg-zinc-200/80 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-zinc-700/80 dark:bg-zinc-900/90 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 cursor-pointer'
         ]) }}
     >
         <span class="flex items-center gap-2 truncate">
             @if ($icon)
-                <flux:icon :name="$icon" variant="micro" class="size-4 shrink-0 text-zinc-400 dark:text-zinc-500" />
+                <flux:icon :name="$icon" variant="micro" class="size-4 shrink-0 text-zinc-500 dark:text-zinc-400" />
             @endif
             <span x-text="label" class="truncate"></span>
         </span>
 
         <flux:icon.chevron-down
             variant="micro"
-            class="size-4 shrink-0 text-zinc-400 transition-transform duration-200 dark:text-zinc-500"
+            class="size-4 shrink-0 text-zinc-500 transition-transform duration-200 dark:text-zinc-400"
             ::class="{ 'rotate-180': open }"
         />
     </button>
@@ -84,14 +84,14 @@
         x-transition:leave-start="opacity-100 scale-100 translate-y-0"
         x-transition:leave-end="opacity-0 scale-95 -translate-y-1"
         x-cloak
-        class="absolute left-0 z-50 mt-1 max-h-60 w-full min-w-44 overflow-auto rounded-xl border border-zinc-200/80 bg-white/95 p-1 shadow-xl backdrop-blur-md focus:outline-none dark:border-zinc-700/80 dark:bg-zinc-800/95"
+        class="absolute left-0 z-50 mt-1 max-h-60 w-full min-w-44 overflow-auto rounded-xl border border-zinc-300/90 bg-white/98 p-1.5 shadow-xl backdrop-blur-md focus:outline-none dark:border-zinc-700/90 dark:bg-zinc-900/95"
     >
         <template x-for="option in options" :key="option.value">
             <button
                 type="button"
                 x-on:click="selected = option.value; open = false;"
-                class="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs sm:text-sm font-medium transition cursor-pointer text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-700/60"
-                ::class="{ 'bg-zinc-100/80 dark:bg-zinc-700/70 font-semibold text-zinc-900 dark:text-white': String(selected) === String(option.value) }"
+                class="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs sm:text-sm font-medium transition cursor-pointer text-zinc-700 hover:bg-zinc-100 dark:text-zinc-200 dark:hover:bg-zinc-800/80"
+                ::class="{ 'bg-zinc-200/70 dark:bg-zinc-800 font-semibold text-zinc-900 dark:text-white': String(selected) === String(option.value) }"
             >
                 <span x-text="option.label" class="truncate"></span>
                 <flux:icon.check
