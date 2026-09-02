@@ -2,8 +2,10 @@
     <flux:heading size="lg" class="mb-4">{{ __('Company') }}</flux:heading>
     @if ($editable)
         <form wire:submit="updateCompany" class="flex flex-col gap-3">
-            <flux:input wire:model="leadCompany" :label="__('Company / Organization')" />
-            <flux:input wire:model="leadWebsite" type="url" :label="__('Website URL')" />
+            <div class="grid grid-cols-2 gap-3">
+                <flux:input wire:model="leadCompany" :label="__('Company / Organization')" />
+                <flux:input wire:model="leadWebsite" type="url" :label="__('Website URL')" />
+            </div>
 
             <div class="grid grid-cols-2 gap-3">
                 <flux:input wire:model="leadIndustry" :label="__('Industry Sector')" />

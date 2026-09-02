@@ -2,11 +2,13 @@
     <flux:heading size="lg" class="mb-4">{{ __('Deal') }}</flux:heading>
     @if ($editable)
         <form wire:submit="updateDeal" class="flex flex-col gap-3">
-            <flux:input wire:model="leadServiceInterest" :label="__('Service Interested')" />
+            <div class="grid grid-cols-2 gap-3">
+                <flux:input wire:model="leadServiceInterest" :label="__('Service Interested')" class="{{ $isManual ? '' : 'col-span-2' }}" />
 
-            @if ($isManual)
-                <flux:input wire:model="leadSource" :label="__('Lead Source')" placeholder="{{ __('e.g. Referral, Facebook Ad, Trade Show') }}" />
-            @endif
+                @if ($isManual)
+                    <flux:input wire:model="leadSource" :label="__('Lead Source')" placeholder="{{ __('e.g. Referral, Facebook Ad, Trade Show') }}" />
+                @endif
+            </div>
 
             {{-- Paired two-per-row instead of one long stack: cuts this
             card's height roughly in half so it stops being the tallest card
