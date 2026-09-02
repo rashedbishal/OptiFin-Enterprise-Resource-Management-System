@@ -57,6 +57,13 @@ class SourceLeads extends Component
     public function updating(): void
     {
         $this->resetPage();
+        unset($this->leads);
+    }
+
+    public function updated(): void
+    {
+        $this->resetPage();
+        unset($this->leads);
     }
 
     #[Computed]

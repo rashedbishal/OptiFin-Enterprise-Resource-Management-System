@@ -25,14 +25,14 @@
         }
     }
 
-    $wireModel = $attributes->wire('model')->value()
-        ?: $attributes->wire('model.live')->value();
+    $wireModelLive = $attributes->wire('model.live')->value();
+    $wireModel = $attributes->wire('model')->value();
 @endphp
 
 <div
     x-data="{
         open: false,
-        selected: @if($wireModel) $wire.entangle('{{ $wireModel }}') @else null @endif,
+        selected: @if($wireModelLive) $wire.entangle('{{ $wireModelLive }}').live @elseif($wireModel) $wire.entangle('{{ $wireModel }}') @else null @endif,
         options: {{ json_encode($formattedOptions) }},
         placeholder: {{ json_encode($placeholder) }},
         get label() {

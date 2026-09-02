@@ -1,8 +1,11 @@
 <?php
 
+use App\Enums\LeadPriority;
+use App\Enums\LeadSourceType;
 use App\Events\LeadUpdated;
 use App\Livewire\Tenant\Leads\Index;
 use App\Models\Lead;
+use App\Models\LeadSource;
 use App\Models\LeadStatusLog;
 use Illuminate\Support\Facades\Event;
 use Livewire\Livewire;
@@ -142,4 +145,42 @@ test('closing the lead panel drops the selected lead', function () {
         ->call('viewLead', $lead->id)
         ->set('showLeadPanel', false)
         ->assertSet('selectedLeadId', null);
+});
+
+test('kanban board filters leads by priority and source type', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant);
+    $whatsappSource = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Whatsapp]);
+    $emailSource = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Email]);
+
+    $lead1 = Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'assigned_to' => $rep->id,
+        'source_id' => $whatsappSource->id,
+        'priority' => LeadPriority::High,
+        'status_id' => leadStatus('new')->id,
+    ]);
+
+    $lead2 = Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'assigned_to' => $rep->id,
+        'source_id' => $emailSource->id,
+        'priority' => LeadPriority::Low,
+        'status_id' => leadStatus('new')->id,
+    ]);
+
+    $component = Livewire::actingAs($rep)
+        ->test(Index::class)
+        ->set('priority', 'high');
+
+    $board = $component->get('boardLeads');
+    $newLeads = $board->get(leadStatus('new')->id, collect());
+    expect($newLeads->pluck('id'))->toContain($lead1->id)->not->toContain($lead2->id);
+
+    $component->set('priority', '')
+        ->set('sourceType', 'whatsapp');
+
+    $board = $component->get('boardLeads');
+    $newLeads = $board->get(leadStatus('new')->id, collect());
+    expect($newLeads->pluck('id'))->toContain($lead1->id)->not->toContain($lead2->id);
 });

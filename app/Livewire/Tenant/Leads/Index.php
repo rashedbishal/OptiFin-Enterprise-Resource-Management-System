@@ -10,13 +10,11 @@ use App\Events\LeadUpdated;
 use App\Livewire\Tenant\Leads\Concerns\FiltersLeadsQuery;
 use App\Models\Lead;
 use App\Models\LeadSource;
-use App\Models\LeadStatus;
 use App\Models\LeadStatusLog;
 use App\Models\TenantUser;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
@@ -295,6 +293,7 @@ class Index extends Component
     {
         if (in_array($property, ['status', 'priority', 'sourceType', 'assignedTo'], true)) {
             $this->resetPage();
+            unset($this->boardLeads, $this->boardLeadCounts, $this->leads);
         }
     }
 
@@ -367,12 +366,13 @@ class Index extends Component
 
     public function refreshBoard(): void
     {
-        unset($this->boardLeads, $this->boardLeadCounts);
+        unset($this->boardLeads, $this->boardLeadCounts, $this->leads);
     }
 
     public function updated(string $property): void
     {
-        if (in_array($property, ['priority', 'assignedTo', 'sourceType'], true)) {
+        if (in_array($property, ['status', 'priority', 'sourceType', 'assignedTo'], true)) {
+            $this->resetPage();
             $this->refreshBoard();
         }
 
