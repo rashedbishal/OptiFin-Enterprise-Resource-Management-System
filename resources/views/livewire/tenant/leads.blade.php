@@ -1,5 +1,5 @@
 <div class="flex flex-1 flex-col gap-3.5 lg:gap-6">
-    <div class="sticky top-0 z-20 -mx-4 flex [transform:translateZ(0)] flex-col gap-2 bg-white px-4 py-3 lg:-mx-8 lg:gap-3.5 lg:px-8 lg:py-4 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
+    <div class="sticky top-0 z-10 -mx-4 flex flex-col gap-2 bg-white px-4 py-3 lg:-mx-8 lg:gap-3.5 lg:px-8 lg:py-4 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
         <x-breadcrumbs class="hidden sm:flex" :items="[
             ['label' => __('Dashboard'), 'href' => route('dashboard')],
             ['label' => __('Leads')],
