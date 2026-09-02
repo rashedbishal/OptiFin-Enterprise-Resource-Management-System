@@ -15,12 +15,24 @@
             in the panel by a wide margin. --}}
             <div class="grid grid-cols-2 gap-3">
                 <flux:input.group :label="__('Est. Budget')">
-                    <flux:input.group.prefix>{{ $lead->tenant->currency }}</flux:input.group.prefix>
+                    <flux:input.group.prefix class="!px-2">
+                        <select wire:model="leadEstimatedBudgetCurrencyId" class="cursor-pointer border-0 bg-transparent p-0 pe-5 text-sm font-medium focus:ring-0">
+                            @foreach ($this->tenantCurrencies as $currency)
+                                <option value="{{ $currency->id }}">{{ $currency->code }}</option>
+                            @endforeach
+                        </select>
+                    </flux:input.group.prefix>
                     <flux:input wire:model="leadEstimatedBudget" type="number" step="0.01" min="0" placeholder="0.00" />
                 </flux:input.group>
 
                 <flux:input.group :label="__('Deal Value')">
-                    <flux:input.group.prefix>{{ $lead->tenant->currency }}</flux:input.group.prefix>
+                    <flux:input.group.prefix class="!px-2">
+                        <select wire:model="leadDealValueCurrencyId" class="cursor-pointer border-0 bg-transparent p-0 pe-5 text-sm font-medium focus:ring-0">
+                            @foreach ($this->tenantCurrencies as $currency)
+                                <option value="{{ $currency->id }}">{{ $currency->code }}</option>
+                            @endforeach
+                        </select>
+                    </flux:input.group.prefix>
                     <flux:input wire:model="leadDealValue" type="number" step="0.01" min="0" placeholder="0.00" />
                 </flux:input.group>
 
@@ -57,13 +69,13 @@
                 @if ($lead->estimated_budget !== null)
                     <div>
                         <flux:text size="sm" variant="subtle">{{ __('Est. Budget') }}</flux:text>
-                        <flux:text class="block">{{ $lead->tenant->currency }} {{ number_format((float) $lead->estimated_budget, 2) }}</flux:text>
+                        <flux:text class="block">{{ $lead->estimatedBudgetCurrency?->code }} {{ number_format((float) $lead->estimated_budget, 2) }}</flux:text>
                     </div>
                 @endif
                 @if ($lead->deal_value !== null)
                     <div>
                         <flux:text size="sm" variant="subtle">{{ __('Deal Value') }}</flux:text>
-                        <flux:text class="block">{{ $lead->tenant->currency }} {{ number_format((float) $lead->deal_value, 2) }}</flux:text>
+                        <flux:text class="block">{{ $lead->dealValueCurrency?->code }} {{ number_format((float) $lead->deal_value, 2) }}</flux:text>
                     </div>
                 @endif
                 @if ($lead->win_probability !== null)

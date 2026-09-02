@@ -2,6 +2,7 @@
 
 namespace App\Actions\Platform;
 
+use App\Models\Currency;
 use App\Models\LeadStatus;
 use App\Models\Module;
 use App\Models\Permission;
@@ -46,6 +47,7 @@ class AssignModuleToTenant
 
             if ($module->slug === 'lead-management') {
                 $this->seedDefaultPipeline($tenant);
+                $this->seedDefaultCurrency($tenant);
             }
         });
     }
@@ -70,5 +72,28 @@ class AssignModuleToTenant
         $tenant->leadStatuses()->attach(
             $statusIds->mapWithKeys(fn (string $id, int $index): array => [$id => ['position' => $index + 1]])->all()
         );
+    }
+
+    /**
+     * A tenant needs at least one enabled currency before it can create a
+     * Lead Source at all (LeadSources::create()/save() refuse otherwise —
+     * see App\Livewire\Platform\Clients\LeadSources), so a freshly
+     * activated tenant with zero currencies selected would be stuck. Picks
+     * the oldest catalog entry as a reasonable default; the Platform Admin
+     * can add/remove currencies afterward on the client's Lead Sources
+     * page. Only seeds once, same reasoning as seedDefaultPipeline(): a
+     * tenant reactivating the module keeps whatever it already has.
+     */
+    private function seedDefaultCurrency(Tenant $tenant): void
+    {
+        if ($tenant->currencies()->exists()) {
+            return;
+        }
+
+        $currency = Currency::query()->oldest()->first();
+
+        if ($currency) {
+            $tenant->currencies()->attach($currency->id);
+        }
     }
 }

@@ -56,6 +56,7 @@ test('an automated lead with no company details yet can have them filled in', fu
 
 test('deal details can be filled in on a lead that never had them', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $currency = $tenant->currencies()->first();
     $lead = Lead::factory()->create([
         'tenant_id' => $tenant->id,
         'service_interest' => null, 'estimated_budget' => null, 'deal_value' => null,
@@ -66,7 +67,9 @@ test('deal details can be filled in on a lead that never had them', function () 
         ->test(Show::class, ['lead' => $lead])
         ->set('leadServiceInterest', 'Custom Web Application & SaaS')
         ->set('leadEstimatedBudget', '250000')
+        ->set('leadEstimatedBudgetCurrencyId', $currency->id)
         ->set('leadDealValue', '250000')
+        ->set('leadDealValueCurrencyId', $currency->id)
         ->set('leadWinProbability', '50')
         ->set('leadNextFollowUpAt', now()->addDays(3)->toDateString())
         ->set('leadMeetingDate', now()->addDays(5)->toDateString())
@@ -76,13 +79,18 @@ test('deal details can be filled in on a lead that never had them', function () 
     $lead->refresh();
     expect($lead->service_interest)->toBe('Custom Web Application & SaaS');
     expect((float) $lead->estimated_budget)->toBe(250000.0);
+    expect($lead->estimated_budget_currency_id)->toBe($currency->id);
     expect((float) $lead->deal_value)->toBe(250000.0);
+    expect($lead->deal_value_currency_id)->toBe($currency->id);
     expect($lead->win_probability)->toBe(50);
     expect($lead->next_follow_up_at->toDateString())->toBe(now()->addDays(3)->toDateString());
     expect($lead->meeting_date->toDateString())->toBe(now()->addDays(5)->toDateString());
 
     $log = LeadDetailUpdateLog::where('lead_id', $lead->id)->firstOrFail();
-    expect($log->changed_fields)->toEqualCanonicalizing(['service_interest', 'estimated_budget', 'deal_value', 'win_probability', 'next_follow_up_at', 'meeting_date']);
+    expect($log->changed_fields)->toEqualCanonicalizing([
+        'service_interest', 'estimated_budget', 'estimated_budget_currency_id',
+        'deal_value', 'deal_value_currency_id', 'win_probability', 'next_follow_up_at', 'meeting_date',
+    ]);
 });
 
 test('a meeting date in the past is rejected when editing deal details', function () {

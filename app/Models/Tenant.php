@@ -28,7 +28,6 @@ class Tenant extends Model
         'phone',
         'address',
         'country',
-        'currency',
         'timezone',
         'status',
         'created_by',
@@ -101,6 +100,22 @@ class Tenant extends Model
             ->withPivot('position')
             ->withTimestamps()
             ->orderByPivot('position');
+    }
+
+    /**
+     * The currencies this tenant can pick from for a lead's Est. Budget /
+     * Deal Value — a subset of the Platform-Admin-managed Currency catalog,
+     * picked on the client's Lead Sources config page. Every tenant must
+     * have at least one (enforced in
+     * App\Livewire\Platform\Clients\LeadSources::toggleCurrency() and
+     * relied on by LeadSources::create()/save(), which refuse to create a
+     * new Lead Source for a tenant with none selected).
+     *
+     * @return BelongsToMany<Currency, $this>
+     */
+    public function currencies(): BelongsToMany
+    {
+        return $this->belongsToMany(Currency::class, 'tenant_currencies')->withTimestamps();
     }
 
     /**

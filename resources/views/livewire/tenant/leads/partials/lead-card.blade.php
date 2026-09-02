@@ -56,7 +56,7 @@
         <div class="mt-1 flex items-center justify-between gap-2">
             <flux:text size="sm" variant="subtle">
                 @if ($lead->estimated_budget !== null)
-                    {{ $tenantCurrency }} {{ number_format((float) $lead->estimated_budget, 0) }}
+                    {{ $lead->estimatedBudgetCurrency?->code }} {{ number_format((float) $lead->estimated_budget, 0) }}
                 @endif
             </flux:text>
 

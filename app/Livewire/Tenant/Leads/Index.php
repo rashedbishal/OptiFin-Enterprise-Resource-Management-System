@@ -62,7 +62,11 @@ class Index extends Component
 
     public string $leadEstimatedBudget = '';
 
+    public string $leadEstimatedBudgetCurrencyId = '';
+
     public string $leadDealValue = '';
+
+    public string $leadDealValueCurrencyId = '';
 
     public string $leadWinProbability = '';
 
@@ -136,10 +140,18 @@ class Index extends Component
         return $this->isClientAdmin && Auth::user()->hasModulePermission('lead-management', 'delete');
     }
 
+    /**
+     * This tenant's enabled currencies, for the Est. Budget / Deal Value
+     * dropdowns — a Platform Admin subset of the Currency catalog, picked
+     * on the client's Lead Sources config page (see Tenant::currencies()).
+     * Always at least one: LeadSources::create()/save() refuse to let a
+     * tenant have zero, and AssignModuleToTenant seeds one the first time
+     * Lead Management is activated for a tenant.
+     */
     #[Computed]
-    public function tenantCurrency(): string
+    public function tenantCurrencies()
     {
-        return Auth::user()?->tenant?->currency ?? 'USD';
+        return Auth::user()->tenant->currencies()->orderBy('code')->get();
     }
 
     public function createLead(): void
@@ -157,6 +169,13 @@ class Index extends Component
         );
         $this->leadStatus = (string) Auth::user()->tenant->initialLeadStatus()?->id;
         $this->leadPriority = LeadPriority::Medium->value;
+        // Pre-selected rather than left blank: a tenant almost always has
+        // just one enabled currency, so defaulting it here means most
+        // users never have to touch the dropdown at all — same reasoning
+        // as leadStatus defaulting to the pipeline's first stage above.
+        $defaultCurrencyId = (string) $this->tenantCurrencies->first()?->id;
+        $this->leadEstimatedBudgetCurrencyId = $defaultCurrencyId;
+        $this->leadDealValueCurrencyId = $defaultCurrencyId;
         $this->showCreateLeadModal = true;
     }
 
@@ -192,7 +211,9 @@ class Index extends Component
             'leadAssigneeId' => ['nullable', 'string'],
             // Plain decimal amounts only (no scientific notation, no thousands separators).
             'leadEstimatedBudget' => ['nullable', 'numeric', 'min:0', 'max:999999999999.99', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
+            'leadEstimatedBudgetCurrencyId' => ['nullable', 'string', Rule::exists('tenant_currencies', 'currency_id')->where('tenant_id', $tenant->id)],
             'leadDealValue' => ['nullable', 'numeric', 'min:0', 'max:999999999999.99', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
+            'leadDealValueCurrencyId' => ['nullable', 'string', Rule::exists('tenant_currencies', 'currency_id')->where('tenant_id', $tenant->id)],
             'leadWinProbability' => ['nullable', 'integer', 'min:0', 'max:100'],
             'leadNextFollowUpAt' => ['nullable', 'date', 'after_or_equal:today'],
             'leadMeetingDate' => ['nullable', 'date', 'after_or_equal:today'],
@@ -241,7 +262,12 @@ class Index extends Component
             'status_id' => $validated['leadStatus'],
             'priority' => LeadPriority::from($validated['leadPriority']),
             'estimated_budget' => $validated['leadEstimatedBudget'] ?: null,
+            // A currency without an amount means nothing — see the matching
+            // comment in Show::updateDeal() for why this stays paired with
+            // its own amount rather than always following the dropdown.
+            'estimated_budget_currency_id' => $validated['leadEstimatedBudget'] ? ($validated['leadEstimatedBudgetCurrencyId'] ?: null) : null,
             'deal_value' => $validated['leadDealValue'] ?: null,
+            'deal_value_currency_id' => $validated['leadDealValue'] ? ($validated['leadDealValueCurrencyId'] ?: null) : null,
             'win_probability' => $validated['leadWinProbability'] ?: null,
             'next_follow_up_at' => $validated['leadNextFollowUpAt'] ?: null,
             'meeting_date' => $validated['leadMeetingDate'] ?: null,
@@ -311,7 +337,7 @@ class Index extends Component
     public function leads()
     {
         return $this->applyDropdownFilters($this->applyAssignmentScope($this->filteredQuery()))
-            ->with(['source', 'assignedUser', 'status'])
+            ->with(['source', 'assignedUser', 'status', 'estimatedBudgetCurrency', 'dealValueCurrency'])
             ->latest('updated_at')
             ->paginate(25);
     }
@@ -329,7 +355,7 @@ class Index extends Component
     public function boardLeads()
     {
         $leads = $this->applyDropdownFilters($this->applyAssignmentScope($this->filteredQuery()))
-            ->with(['source', 'assignedUser', 'status'])
+            ->with(['source', 'assignedUser', 'status', 'estimatedBudgetCurrency', 'dealValueCurrency'])
             ->latest()
             ->limit(self::BOARD_LEAD_LIMIT)
             ->get();
@@ -418,7 +444,7 @@ class Index extends Component
         }
 
         return Lead::where('tenant_id', Auth::user()->tenant_id)
-            ->with(['source', 'assignedUser', 'status'])
+            ->with(['source', 'assignedUser', 'status', 'estimatedBudgetCurrency', 'dealValueCurrency'])
             ->find($this->selectedLeadId);
     }
 
@@ -582,7 +608,7 @@ class Index extends Component
         Gate::authorize('viewAny', Lead::class);
 
         $leads = $this->applyDropdownFilters($this->applyAssignmentScope($this->filteredQuery()))
-            ->with(['source', 'assignedUser', 'status'])
+            ->with(['source', 'assignedUser', 'status', 'estimatedBudgetCurrency', 'dealValueCurrency'])
             ->get();
 
         return response()->streamDownload(function () use ($leads): void {

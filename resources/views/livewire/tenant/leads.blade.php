@@ -347,12 +347,24 @@
                                 <flux:input wire:model="leadSource" :label="__('Lead Source')" placeholder="{{ __('e.g. Referral, Facebook Ad, Trade Show') }}" class="sm:col-span-2" />
 
                                 <flux:input.group :label="__('Est. Budget')">
-                                    <flux:input.group.prefix>{{ $this->tenantCurrency }}</flux:input.group.prefix>
+                                    <flux:input.group.prefix class="!px-2">
+                                        <select wire:model="leadEstimatedBudgetCurrencyId" class="cursor-pointer border-0 bg-transparent p-0 pe-5 text-sm font-medium focus:ring-0">
+                                            @foreach ($this->tenantCurrencies as $currency)
+                                                <option value="{{ $currency->id }}">{{ $currency->code }}</option>
+                                            @endforeach
+                                        </select>
+                                    </flux:input.group.prefix>
                                     <flux:input wire:model="leadEstimatedBudget" type="number" step="0.01" min="0" placeholder="0.00" />
                                 </flux:input.group>
 
                                 <flux:input.group :label="__('Deal Value')">
-                                    <flux:input.group.prefix>{{ $this->tenantCurrency }}</flux:input.group.prefix>
+                                    <flux:input.group.prefix class="!px-2">
+                                        <select wire:model="leadDealValueCurrencyId" class="cursor-pointer border-0 bg-transparent p-0 pe-5 text-sm font-medium focus:ring-0">
+                                            @foreach ($this->tenantCurrencies as $currency)
+                                                <option value="{{ $currency->id }}">{{ $currency->code }}</option>
+                                            @endforeach
+                                        </select>
+                                    </flux:input.group.prefix>
                                     <flux:input wire:model="leadDealValue" type="number" step="0.01" min="0" placeholder="0.00" />
                                 </flux:input.group>
 

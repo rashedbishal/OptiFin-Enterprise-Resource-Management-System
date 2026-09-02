@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Enums\TenantStatus;
+use App\Models\Currency;
 use App\Models\LeadStatus;
 use App\Models\Tenant;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -16,10 +17,12 @@ class TenantFactory extends Factory
 
     /**
      * Every factory-created tenant gets the full LeadStatus catalog as its
-     * pipeline, in catalog order — mirrors what
-     * App\Actions\Platform\AssignModuleToTenant does in production when
-     * Lead Management is activated for a client, so tests don't each need
-     * to set up a pipeline by hand before creating leads.
+     * pipeline, in catalog order, and the catalog's oldest Currency — both
+     * mirror what App\Actions\Platform\AssignModuleToTenant does in
+     * production when Lead Management is activated for a client, so tests
+     * don't each need to set up a pipeline/currency by hand before
+     * creating leads or Lead Sources (LeadSources::create()/save() refuse
+     * to create one for a tenant with zero currencies selected).
      */
     public function configure(): static
     {
@@ -29,6 +32,10 @@ class TenantFactory extends Factory
             $tenant->leadStatuses()->attach(
                 $statusIds->mapWithKeys(fn (string $id, int $index): array => [$id => ['position' => $index + 1]])->all()
             );
+
+            $currency = Currency::query()->oldest()->first() ?? Currency::factory()->create(['code' => 'USD', 'name' => 'US Dollar']);
+
+            $tenant->currencies()->attach($currency->id);
         });
     }
 
@@ -46,7 +53,6 @@ class TenantFactory extends Factory
             'phone' => fake()->phoneNumber(),
             'address' => fake()->address(),
             'country' => fake()->country(),
-            'currency' => 'USD',
             'timezone' => 'UTC',
             'status' => TenantStatus::Active,
         ];

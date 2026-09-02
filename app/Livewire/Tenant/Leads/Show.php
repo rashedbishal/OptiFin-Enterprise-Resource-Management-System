@@ -19,6 +19,7 @@ use Flux\Flux;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
@@ -47,7 +48,9 @@ class Show extends Component
         'service_interest' => 'Service Interested',
         'lead_source' => 'Lead Source',
         'estimated_budget' => 'Est. Budget',
+        'estimated_budget_currency_id' => 'Est. Budget Currency',
         'deal_value' => 'Deal Value',
+        'deal_value_currency_id' => 'Deal Value Currency',
         'win_probability' => 'Win Probability',
         'next_follow_up_at' => 'Next Follow-up',
         'meeting_date' => 'Meeting Date',
@@ -85,7 +88,11 @@ class Show extends Component
 
     public string $leadEstimatedBudget = '';
 
+    public string $leadEstimatedBudgetCurrencyId = '';
+
     public string $leadDealValue = '';
+
+    public string $leadDealValueCurrencyId = '';
 
     public string $leadWinProbability = '';
 
@@ -131,7 +138,9 @@ class Show extends Component
         $this->leadServiceInterest = (string) $this->lead->service_interest;
         $this->leadSource = (string) $this->lead->lead_source;
         $this->leadEstimatedBudget = $this->lead->estimated_budget !== null ? (string) $this->lead->estimated_budget : '';
+        $this->leadEstimatedBudgetCurrencyId = $this->lead->estimated_budget_currency_id ?? (string) $this->tenantCurrencies->first()?->id;
         $this->leadDealValue = $this->lead->deal_value !== null ? (string) $this->lead->deal_value : '';
+        $this->leadDealValueCurrencyId = $this->lead->deal_value_currency_id ?? (string) $this->tenantCurrencies->first()?->id;
         $this->leadWinProbability = $this->lead->win_probability !== null ? (string) $this->lead->win_probability : '';
         $this->leadNextFollowUpAt = $this->lead->next_follow_up_at?->toDateString() ?? '';
         $this->leadMeetingDate = $this->lead->meeting_date?->toDateString() ?? '';
@@ -186,6 +195,16 @@ class Show extends Component
     public function isManualLead(): bool
     {
         return $this->lead->source->type === LeadSourceType::Manual;
+    }
+
+    /**
+     * This tenant's enabled currencies, for the Est. Budget / Deal Value
+     * dropdowns — same catalog subset as App\Livewire\Tenant\Leads\Index.
+     */
+    #[Computed]
+    public function tenantCurrencies()
+    {
+        return $this->lead->tenant->currencies()->orderBy('code')->get();
     }
 
     /**
@@ -407,11 +426,15 @@ class Show extends Component
             return;
         }
 
+        $tenant = $this->lead->tenant;
+
         $validated = $this->validate([
             'leadServiceInterest' => ['nullable', 'string', 'max:255', 'regex:#^[\p{L}\p{N}][\p{L}\p{N}\s&,./()-]*$#u'],
             'leadSource' => ['nullable', 'string', 'max:255', 'regex:#^[\p{L}\p{N}][\p{L}\p{N}\s&,./()-]*$#u'],
             'leadEstimatedBudget' => ['nullable', 'numeric', 'min:0', 'max:999999999999.99', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
+            'leadEstimatedBudgetCurrencyId' => ['nullable', 'string', Rule::exists('tenant_currencies', 'currency_id')->where('tenant_id', $tenant->id)],
             'leadDealValue' => ['nullable', 'numeric', 'min:0', 'max:999999999999.99', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
+            'leadDealValueCurrencyId' => ['nullable', 'string', Rule::exists('tenant_currencies', 'currency_id')->where('tenant_id', $tenant->id)],
             'leadWinProbability' => ['nullable', 'integer', 'min:0', 'max:100'],
             'leadNextFollowUpAt' => ['nullable', 'date', 'after_or_equal:today'],
             'leadMeetingDate' => ['nullable', 'date', 'after_or_equal:today'],
@@ -427,7 +450,13 @@ class Show extends Component
         $columns = [
             'service_interest' => $validated['leadServiceInterest'] ?: null,
             'estimated_budget' => $validated['leadEstimatedBudget'] ?: null,
+            // A currency without an amount means nothing — only persisted
+            // alongside its own amount, so a lead with no budget entered
+            // doesn't pick up a "changed" currency just because the
+            // dropdown defaults to the tenant's first currency regardless.
+            'estimated_budget_currency_id' => $validated['leadEstimatedBudget'] ? ($validated['leadEstimatedBudgetCurrencyId'] ?: null) : null,
             'deal_value' => $validated['leadDealValue'] ?: null,
+            'deal_value_currency_id' => $validated['leadDealValue'] ? ($validated['leadDealValueCurrencyId'] ?: null) : null,
             'win_probability' => $validated['leadWinProbability'] ?: null,
             'next_follow_up_at' => $validated['leadNextFollowUpAt'] ?: null,
             'meeting_date' => $validated['leadMeetingDate'] ?: null,

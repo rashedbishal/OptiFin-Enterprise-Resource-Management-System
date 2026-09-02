@@ -40,7 +40,9 @@ use Illuminate\Support\Collection;
  * @property LeadPriority $priority
  * @property string|null $notes
  * @property string|null $estimated_budget
+ * @property string|null $estimated_budget_currency_id
  * @property string|null $deal_value
+ * @property string|null $deal_value_currency_id
  * @property int|null $win_probability
  * @property Carbon|null $next_follow_up_at
  * @property Carbon|null $meeting_date
@@ -50,12 +52,14 @@ use Illuminate\Support\Collection;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Tenant $tenant
+ * @property-read Currency|null $estimatedBudgetCurrency
+ * @property-read Currency|null $dealValueCurrency
  */
 #[Fillable([
     'tenant_id', 'source_id', 'assigned_to', 'name', 'company', 'website', 'industry', 'location',
     'service_interest', 'lead_source', 'email', 'phone', 'message', 'html_body', 'source_data', 'status_id', 'priority',
-    'notes', 'estimated_budget', 'deal_value', 'win_probability', 'next_follow_up_at', 'meeting_date',
-    'assigned_at', 'first_contacted_at', 'closed_at',
+    'notes', 'estimated_budget', 'estimated_budget_currency_id', 'deal_value', 'deal_value_currency_id',
+    'win_probability', 'next_follow_up_at', 'meeting_date', 'assigned_at', 'first_contacted_at', 'closed_at',
 ])]
 class Lead extends Model
 {
@@ -202,6 +206,22 @@ class Lead extends Model
     public function source(): BelongsTo
     {
         return $this->belongsTo(LeadSource::class, 'source_id');
+    }
+
+    /**
+     * @return BelongsTo<Currency, $this>
+     */
+    public function estimatedBudgetCurrency(): BelongsTo
+    {
+        return $this->belongsTo(Currency::class, 'estimated_budget_currency_id');
+    }
+
+    /**
+     * @return BelongsTo<Currency, $this>
+     */
+    public function dealValueCurrency(): BelongsTo
+    {
+        return $this->belongsTo(Currency::class, 'deal_value_currency_id');
     }
 
     /**
