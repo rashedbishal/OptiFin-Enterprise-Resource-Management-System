@@ -22,6 +22,19 @@ test('the panel view renders the same core sections as the full lead page', func
         ->assertDontSee('Breadcrumb', escape: false);
 });
 
+test('the full page shows Company/Deal read-only and no Contact form, editing only from the panel', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'company' => 'Apex Global Logistics Ltd.']);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->assertSee('Company')
+        ->assertSee('Apex Global Logistics Ltd.')
+        ->assertDontSeeHtml('wire:submit="updateContact"')
+        ->assertDontSeeHtml('wire:submit="updateCompany"')
+        ->assertDontSeeHtml('wire:submit="updateDeal"');
+});
+
 test('updating status from the panel notifies the board instead of redirecting', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id]);

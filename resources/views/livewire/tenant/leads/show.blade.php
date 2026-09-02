@@ -18,11 +18,13 @@
         </div>
 
         <div class="flex flex-col gap-6">
-            @if ($this->canUpdate)
-                @include('livewire.tenant.leads.partials.contact-form')
-            @endif
-            @include('livewire.tenant.leads.partials.company-form', ['lead' => $lead, 'editable' => $this->canUpdate])
-            @include('livewire.tenant.leads.partials.deal-form', ['lead' => $lead, 'editable' => $this->canUpdate])
+            {{-- Contact/Company/Deal are only ever editable from the Client
+            User's Kanban flyout (show-panel.blade.php) — this full page is
+            the Client Admin's view, so both cards render read-only here
+            regardless of update permission, and there's no Contact card at
+            all (the header already shows name/email/phone read-only). --}}
+            @include('livewire.tenant.leads.partials.company-form', ['lead' => $lead, 'editable' => false])
+            @include('livewire.tenant.leads.partials.deal-form', ['lead' => $lead, 'editable' => false])
 
             @if ($this->canUpdate)
                 @include('livewire.tenant.leads.partials.status-form', ['statusOptions' => $this->statusOptions(), 'priorityOptions' => $this->priorityOptions()])
