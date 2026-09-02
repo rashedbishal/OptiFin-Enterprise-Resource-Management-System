@@ -289,23 +289,23 @@
                                 <flux:icon.flag variant="micro" class="text-zinc-400 dark:text-zinc-500" />
                                 <flux:heading size="sm">{{ __('Pipeline') }}</flux:heading>
                             </div>
+                            @php
+                                $createStatusOpts = collect($this->statusOptions())->map(fn($o) => ['value' => (string) $o->id, 'label' => $o->label()])->toArray();
+                                $createPriorityOpts = collect($this->priorityOptions())->map(fn($o) => ['value' => $o, 'label' => ucfirst($o)])->toArray();
+                                if ($this->isClientAdmin) {
+                                    $createAssigneeOpts = array_merge(
+                                        [['value' => '', 'label' => __('Unassigned')]],
+                                        collect($this->assignableUsers)->map(fn($u) => ['value' => (string) $u->id, 'label' => $u->name])->toArray()
+                                    );
+                                }
+                            @endphp
                             <div class="grid gap-4 sm:grid-cols-2">
-                                <flux:select wire:model="leadStatus" :label="__('Pipeline Stage')">
-                                    @foreach ($this->statusOptions() as $option)
-                                        <flux:select.option value="{{ $option->id }}">{{ $option->label() }}</flux:select.option>
-                                    @endforeach
-                                </flux:select>
-                                <flux:select wire:model="leadPriority" :label="__('Priority')">
-                                    @foreach ($this->priorityOptions() as $option)
-                                        <flux:select.option value="{{ $option }}">{{ ucfirst($option) }}</flux:select.option>
-                                    @endforeach
-                                </flux:select>
+                                <x-dropdown-select wire:model="leadStatus" :label="__('Pipeline Stage')" :options="$createStatusOpts" />
+                                <x-dropdown-select wire:model="leadPriority" :label="__('Priority')" :options="$createPriorityOpts" />
                                 @if ($this->isClientAdmin)
-                                    <flux:select wire:model="leadAssigneeId" :label="__('Assigned Sales Executive')" placeholder="{{ __('Unassigned') }}" class="sm:col-span-2">
-                                        @foreach ($this->assignableUsers as $assignableUser)
-                                            <flux:select.option value="{{ $assignableUser->id }}">{{ $assignableUser->name }}</flux:select.option>
-                                        @endforeach
-                                    </flux:select>
+                                    <div class="sm:col-span-2">
+                                        <x-dropdown-select wire:model="leadAssigneeId" :label="__('Assigned Sales Executive')" :placeholder="__('Unassigned')" :options="$createAssigneeOpts" />
+                                    </div>
                                 @endif
                             </div>
                         </div>

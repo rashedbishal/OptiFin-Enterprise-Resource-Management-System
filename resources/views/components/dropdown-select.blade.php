@@ -2,6 +2,7 @@
     'placeholder' => '',
     'options' => [],
     'icon' => null,
+    'label' => null,
 ])
 
 @php
@@ -27,6 +28,7 @@
 
     $wireModelLive = $attributes->wire('model.live')->value();
     $wireModel = $attributes->wire('model')->value();
+    $wireModelName = $wireModelLive ?: $wireModel;
 @endphp
 
 <div
@@ -47,11 +49,15 @@
     x-on:click.outside="open = false"
     class="relative inline-block w-full text-left"
 >
+    @if ($label)
+        <flux:label class="mb-1 text-xs font-medium sm:text-sm text-zinc-700 dark:text-zinc-300">{{ $label }}</flux:label>
+    @endif
+
     <button
         type="button"
         x-on:click="open = !open"
         :aria-expanded="open"
-        {{ $attributes->except(['wire:model', 'wire:model.live'])->merge([
+        {{ $attributes->except(['wire:model', 'wire:model.live', 'label'])->merge([
             'class' => 'flex w-full items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-xs sm:text-sm font-medium text-zinc-700 shadow-xs transition hover:border-zinc-300 hover:bg-zinc-50 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-zinc-700 dark:bg-zinc-800/90 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-700/50 cursor-pointer'
         ]) }}
     >
@@ -96,4 +102,8 @@
             </button>
         </template>
     </div>
+
+    @if ($wireModelName && $errors->has($wireModelName))
+        <flux:error class="mt-1 text-xs">{{ $errors->first($wireModelName) }}</flux:error>
+    @endif
 </div>

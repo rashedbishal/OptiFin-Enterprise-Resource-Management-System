@@ -53,44 +53,58 @@
 }
 
 /*
-Thin, theme-matched scrollbar for scrollable modal dialogs (scroll="body"),
-replacing the browser's default scrollbar with something that fits the
-zinc palette in both themes.
+Custom Global Sleek & Elegant Scrollbar for the entire application.
+Provides smooth, professional, lightweight scrollbars in light & dark modes.
 */
-dialog[data-flux-modal-overflow] {
-    scrollbar-width: thin;
-    scrollbar-color: var(--color-zinc-300) transparent;
-}
+@layer base {
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: #d4d4d4 transparent;
+    }
 
-:where(.dark, .dark *) dialog[data-flux-modal-overflow] {
-    scrollbar-color: var(--color-zinc-600) transparent;
-}
+    :where(.dark, .dark *) {
+        scrollbar-color: #525252 transparent;
+    }
 
-dialog[data-flux-modal-overflow]::-webkit-scrollbar {
-    width: 8px;
-}
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
 
-dialog[data-flux-modal-overflow]::-webkit-scrollbar-track {
-    background: transparent;
-}
+    ::-webkit-scrollbar-track {
+        background: transparent;
+    }
 
-dialog[data-flux-modal-overflow]::-webkit-scrollbar-thumb {
-    background-color: var(--color-zinc-300);
-    border-radius: 9999px;
-    border: 2px solid transparent;
-    background-clip: content-box;
-}
+    ::-webkit-scrollbar-thumb {
+        background-color: #d4d4d4;
+        border-radius: 9999px;
+        border: 2px solid transparent;
+        background-clip: content-box;
+    }
 
-dialog[data-flux-modal-overflow]::-webkit-scrollbar-thumb:hover {
-    background-color: var(--color-zinc-400);
-}
+    ::-webkit-scrollbar-thumb:hover {
+        background-color: #a3a3a3;
+    }
 
-:where(.dark, .dark *) dialog[data-flux-modal-overflow]::-webkit-scrollbar-thumb {
-    background-color: var(--color-zinc-600);
-}
+    ::-webkit-scrollbar-thumb:active {
+        background-color: #737373;
+    }
 
-:where(.dark, .dark *) dialog[data-flux-modal-overflow]::-webkit-scrollbar-thumb:hover {
-    background-color: var(--color-zinc-500);
+    ::-webkit-scrollbar-corner {
+        background: transparent;
+    }
+
+    :where(.dark, .dark *) ::-webkit-scrollbar-thumb {
+        background-color: #525252;
+    }
+
+    :where(.dark, .dark *) ::-webkit-scrollbar-thumb:hover {
+        background-color: #737373;
+    }
+
+    :where(.dark, .dark *) ::-webkit-scrollbar-thumb:active {
+        background-color: #a3a3a3;
+    }
 }
 
 [data-flux-field]:not(ui-radio, ui-checkbox) {

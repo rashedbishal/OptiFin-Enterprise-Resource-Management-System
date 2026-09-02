@@ -60,11 +60,13 @@
             <flux:input wire:model="email" :label="__('Email')" type="email" required />
             <flux:input wire:model="password" :label="__('Password')" type="password" :placeholder="$editingId ? __('Leave blank to keep current password') : ''" viewable />
 
-            <flux:select wire:model="role_id" :label="__('Role')" placeholder="{{ __('Select a role') }}">
-                @foreach ($this->roles as $role)
-                    <flux:select.option value="{{ $role->id }}">{{ $role->name }}</flux:select.option>
-                @endforeach
-            </flux:select>
+            @php
+                $adminRoleOpts = array_merge(
+                    [['value' => '', 'label' => __('Select a role')]],
+                    collect($this->roles)->map(fn($r) => ['value' => (string) $r->id, 'label' => $r->name])->toArray()
+                );
+            @endphp
+            <x-dropdown-select wire:model="role_id" :label="__('Role')" :placeholder="__('Select a role')" :options="$adminRoleOpts" />
 
             <div class="flex justify-end gap-2">
                 <flux:button type="button" wire:click="$set('showModal', false)">{{ __('Cancel') }}</flux:button>

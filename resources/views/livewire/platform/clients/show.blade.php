@@ -12,11 +12,12 @@
             </div>
 
             <div class="flex items-center gap-2">
-                <flux:select wire:model="status" class="w-40">
-                    @foreach (['active', 'inactive', 'suspended'] as $option)
-                        <flux:select.option value="{{ $option }}">{{ ucfirst($option) }}</flux:select.option>
-                    @endforeach
-                </flux:select>
+                @php
+                    $tenantStatusOpts = collect(['active', 'inactive', 'suspended'])->map(fn($s) => ['value' => $s, 'label' => ucfirst($s)])->toArray();
+                @endphp
+                <div class="w-40">
+                    <x-dropdown-select wire:model="status" :options="$tenantStatusOpts" />
+                </div>
                 <flux:button size="sm" wire:click="updateStatus">{{ __('Update') }}</flux:button>
             </div>
         </div>

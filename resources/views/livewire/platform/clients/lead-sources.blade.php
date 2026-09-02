@@ -129,11 +129,13 @@
             @if ($editingId)
                 <flux:text>{{ __('Type') }}: {{ $this->selectedType?->label() }}</flux:text>
             @else
-                <flux:select wire:model.live="type" :label="__('Type')" placeholder="{{ __('Select a type') }}">
-                    @foreach ($this->typeOptions as $option)
-                        <flux:select.option value="{{ $option->value }}">{{ $option->label() }}</flux:select.option>
-                    @endforeach
-                </flux:select>
+                @php
+                    $sourceTypeOpts = array_merge(
+                        [['value' => '', 'label' => __('Select a type')]],
+                        collect($this->typeOptions)->map(fn($o) => ['value' => $o->value, 'label' => $o->label()])->toArray()
+                    );
+                @endphp
+                <x-dropdown-select wire:model.live="type" :label="__('Type')" :placeholder="__('Select a type')" :options="$sourceTypeOpts" />
             @endif
 
             <flux:input wire:model="name" :label="__('Name')" required />
@@ -141,12 +143,13 @@
             @if ($this->selectedType)
                 @foreach ($this->selectedType->configFields() as $field)
                     @if ($field['type'] === 'select')
-                        <flux:select wire:key="config-field-{{ $field['key'] }}" wire:model.live="config.{{ $field['key'] }}" :label="$field['label']">
-                            <flux:select.option value="">{{ __('Select an option') }}</flux:select.option>
-                            @foreach ($field['options'] as $value => $optionLabel)
-                                <flux:select.option value="{{ $value }}">{{ $optionLabel }}</flux:select.option>
-                            @endforeach
-                        </flux:select>
+                        @php
+                            $fieldOpts = array_merge(
+                                [['value' => '', 'label' => __('Select an option')]],
+                                collect($field['options'])->map(fn($lbl, $val) => ['value' => (string) $val, 'label' => (string) $lbl])->values()->toArray()
+                            );
+                        @endphp
+                        <x-dropdown-select wire:key="config-field-{{ $field['key'] }}" wire:model.live="config.{{ $field['key'] }}" :label="$field['label']" :options="$fieldOpts" />
                     @else
                         <flux:input
                             wire:key="config-field-{{ $field['key'] }}"

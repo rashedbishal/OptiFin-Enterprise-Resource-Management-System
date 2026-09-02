@@ -52,11 +52,10 @@
 
             <flux:input wire:model="name" :label="__('Name')" required />
 
-            <flux:select wire:model="color" :label="__('Color')">
-                @foreach ($this->colorOptions() as $option)
-                    <flux:select.option value="{{ $option }}">{{ ucfirst($option) }}</flux:select.option>
-                @endforeach
-            </flux:select>
+            @php
+                $colorOpts = collect($this->colorOptions())->map(fn($c) => ['value' => $c, 'label' => ucfirst($c)])->toArray();
+            @endphp
+            <x-dropdown-select wire:model="color" :label="__('Color')" :options="$colorOpts" />
 
             <flux:checkbox wire:model="isClosed" :label="__('This is a closed/final stage')" />
 
