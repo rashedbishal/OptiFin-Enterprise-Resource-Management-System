@@ -43,12 +43,15 @@
         x-on:dragend="$el.classList.remove('opacity-50')"
     @endif
     {{--
-        cardBackgroundClasses() fills the card's own bg + the 3 non-left
-        borders; cardAccentBorderClasses() overrides just border-left-color
-        with a brighter shade — a hover:border override on all sides would
-        win the cascade for border-left-color too (shorthand beats a
-        same-specificity longhand once :hover adds specificity) and wash the
-        stripe out, so hover feedback here is shadow-only instead.
+        The inset-ring is a thin light bevel on top of cardBackgroundClasses()'s
+        own uniform border — inset-ring uses its own --tw-inset-ring-shadow
+        layer (Tailwind v4), composing with shadow-sm/hover:shadow-md's
+        --tw-shadow rather than overwriting it, which is what makes the
+        "raised" look additive instead of a flat replacement.
+
+        This lives entirely on the card's own box — the shimmer alert overlay
+        is a separate absolutely-positioned sibling (see below), so changing
+        the card's border/ring/shadow here has no effect on it either way.
     --}}
     {{--
         w-full matters only when $hasActiveAlert wraps this card in
@@ -59,12 +62,12 @@
         to its content's width instead of filling the column like it does
         unwrapped. Harmless no-op when not wrapped.
     --}}
-    class="flex w-full cursor-pointer flex-col gap-2 rounded-lg border border-l-4 p-3 text-left shadow-sm transition hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-accent {{ $lead->status->cardBackgroundClasses() }} {{ $lead->status->cardAccentBorderClasses() }}"
+    class="flex w-full cursor-pointer flex-col gap-2 rounded-lg border p-3 text-left shadow-sm inset-ring-1 inset-ring-white/60 transition hover:shadow-md dark:inset-ring-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent {{ $lead->status->cardBackgroundClasses() }}"
 >
     <div class="flex items-start justify-between gap-2">
-        <div class="min-w-0">
-            <p class="truncate font-mono text-[11px] text-zinc-400 dark:text-zinc-500">{{ $lead->identifier }}</p>
-            <p class="min-w-0 truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ $lead->name }}</p>
+        <div class="flex min-w-0 flex-nowrap items-center gap-1.5">
+            <flux:badge size="sm" variant="pill" class="shrink-0 font-mono">{{ $lead->identifier }}</flux:badge>
+            <flux:badge size="sm" variant="pill" :color="$lead->priority->color()" class="shrink-0">{{ $lead->priority->label() }}</flux:badge>
         </div>
 
         @if ($canMove)
@@ -86,31 +89,55 @@
         @endif
     </div>
 
-    <div class="flex flex-wrap items-center gap-1.5">
-        <flux:badge size="sm" icon="{{ $lead->source->type->icon() }}">{{ $lead->source->type->label() }}</flux:badge>
-        <flux:badge size="sm" :color="$lead->priority->color()">{{ $lead->priority->label() }}</flux:badge>
+    <div class="min-w-0">
+        @if ($lead->company)
+            <div class="mb-0.5 flex items-center gap-1 text-sm font-semibold {{ $lead->status->companyNameTextClasses() }}">
+                <flux:icon icon="building-office-2" variant="micro" class="shrink-0" />
+                <span class="truncate">{{ $lead->company }}</span>
+            </div>
+        @endif
+
+        <p class="min-w-0 truncate text-xs text-zinc-500 dark:text-zinc-400">{{ $lead->name }}</p>
+
+        @if ($lead->service_interest)
+            <flux:badge variant="pill" color="zinc" class="mt-2 max-w-full truncate">
+                {{ $lead->service_interest }}
+            </flux:badge>
+        @endif
     </div>
 
-    @if ($lead->service_interest)
-        <flux:text size="sm" variant="subtle" class="truncate">{{ $lead->service_interest }}</flux:text>
-    @endif
+    @if ($lead->deal_value !== null || $lead->win_probability !== null)
+        <div class="mt-1 grid grid-cols-2 gap-2 rounded-md border border-zinc-950/10 bg-white/60 p-2 dark:border-white/10 dark:bg-white/5">
+            <div class="min-w-0">
+                <p class="text-[10px] font-medium tracking-wide text-zinc-400 uppercase dark:text-zinc-500">{{ __('Deal Value') }}</p>
+                <p class="truncate text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                    @if ($lead->deal_value !== null)
+                        {{ $lead->dealValueCurrency?->code }} {{ number_format((float) $lead->deal_value, 0) }}
+                    @else
+                        &mdash;
+                    @endif
+                </p>
+            </div>
 
-    @if ($lead->estimated_budget !== null || $lead->assignedUser)
-        <div class="mt-1 flex items-center justify-between gap-2">
-            <flux:text size="sm" variant="subtle">
-                @if ($lead->estimated_budget !== null)
-                    {{ $lead->estimatedBudgetCurrency?->code }} {{ number_format((float) $lead->estimated_budget, 0) }}
-                @endif
-            </flux:text>
-
-            @if ($lead->assignedUser)
-                <flux:avatar size="xs" :initials="$lead->assignedUser->initials()" />
-            @endif
+            <div class="min-w-0 text-right">
+                <p class="text-[10px] font-medium tracking-wide text-zinc-400 uppercase dark:text-zinc-500">{{ __('Win Probability') }}</p>
+                <p class="truncate text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                    @if ($lead->win_probability !== null)
+                        {{ $lead->win_probability }}%
+                    @else
+                        &mdash;
+                    @endif
+                </p>
+            </div>
         </div>
     @endif
 
-    @if ($canMove && $nextStatus)
-        <div class="flex justify-end">
+    <div class="mt-1 flex items-center justify-between gap-2">
+        <flux:badge size="sm" icon="{{ $lead->source->type->icon() }}" class="px-1.5 py-0.5 text-[10px] **:data-flux-badge-icon:size-3">
+            {{ $lead->source->type->label() }}
+        </flux:badge>
+
+        @if ($canMove && $nextStatus)
             <flux:tooltip content="{{ __('Advance to :status', ['status' => $nextStatus->label()]) }}">
                 <flux:button
                     size="xs"
@@ -122,8 +149,8 @@
                     {{ __('Advance') }}
                 </flux:button>
             </flux:tooltip>
-        </div>
-    @endif
+        @endif
+    </div>
 </div>
 
 @if ($hasActiveAlert)

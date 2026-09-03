@@ -84,21 +84,21 @@ class LeadStatus extends Model
     public function columnBackgroundClasses(): string
     {
         return match ($this->color) {
-            'blue' => 'bg-blue-50/60 dark:bg-blue-950/20',
-            'sky' => 'bg-sky-50/60 dark:bg-sky-950/20',
-            'indigo' => 'bg-indigo-50/60 dark:bg-indigo-950/20',
-            'amber' => 'bg-amber-50/60 dark:bg-amber-950/20',
-            'orange' => 'bg-orange-50/60 dark:bg-orange-950/20',
-            'green' => 'bg-green-50/60 dark:bg-green-950/20',
-            'red' => 'bg-red-50/60 dark:bg-red-950/20',
-            'emerald' => 'bg-emerald-50/60 dark:bg-emerald-950/20',
-            'purple' => 'bg-purple-50/60 dark:bg-purple-950/20',
-            'teal' => 'bg-teal-50/60 dark:bg-teal-950/20',
-            'pink' => 'bg-pink-50/60 dark:bg-pink-950/20',
+            'blue' => 'bg-blue-50/90 dark:bg-blue-950/35',
+            'sky' => 'bg-sky-50/90 dark:bg-sky-950/35',
+            'indigo' => 'bg-indigo-50/90 dark:bg-indigo-950/35',
+            'amber' => 'bg-amber-50/90 dark:bg-amber-950/35',
+            'orange' => 'bg-orange-50/90 dark:bg-orange-950/35',
+            'green' => 'bg-green-50/90 dark:bg-green-950/35',
+            'red' => 'bg-red-50/90 dark:bg-red-950/35',
+            'emerald' => 'bg-emerald-50/90 dark:bg-emerald-950/35',
+            'purple' => 'bg-purple-50/90 dark:bg-purple-950/35',
+            'teal' => 'bg-teal-50/90 dark:bg-teal-950/35',
+            'pink' => 'bg-pink-50/90 dark:bg-pink-950/35',
             // A plain zinc tint at low opacity over the page's own
             // dark:bg-zinc-800 would blend straight into it — one shade
             // lighter (zinc-700) so the column still actually shows up.
-            default => 'bg-zinc-100/80 dark:bg-zinc-700/40',
+            default => 'bg-zinc-100 dark:bg-zinc-700/55',
         };
     }
 
@@ -135,41 +135,42 @@ class LeadStatus extends Model
     public function cardBackgroundClasses(): string
     {
         return match ($this->color) {
-            'blue' => 'bg-blue-100 border-blue-200 dark:bg-blue-900/40 dark:border-blue-800',
-            'sky' => 'bg-sky-100 border-sky-200 dark:bg-sky-900/40 dark:border-sky-800',
-            'indigo' => 'bg-indigo-100 border-indigo-200 dark:bg-indigo-900/40 dark:border-indigo-800',
-            'amber' => 'bg-amber-100 border-amber-200 dark:bg-amber-900/40 dark:border-amber-800',
-            'orange' => 'bg-orange-100 border-orange-200 dark:bg-orange-900/40 dark:border-orange-800',
-            'green' => 'bg-green-100 border-green-200 dark:bg-green-900/40 dark:border-green-800',
-            'red' => 'bg-red-100 border-red-200 dark:bg-red-900/40 dark:border-red-800',
-            'emerald' => 'bg-emerald-100 border-emerald-200 dark:bg-emerald-900/40 dark:border-emerald-800',
-            'purple' => 'bg-purple-100 border-purple-200 dark:bg-purple-900/40 dark:border-purple-800',
-            'teal' => 'bg-teal-100 border-teal-200 dark:bg-teal-900/40 dark:border-teal-800',
-            'pink' => 'bg-pink-100 border-pink-200 dark:bg-pink-900/40 dark:border-pink-800',
-            default => 'bg-zinc-100 border-zinc-200 dark:bg-zinc-700/50 dark:border-zinc-600',
+            'blue' => 'bg-blue-200 border-blue-300 dark:bg-blue-900/65 dark:border-blue-800',
+            'sky' => 'bg-sky-200 border-sky-300 dark:bg-sky-900/65 dark:border-sky-800',
+            'indigo' => 'bg-indigo-200 border-indigo-300 dark:bg-indigo-900/65 dark:border-indigo-800',
+            'amber' => 'bg-amber-200 border-amber-300 dark:bg-amber-900/65 dark:border-amber-800',
+            'orange' => 'bg-orange-200 border-orange-300 dark:bg-orange-900/65 dark:border-orange-800',
+            'green' => 'bg-green-200 border-green-300 dark:bg-green-900/65 dark:border-green-800',
+            'red' => 'bg-red-200 border-red-300 dark:bg-red-900/65 dark:border-red-800',
+            'emerald' => 'bg-emerald-200 border-emerald-300 dark:bg-emerald-900/65 dark:border-emerald-800',
+            'purple' => 'bg-purple-200 border-purple-300 dark:bg-purple-900/65 dark:border-purple-800',
+            'teal' => 'bg-teal-200 border-teal-300 dark:bg-teal-900/65 dark:border-teal-800',
+            'pink' => 'bg-pink-200 border-pink-300 dark:bg-pink-900/65 dark:border-pink-800',
+            default => 'bg-zinc-200 border-zinc-300 dark:bg-zinc-700/80 dark:border-zinc-600',
         };
     }
 
     /**
-     * A brighter, more saturated shade still than cardBackgroundClasses(),
-     * for the card's left-edge accent stripe — enough contrast between the
-     * two that the stripe still reads as an accent, not just more fill.
+     * A darker shade of this status's color for text sitting directly on
+     * cardBackgroundClasses()'s light tint (e.g. the card's company name) —
+     * dark enough to stay readable on that pale background, in the same hue
+     * as the card itself rather than a separate accent color.
      */
-    public function cardAccentBorderClasses(): string
+    public function companyNameTextClasses(): string
     {
         return match ($this->color) {
-            'blue' => 'border-l-blue-400',
-            'sky' => 'border-l-sky-400',
-            'indigo' => 'border-l-indigo-400',
-            'amber' => 'border-l-amber-400',
-            'orange' => 'border-l-orange-400',
-            'green' => 'border-l-green-400',
-            'red' => 'border-l-red-400',
-            'emerald' => 'border-l-emerald-400',
-            'purple' => 'border-l-purple-400',
-            'teal' => 'border-l-teal-400',
-            'pink' => 'border-l-pink-400',
-            default => 'border-l-zinc-400 dark:border-l-zinc-500',
+            'blue' => 'text-blue-800 dark:text-blue-200',
+            'sky' => 'text-sky-800 dark:text-sky-200',
+            'indigo' => 'text-indigo-800 dark:text-indigo-200',
+            'amber' => 'text-amber-800 dark:text-amber-200',
+            'orange' => 'text-orange-800 dark:text-orange-200',
+            'green' => 'text-green-800 dark:text-green-200',
+            'red' => 'text-red-800 dark:text-red-200',
+            'emerald' => 'text-emerald-800 dark:text-emerald-200',
+            'purple' => 'text-purple-800 dark:text-purple-200',
+            'teal' => 'text-teal-800 dark:text-teal-200',
+            'pink' => 'text-pink-800 dark:text-pink-200',
+            default => 'text-zinc-700 dark:text-zinc-300',
         };
     }
 

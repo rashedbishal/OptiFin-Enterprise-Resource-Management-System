@@ -233,36 +233,40 @@ Masking this real element instead was verified frame-by-frame (screenshot
 pixel hashes, not just computed style) to repaint correctly in both light
 and dark mode — see the verification note in the PR/commit for this change
 before assuming the old bug is back if this ever looks stuck again.
+
+A translating linear-gradient (animating background-position) was tried
+first and is mathematically loop-safe when the travel distance is an exact
+multiple of the tile width — but "loop-safe" only means pixel-identical at
+the restart instant. The motion itself is still a one-way conveyor belt that
+jumps back to its start position every cycle, which reads as a visible
+"snap" even when nothing is technically discontinuous. A conic-gradient
+rotated by --shimmer-angle has no such seam: an angle is periodic modulo
+360deg by definition, so 0deg and 360deg are the *same* gradient, not just
+numerically equal endpoints — the sweep is a real rotation, a full circle,
+with nothing to reset.
 */
+@property --shimmer-angle {
+    syntax: '<angle>';
+    inherits: false;
+    initial-value: 0deg;
+}
+
 .lead-alert-shimmer {
     padding: 2px;
-    background-image: linear-gradient(115deg, transparent 15%, rgb(var(--shimmer-light, 217 119 6) / 0.95) 50%, transparent 85%);
-    /*
-    background-size/keyframe pair is chosen, not arbitrary: background-position
-    percentages resolve as (1 - size) * percent, so with a 200% size the
-    200% -> 0% sweep below travels exactly one tile-width (a delta of `size`)
-    regardless of the card's actual width. That's what makes the loop restart
-    land back on the same phase instead of visibly snapping — any pair whose
-    travel isn't an exact multiple of the tile width will break the loop.
-    */
-    background-size: 200% 200%;
-    animation: lead-alert-shimmer-sweep 1.8s linear infinite;
+    background-image: conic-gradient(from var(--shimmer-angle), transparent 0deg, rgb(var(--shimmer-light, 217 119 6) / 0.95) 45deg, transparent 100deg, transparent 360deg);
+    animation: lead-alert-shimmer-spin 1.8s linear infinite;
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
 }
 
 :where(.dark, .dark *) .lead-alert-shimmer {
-    background-image: linear-gradient(115deg, transparent 15%, rgb(var(--shimmer-dark, 251 191 36) / 0.95) 50%, transparent 85%);
+    background-image: conic-gradient(from var(--shimmer-angle), transparent 0deg, rgb(var(--shimmer-dark, 251 191 36) / 0.95) 45deg, transparent 100deg, transparent 360deg);
 }
 
-@keyframes lead-alert-shimmer-sweep {
-    0% {
-        background-position: 200% 0%;
-    }
-
-    100% {
-        background-position: 0% 0%;
+@keyframes lead-alert-shimmer-spin {
+    to {
+        --shimmer-angle: 360deg;
     }
 }
 
