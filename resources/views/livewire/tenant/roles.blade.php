@@ -45,7 +45,7 @@
                             <div class="flex justify-end gap-2">
                                 <flux:button size="sm" wire:click="edit('{{ $role->id }}')">{{ __('Edit') }}</flux:button>
                                 @unless ($role->is_owner_role)
-                                    <flux:button size="sm" variant="danger" wire:click="delete('{{ $role->id }}')" wire:confirm="{{ __('Delete this role?') }}">
+                                    <flux:button size="sm" variant="danger" wire:click="confirmDelete('{{ $role->id }}')">
                                         {{ __('Delete') }}
                                     </flux:button>
                                 @endunless
@@ -106,4 +106,11 @@
             </div>
         </form>
     </flux:modal>
+
+    <x-confirm-modal
+        wire:model.self="showDeleteModal"
+        :title="__('Delete this role?')"
+        confirm-action="deleteConfirmed"
+        :confirm-label="__('Delete')"
+    />
 </div>

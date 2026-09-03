@@ -95,6 +95,21 @@ test('a status used by no client can be deleted', function () {
     expect(LeadStatus::whereKey($status->id)->exists())->toBeFalse();
 });
 
+test('deleting a status goes through the confirm modal', function () {
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+    $status = LeadStatus::factory()->create();
+
+    Livewire::actingAs($motherAdmin, 'platform')
+        ->test(Settings::class)
+        ->call('confirmDeleteStatus', $status->id)
+        ->assertSet('showDeleteStatusModal', true)
+        ->assertSet('confirmingDeleteStatusId', $status->id)
+        ->call('deleteStatusConfirmed')
+        ->assertSet('showDeleteStatusModal', false);
+
+    expect(LeadStatus::whereKey($status->id)->exists())->toBeFalse();
+});
+
 test('mother admin can create a custom currency', function () {
     $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
 
@@ -172,6 +187,21 @@ test('a currency used by no client can be deleted', function () {
         ->test(Settings::class)
         ->call('deleteCurrency', $currency->id)
         ->assertDispatched('toast-show');
+
+    expect(Currency::whereKey($currency->id)->exists())->toBeFalse();
+});
+
+test('deleting a currency goes through the confirm modal', function () {
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+    $currency = Currency::factory()->create();
+
+    Livewire::actingAs($motherAdmin, 'platform')
+        ->test(Settings::class)
+        ->call('confirmDeleteCurrency', $currency->id)
+        ->assertSet('showDeleteCurrencyModal', true)
+        ->assertSet('confirmingDeleteCurrencyId', $currency->id)
+        ->call('deleteCurrencyConfirmed')
+        ->assertSet('showDeleteCurrencyModal', false);
 
     expect(Currency::whereKey($currency->id)->exists())->toBeFalse();
 });

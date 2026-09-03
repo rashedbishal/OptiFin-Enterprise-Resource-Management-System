@@ -38,6 +38,10 @@ class Index extends Component
      */
     public array $modulePermissions = [];
 
+    public bool $showDeleteModal = false;
+
+    public ?string $confirmingDeleteId = null;
+
     public function mount(): void
     {
         Gate::forUser(Auth::guard('platform')->user())->authorize('create', Role::class);
@@ -126,6 +130,22 @@ class Index extends Component
 
         $this->showModal = false;
         Flux::toast(variant: 'success', text: __('Role saved.'));
+    }
+
+    public function confirmDelete(string $id): void
+    {
+        $this->confirmingDeleteId = $id;
+        $this->showDeleteModal = true;
+    }
+
+    public function deleteConfirmed(): void
+    {
+        if ($this->confirmingDeleteId) {
+            $this->delete($this->confirmingDeleteId);
+        }
+
+        $this->showDeleteModal = false;
+        $this->confirmingDeleteId = null;
     }
 
     public function delete(string $id): void

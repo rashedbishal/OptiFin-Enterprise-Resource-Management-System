@@ -7,6 +7,7 @@ use App\Enums\LeadPriority;
 use App\Enums\LeadSourceType;
 use App\Events\LeadStatusChanged;
 use App\Events\LeadUpdated;
+use App\Livewire\Tenant\Leads\Concerns\ConfirmsLeadDeletionPassword;
 use App\Livewire\Tenant\Leads\Concerns\FiltersLeadsQuery;
 use App\Models\Lead;
 use App\Models\LeadSource;
@@ -28,7 +29,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 #[Title('Leads')]
 class Index extends Component
 {
-    use FiltersLeadsQuery, WithPagination;
+    use ConfirmsLeadDeletionPassword, FiltersLeadsQuery, WithPagination;
 
     public string $sourceType = '';
 
@@ -98,6 +99,14 @@ class Index extends Component
     public bool $showFollowUpAlertModal = false;
 
     public string $followUpAlertDaysInput = '0';
+
+    public bool $showDeleteLeadModal = false;
+
+    public ?string $confirmingDeleteLeadId = null;
+
+    public bool $showDeleteSourceModal = false;
+
+    public ?string $confirmingDeleteSourceId = null;
 
     public function mount(): void
     {
@@ -569,6 +578,48 @@ class Index extends Component
         return $query->orderBy('name')->get();
     }
 
+    /**
+     * Opens the password-confirmation modal (see ConfirmsLeadDeletionPassword)
+     * rather than deleting immediately — checked here too, not just hidden
+     * client-side, since this is reachable directly via wire:click.
+     */
+    public function confirmDeleteLead(string $id): void
+    {
+        $lead = Lead::where('tenant_id', Auth::user()->tenant_id)->find($id);
+
+        if (! $lead || Gate::denies('delete', $lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to delete this lead."));
+
+            return;
+        }
+
+        $this->reset('deletePassword');
+        $this->resetErrorBag('deletePassword');
+        $this->confirmingDeleteLeadId = $id;
+        $this->showDeleteLeadModal = true;
+    }
+
+    public function deleteLeadConfirmed(): void
+    {
+        if (! $this->verifyDeletePassword()) {
+            return;
+        }
+
+        if ($this->confirmingDeleteLeadId) {
+            $this->delete($this->confirmingDeleteLeadId);
+        }
+
+        $this->closeDeleteLeadModal();
+    }
+
+    public function closeDeleteLeadModal(): void
+    {
+        $this->showDeleteLeadModal = false;
+        $this->confirmingDeleteLeadId = null;
+        $this->reset('deletePassword');
+        $this->resetErrorBag('deletePassword');
+    }
+
     public function delete(string $id): void
     {
         $lead = Lead::where('tenant_id', Auth::user()->tenant_id)->findOrFail($id);
@@ -589,6 +640,22 @@ class Index extends Component
         $this->refreshBoard();
 
         Flux::toast(variant: 'success', text: __('Lead deleted.'));
+    }
+
+    public function confirmDeleteSource(string $id): void
+    {
+        $this->confirmingDeleteSourceId = $id;
+        $this->showDeleteSourceModal = true;
+    }
+
+    public function deleteSourceConfirmed(): void
+    {
+        if ($this->confirmingDeleteSourceId) {
+            $this->deleteSource($this->confirmingDeleteSourceId);
+        }
+
+        $this->showDeleteSourceModal = false;
+        $this->confirmingDeleteSourceId = null;
     }
 
     /**
@@ -744,10 +811,11 @@ class Index extends Component
                 throw new RuntimeException('Unable to open output stream.');
             }
 
-            fputcsv($handle, ['Name', 'Email', 'Phone', 'Source', 'Status', 'Priority', 'Assigned To', 'Created At', 'Closed At']);
+            fputcsv($handle, ['Lead ID', 'Name', 'Email', 'Phone', 'Source', 'Status', 'Priority', 'Assigned To', 'Created At', 'Closed At']);
 
             foreach ($leads as $lead) {
                 fputcsv($handle, [
+                    $lead->identifier,
                     $lead->name,
                     $lead->email,
                     $lead->phone,

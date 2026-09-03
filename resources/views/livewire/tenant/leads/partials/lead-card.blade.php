@@ -57,7 +57,10 @@
     class="flex w-full cursor-pointer flex-col gap-2 rounded-lg border border-l-4 p-3 text-left shadow-sm transition hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-accent {{ $lead->status->cardBackgroundClasses() }} {{ $lead->status->cardAccentBorderClasses() }}"
 >
     <div class="flex items-start justify-between gap-2">
-        <p class="min-w-0 truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ $lead->name }}</p>
+        <div class="min-w-0">
+            <p class="truncate font-mono text-[11px] text-zinc-400 dark:text-zinc-500">{{ $lead->identifier }}</p>
+            <p class="min-w-0 truncate text-sm font-medium text-zinc-800 dark:text-zinc-100">{{ $lead->name }}</p>
+        </div>
 
         @if ($canMove)
             <div class="flex shrink-0 items-center" x-on:click.stop x-on:keydown.enter.stop>

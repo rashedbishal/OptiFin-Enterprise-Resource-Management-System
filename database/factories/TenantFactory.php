@@ -48,6 +48,7 @@ class TenantFactory extends Factory
             'name' => fake()->unique()->company(),
             'legal_name' => fake()->company().' '.fake()->companySuffix(),
             'tenant_code' => sprintf('TEN-%06d', ++static::$sequence),
+            'lead_id_prefix' => fn (array $attributes): string => Tenant::generateLeadIdPrefix($attributes['name']),
             'contact_name' => fake()->name(),
             'email' => fake()->unique()->companyEmail(),
             'phone' => fake()->phoneNumber(),

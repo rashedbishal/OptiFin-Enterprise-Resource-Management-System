@@ -67,7 +67,7 @@
                             @if ($source->leads_count > 0)
                                 <flux:button size="sm" :href="route('tenant-leads.source', $source)" wire:navigate>{{ __('View All') }}</flux:button>
                             @elseif ($this->isClientAdmin)
-                                <flux:button size="sm" variant="danger" wire:click="deleteSource('{{ $source->id }}')" wire:confirm="{{ __('Delete this lead source?') }}">
+                                <flux:button size="sm" variant="danger" wire:click="confirmDeleteSource('{{ $source->id }}')">
                                     {{ __('Delete') }}
                                 </flux:button>
                             @endif
@@ -365,4 +365,11 @@
             <livewire:tenant.leads.show :lead="$this->selectedLead" :panel="true" :key="'lead-panel-'.$this->selectedLead->id" />
         @endif
     </flux:modal>
+
+    <x-confirm-modal
+        wire:model.self="showDeleteSourceModal"
+        :title="__('Delete this lead source?')"
+        confirm-action="deleteSourceConfirmed"
+        :confirm-label="__('Delete')"
+    />
 </div>

@@ -41,7 +41,7 @@ class FacebookLeadAdsExport implements FromCollection, WithHeadings, WithMapping
     public function headings(): array
     {
         return [
-            ...['Name'],
+            ...['Lead ID', 'Name'],
             ...array_map(fn (string $column): string => ucwords(str_replace('_', ' ', $column)), $this->fieldColumns),
             ...['Form', 'Status', 'Submitted At'],
         ];
@@ -56,7 +56,7 @@ class FacebookLeadAdsExport implements FromCollection, WithHeadings, WithMapping
         $fieldValues = $lead->leadAdFieldValues();
 
         return [
-            ...[$lead->name],
+            ...[$lead->identifier, $lead->name],
             ...array_map(fn (string $column): ?string => $fieldValues[$column] ?? null, $this->fieldColumns),
             ...[
                 $lead->source_data['form_name'] ?? null,

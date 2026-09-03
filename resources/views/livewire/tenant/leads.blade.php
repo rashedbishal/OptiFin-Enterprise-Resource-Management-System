@@ -168,7 +168,7 @@
                                 @if ($source->leads_count > 0)
                                     <flux:button size="sm" :href="route('tenant-leads.source', $source)" wire:navigate>{{ __('View All') }}</flux:button>
                                 @elseif ($this->canDeleteLeads)
-                                    <flux:button size="sm" variant="danger" wire:click="deleteSource('{{ $source->id }}')" wire:confirm="{{ __('Delete this lead source?') }}">
+                                    <flux:button size="sm" variant="danger" wire:click="confirmDeleteSource('{{ $source->id }}')">
                                         {{ __('Delete') }}
                                     </flux:button>
                                 @endif
@@ -201,6 +201,7 @@
                                     <img src="{{ $lead->avatarUrl() }}" alt="" loading="lazy" class="size-8 shrink-0 rounded-full object-cover">
                                 @endif
                                 <div class="flex flex-col">
+                                    <span class="font-mono text-[11px] text-zinc-400 dark:text-zinc-500">{{ $lead->identifier }}</span>
                                     <span @class(['text-base font-semibold text-zinc-900 dark:text-white', 'font-bold' => $isRecentlyUpdated])>
                                         {{ $lead->name }}
                                     </span>
@@ -228,7 +229,7 @@
                         <div class="flex items-center justify-end gap-2 pt-2.5 border-t border-zinc-100 dark:border-zinc-700/60">
                             <flux:button size="sm" :href="route('tenant-leads.show', $lead)" wire:navigate>{{ __('View') }}</flux:button>
                             @if ($this->canDeleteLeads && in_array($lead->source->type->value, ['email', 'website_form', 'manual']))
-                                <flux:button size="sm" variant="danger" wire:click="delete('{{ $lead->id }}')" wire:confirm="{{ __('Delete this lead?') }}">
+                                <flux:button size="sm" variant="danger" wire:click="confirmDeleteLead('{{ $lead->id }}')">
                                     {{ __('Delete') }}
                                 </flux:button>
                             @endif
@@ -248,6 +249,7 @@
             <div class="hidden sm:block">
                 <flux:table>
                     <flux:table.columns>
+                        <flux:table.column>{{ __('Lead ID') }}</flux:table.column>
                         <flux:table.column>{{ __('Name') }}</flux:table.column>
                         <flux:table.column>{{ __('Source') }}</flux:table.column>
                         <flux:table.column>{{ __('Status') }}</flux:table.column>
@@ -258,6 +260,7 @@
                     <flux:table.rows>
                         @foreach ($this->facebookLeadAdsSources as $source)
                             <flux:table.row wire:key="fb-lead-ads-source-{{ $source->id }}" class="bg-zinc-50/50 dark:bg-zinc-900/40">
+                                <flux:table.cell>—</flux:table.cell>
                                 <flux:table.cell>
                                     <div class="flex flex-col">
                                         <span class="font-medium">{{ $source->name }}</span>
@@ -275,7 +278,7 @@
                                         @if ($source->leads_count > 0)
                                             <flux:button size="sm" :href="route('tenant-leads.source', $source)" wire:navigate>{{ __('View All') }}</flux:button>
                                         @elseif ($this->canDeleteLeads)
-                                            <flux:button size="sm" variant="danger" wire:click="deleteSource('{{ $source->id }}')" wire:confirm="{{ __('Delete this lead source?') }}">
+                                            <flux:button size="sm" variant="danger" wire:click="confirmDeleteSource('{{ $source->id }}')">
                                                 {{ __('Delete') }}
                                             </flux:button>
                                         @endif
@@ -300,6 +303,9 @@
                                     'animate-lead-lift bg-amber-500/10 dark:bg-amber-500/15 border-l-4 border-l-amber-500' => $isRecentlyUpdated,
                                 ])
                             >
+                                <flux:table.cell>
+                                    <span class="font-mono text-xs text-zinc-500 dark:text-zinc-400">{{ $lead->identifier }}</span>
+                                </flux:table.cell>
                                 <flux:table.cell>
                                     <div class="flex items-center gap-2">
                                         @if ($lead->avatarUrl())
@@ -326,7 +332,7 @@
                                     <div class="flex justify-end gap-2">
                                         <flux:button size="sm" :href="route('tenant-leads.show', $lead)" wire:navigate>{{ __('View') }}</flux:button>
                                         @if ($this->canDeleteLeads && in_array($lead->source->type->value, ['email', 'website_form', 'manual']))
-                                            <flux:button size="sm" variant="danger" wire:click="delete('{{ $lead->id }}')" wire:confirm="{{ __('Delete this lead?') }}">
+                                            <flux:button size="sm" variant="danger" wire:click="confirmDeleteLead('{{ $lead->id }}')">
                                                 {{ __('Delete') }}
                                             </flux:button>
                                         @endif
@@ -336,7 +342,7 @@
                         @empty
                             @if ($this->facebookLeadAdsSources->isEmpty())
                                 <flux:table.row>
-                                    <flux:table.cell colspan="6">{{ __('No leads yet.') }}</flux:table.cell>
+                                    <flux:table.cell colspan="7">{{ __('No leads yet.') }}</flux:table.cell>
                                 </flux:table.row>
                             @endif
                         @endforelse
@@ -471,4 +477,17 @@
             </form>
         </flux:modal>
     @endif
+
+    <x-confirm-password-delete-modal
+        wire:model.self="showDeleteLeadModal"
+        confirm-action="deleteLeadConfirmed"
+        close-action="closeDeleteLeadModal"
+    />
+
+    <x-confirm-modal
+        wire:model.self="showDeleteSourceModal"
+        :title="__('Delete this lead source?')"
+        confirm-action="deleteSourceConfirmed"
+        :confirm-label="__('Delete')"
+    />
 </div>

@@ -35,7 +35,7 @@
                                 <flux:button size="sm" wire:click="toggleActive('{{ $admin->id }}')">
                                     {{ $admin->is_active ? __('Deactivate') : __('Activate') }}
                                 </flux:button>
-                                <flux:button size="sm" variant="danger" wire:click="delete('{{ $admin->id }}')" wire:confirm="{{ __('Delete this admin?') }}">
+                                <flux:button size="sm" variant="danger" wire:click="confirmDelete('{{ $admin->id }}')">
                                     {{ __('Delete') }}
                                 </flux:button>
                             </div>
@@ -74,4 +74,11 @@
             </div>
         </form>
     </flux:modal>
+
+    <x-confirm-modal
+        wire:model.self="showDeleteModal"
+        :title="__('Delete this admin?')"
+        confirm-action="deleteConfirmed"
+        :confirm-label="__('Delete')"
+    />
 </div>

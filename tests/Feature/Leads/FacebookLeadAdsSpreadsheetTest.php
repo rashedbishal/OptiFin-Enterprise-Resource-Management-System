@@ -168,7 +168,7 @@ test('the leads index shows a view all button (not delete) for a facebook lead a
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)
         ->assertSee('View All')
-        ->assertDontSee('Delete');
+        ->assertDontSeeHtml('wire:click="confirmDeleteSource(\''.$source->id.'\')"');
 });
 
 test('the leads index shows a delete button (not view all) for an empty facebook lead ads source', function () {
@@ -189,6 +189,21 @@ test('a client admin can delete an empty facebook lead ads source', function () 
         ->test(Index::class)
         ->call('deleteSource', $source->id)
         ->assertDispatched('toast-show');
+
+    expect(LeadSource::find($source->id))->toBeNull();
+});
+
+test('deleting an empty facebook lead ads source goes through the confirm modal', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class)
+        ->call('confirmDeleteSource', $source->id)
+        ->assertSet('showDeleteSourceModal', true)
+        ->assertSet('confirmingDeleteSourceId', $source->id)
+        ->call('deleteSourceConfirmed')
+        ->assertSet('showDeleteSourceModal', false);
 
     expect(LeadSource::find($source->id))->toBeNull();
 });
@@ -265,12 +280,13 @@ test('the facebook lead ads export maps headings and rows from field_data', func
 
     $export = new FacebookLeadAdsExport(new Collection([$lead]), ['full_name', 'city']);
 
-    expect($export->headings())->toBe(['Name', 'Full Name', 'City', 'Form', 'Status', 'Submitted At']);
+    expect($export->headings())->toBe(['Lead ID', 'Name', 'Full Name', 'City', 'Form', 'Status', 'Submitted At']);
 
     $row = $export->map($lead);
 
-    expect($row[0])->toBe('Jane Doe');
+    expect($row[0])->toBe($lead->identifier);
     expect($row[1])->toBe('Jane Doe');
-    expect($row[2])->toBe('Dhaka');
-    expect($row[3])->toBe('Contact Us');
+    expect($row[2])->toBe('Jane Doe');
+    expect($row[3])->toBe('Dhaka');
+    expect($row[4])->toBe('Contact Us');
 });

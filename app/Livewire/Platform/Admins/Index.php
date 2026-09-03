@@ -34,6 +34,10 @@ class Index extends Component
 
     public ?string $role_id = null;
 
+    public bool $showDeleteModal = false;
+
+    public ?string $confirmingDeleteId = null;
+
     public function mount(): void
     {
         Gate::forUser(Auth::guard('platform')->user())->authorize('viewAny', PlatformUser::class);
@@ -123,6 +127,22 @@ class Index extends Component
         Gate::forUser(Auth::guard('platform')->user())->authorize('update', $admin);
 
         $admin->update(['is_active' => ! $admin->is_active]);
+    }
+
+    public function confirmDelete(string $id): void
+    {
+        $this->confirmingDeleteId = $id;
+        $this->showDeleteModal = true;
+    }
+
+    public function deleteConfirmed(): void
+    {
+        if ($this->confirmingDeleteId) {
+            $this->delete($this->confirmingDeleteId);
+        }
+
+        $this->showDeleteModal = false;
+        $this->confirmingDeleteId = null;
     }
 
     public function delete(string $id): void

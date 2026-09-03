@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
@@ -23,6 +24,7 @@ class Tenant extends Model
         'name',
         'legal_name',
         'tenant_code',
+        'lead_id_prefix',
         'contact_name',
         'email',
         'phone',
@@ -53,6 +55,35 @@ class Tenant extends Model
             'followup_alert_enabled' => 'boolean',
             'followup_alert_days_before' => 'integer',
         ];
+    }
+
+    /**
+     * The tenant-name portion of every one of this tenant's lead
+     * identifiers ({prefix}-LEAD-{n}, see Lead::booted()) — generated once
+     * when the tenant is created (App\Actions\Platform\CreateClient) and
+     * never changed afterwards, so a tenant's leads keep stable identifiers
+     * for its whole lifetime. Just the first word of the name, uppercased/
+     * slugified ("Opticore Solutions Ltd" → "OPTICORE", "Acme" → "ACME"),
+     * with a numeric suffix appended if another tenant's first word already
+     * produced that same slug, since `name` itself isn't unique but this
+     * must be.
+     */
+    public static function generateLeadIdPrefix(string $name): string
+    {
+        $firstWord = explode(' ', trim($name), 2)[0];
+        $base = strtoupper(Str::slug($firstWord));
+
+        if ($base === '') {
+            $base = 'TENANT';
+        }
+
+        $prefix = $base;
+
+        for ($suffix = 2; static::where('lead_id_prefix', $prefix)->exists(); $suffix++) {
+            $prefix = "{$base}-{$suffix}";
+        }
+
+        return $prefix;
     }
 
     public function roles(): HasMany

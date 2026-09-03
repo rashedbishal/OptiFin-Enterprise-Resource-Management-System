@@ -45,6 +45,7 @@
     <div class="overflow-x-auto">
         <flux:table>
             <flux:table.columns>
+                <flux:table.column>{{ __('Lead ID') }}</flux:table.column>
                 <flux:table.column>{{ __('Name') }}</flux:table.column>
                 @foreach ($this->fieldColumns as $column)
                     <flux:table.column>{{ ucwords(str_replace('_', ' ', $column)) }}</flux:table.column>
@@ -57,6 +58,7 @@
             <flux:table.rows>
                 @forelse ($this->leads as $lead)
                     <flux:table.row wire:key="lead-{{ $lead->id }}">
+                        <flux:table.cell><span class="font-mono text-xs text-zinc-500 dark:text-zinc-400">{{ $lead->identifier }}</span></flux:table.cell>
                         <flux:table.cell>{{ $lead->name }}</flux:table.cell>
                         @php $fieldValues = $lead->leadAdFieldValues(); @endphp
                         @foreach ($this->fieldColumns as $column)
@@ -73,7 +75,7 @@
                     </flux:table.row>
                 @empty
                     <flux:table.row>
-                        <flux:table.cell colspan="{{ count($this->fieldColumns) + 5 }}">{{ __('No leads yet.') }}</flux:table.cell>
+                        <flux:table.cell colspan="{{ count($this->fieldColumns) + 6 }}">{{ __('No leads yet.') }}</flux:table.cell>
                     </flux:table.row>
                 @endforelse
             </flux:table.rows>

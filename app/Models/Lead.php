@@ -17,9 +17,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * @property string $id
+ * @property string $identifier
  * @property string $tenant_id
  * @property string $source_id
  * @property string|null $assigned_to
@@ -83,6 +85,38 @@ class Lead extends Model
             'first_contacted_at' => 'datetime',
             'closed_at' => 'datetime',
         ];
+    }
+
+    /**
+     * `identifier` is deliberately left out of #[Fillable] above — it must
+     * only ever come from here, never from a create() payload (see the
+     * Fillable-attribute trap noted in CLAUDE.md).
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (Lead $lead): void {
+            if (! $lead->identifier) {
+                $lead->identifier = self::nextIdentifier($lead->tenant_id);
+            }
+        });
+    }
+
+    /**
+     * Reserves the next {tenant_prefix}-LEAD-{n} identifier for a tenant
+     * under a row lock on that tenant, so a burst of concurrent lead
+     * creations (e.g. several webhook deliveries at once) can never hand
+     * out the same number twice. Numbers only ever go up — deleting a lead
+     * never reclaims or reuses its number.
+     */
+    private static function nextIdentifier(string $tenantId): string
+    {
+        return DB::transaction(function () use ($tenantId): string {
+            $tenant = Tenant::whereKey($tenantId)->lockForUpdate()->firstOrFail();
+            $number = $tenant->next_lead_number;
+            $tenant->increment('next_lead_number');
+
+            return "{$tenant->lead_id_prefix}-LEAD-{$number}";
+        });
     }
 
     /**

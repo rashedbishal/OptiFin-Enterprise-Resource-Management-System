@@ -38,7 +38,7 @@
                         <flux:table.cell>
                             <div class="flex justify-end gap-2">
                                 <flux:button size="sm" wire:click="editStatus('{{ $status->id }}')">{{ __('Edit') }}</flux:button>
-                                <flux:button size="sm" variant="danger" wire:click="deleteStatus('{{ $status->id }}')" wire:confirm="{{ __('Delete this status?') }}">
+                                <flux:button size="sm" variant="danger" wire:click="confirmDeleteStatus('{{ $status->id }}')">
                                     {{ __('Delete') }}
                                 </flux:button>
                             </div>
@@ -74,7 +74,7 @@
                         <flux:table.cell>
                             <div class="flex justify-end gap-2">
                                 <flux:button size="sm" wire:click="editCurrency('{{ $currency->id }}')">{{ __('Edit') }}</flux:button>
-                                <flux:button size="sm" variant="danger" wire:click="deleteCurrency('{{ $currency->id }}')" wire:confirm="{{ __('Delete this currency?') }}">
+                                <flux:button size="sm" variant="danger" wire:click="confirmDeleteCurrency('{{ $currency->id }}')">
                                     {{ __('Delete') }}
                                 </flux:button>
                             </div>
@@ -118,4 +118,18 @@
             </div>
         </form>
     </flux:modal>
+
+    <x-confirm-modal
+        wire:model.self="showDeleteStatusModal"
+        :title="__('Delete this status?')"
+        confirm-action="deleteStatusConfirmed"
+        :confirm-label="__('Delete')"
+    />
+
+    <x-confirm-modal
+        wire:model.self="showDeleteCurrencyModal"
+        :title="__('Delete this currency?')"
+        confirm-action="deleteCurrencyConfirmed"
+        :confirm-label="__('Delete')"
+    />
 </div>

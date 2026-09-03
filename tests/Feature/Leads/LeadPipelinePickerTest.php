@@ -2,10 +2,27 @@
 
 use App\Livewire\Platform\Clients\LeadSources;
 use App\Models\Lead;
+use App\Models\LeadSource;
 use App\Models\LeadStatus;
 use App\Models\PlatformUser;
 use App\Models\Tenant;
 use Livewire\Livewire;
+
+test('deleting a lead source goes through the confirm modal', function () {
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+    $tenant = Tenant::factory()->create();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id]);
+
+    Livewire::actingAs($motherAdmin, 'platform')
+        ->test(LeadSources::class, ['tenant' => $tenant])
+        ->call('confirmDelete', $source->id)
+        ->assertSet('showDeleteModal', true)
+        ->assertSet('confirmingDeleteId', $source->id)
+        ->call('deleteConfirmed')
+        ->assertSet('showDeleteModal', false);
+
+    expect(LeadSource::find($source->id))->toBeNull();
+});
 
 test('removing a selected status asks for confirmation but adding an unselected one does not', function () {
     $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
@@ -14,8 +31,25 @@ test('removing a selected status asks for confirmation but adding an unselected 
 
     Livewire::actingAs($motherAdmin, 'platform')
         ->test(LeadSources::class, ['tenant' => $tenant])
-        ->assertSeeHtml('wire:confirm="Remove New from this client&#039;s pipeline?"')
-        ->assertDontSeeHtml('wire:confirm="Remove Custom Stage');
+        ->assertSeeHtml('wire:click="confirmRemoveStatus(\''.$tenant->leadStatuses->firstWhere('name', 'New')->id.'\')"')
+        ->assertSeeHtml('wire:click="toggleLeadStatus(\''.$custom->id.'\')"');
+});
+
+test('confirming the removal modal actually removes the status from the pipeline', function () {
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+    $tenant = Tenant::factory()->create();
+    $contacted = leadStatus('contacted');
+
+    Livewire::actingAs($motherAdmin, 'platform')
+        ->test(LeadSources::class, ['tenant' => $tenant])
+        ->call('confirmRemoveStatus', $contacted->id)
+        ->assertSet('showRemoveStatusModal', true)
+        ->assertSet('confirmingRemoveStatusId', $contacted->id)
+        ->call('removeStatusConfirmed')
+        ->assertSet('showRemoveStatusModal', false)
+        ->assertSet('confirmingRemoveStatusId', null);
+
+    expect($tenant->fresh()->leadStatuses->pluck('slug')->all())->not->toContain('contacted');
 });
 
 test('a freshly created tenant has the full catalog selected in catalog order', function () {

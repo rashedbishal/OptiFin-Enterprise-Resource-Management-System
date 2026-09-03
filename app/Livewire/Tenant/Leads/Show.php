@@ -6,6 +6,7 @@ use App\Enums\LeadPriority;
 use App\Enums\LeadSourceType;
 use App\Events\LeadStatusChanged;
 use App\Events\LeadUpdated;
+use App\Livewire\Tenant\Leads\Concerns\ConfirmsLeadDeletionPassword;
 use App\Models\Lead;
 use App\Models\LeadAttachment;
 use App\Models\LeadDetailUpdateLog;
@@ -27,6 +28,8 @@ use Livewire\Component;
 #[Title('Lead Details')]
 class Show extends Component
 {
+    use ConfirmsLeadDeletionPassword;
+
     /**
      * Human labels for the CRM fields Contact/Company/Deal-form edits can
      * touch, keyed by the Lead column they write to — used to translate
@@ -108,6 +111,12 @@ class Show extends Component
      * dispatched events instead of a page redirect.
      */
     public bool $panel = false;
+
+    public bool $showDeleteModal = false;
+
+    public bool $showCancelMeetingModal = false;
+
+    public bool $showCancelFollowUpModal = false;
 
     public function mount(Lead $lead): void
     {
@@ -582,6 +591,17 @@ class Show extends Component
         Flux::toast(variant: 'success', text: __('Lead assigned to :name.', ['name' => $assignee->name]));
     }
 
+    public function confirmCancelMeeting(): void
+    {
+        $this->showCancelMeetingModal = true;
+    }
+
+    public function cancelMeetingConfirmed(): void
+    {
+        $this->cancelMeeting();
+        $this->showCancelMeetingModal = false;
+    }
+
     public function cancelMeeting(): void
     {
         if (Gate::denies('update', $this->lead)) {
@@ -622,6 +642,17 @@ class Show extends Component
         $this->leadMeetingDate = '';
 
         Flux::toast(variant: 'success', text: __('Meeting marked as done.'));
+    }
+
+    public function confirmCancelFollowUp(): void
+    {
+        $this->showCancelFollowUpModal = true;
+    }
+
+    public function cancelFollowUpConfirmed(): void
+    {
+        $this->cancelFollowUp();
+        $this->showCancelFollowUpModal = false;
     }
 
     public function cancelFollowUp(): void
@@ -713,6 +744,36 @@ class Show extends Component
         $this->reset('newNote');
         unset($this->activity);
         Flux::toast(variant: 'success', text: __('Note added.'));
+    }
+
+    public function confirmDelete(): void
+    {
+        if (Gate::denies('delete', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to delete this lead."));
+
+            return;
+        }
+
+        $this->reset('deletePassword');
+        $this->resetErrorBag('deletePassword');
+        $this->showDeleteModal = true;
+    }
+
+    public function closeDeleteModal(): void
+    {
+        $this->showDeleteModal = false;
+        $this->reset('deletePassword');
+        $this->resetErrorBag('deletePassword');
+    }
+
+    public function deleteConfirmed(): void
+    {
+        if (! $this->verifyDeletePassword()) {
+            return;
+        }
+
+        $this->showDeleteModal = false;
+        $this->delete();
     }
 
     public function delete(): void

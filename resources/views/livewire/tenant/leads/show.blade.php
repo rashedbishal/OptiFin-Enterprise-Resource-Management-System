@@ -40,4 +40,6 @@
             @endif
         </div>
     </div>
+
+    <x-confirm-password-delete-modal wire:model.self="showDeleteModal" />
 </div>

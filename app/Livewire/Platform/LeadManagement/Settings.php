@@ -49,6 +49,14 @@ class Settings extends Component
 
     public string $currencyName = '';
 
+    public bool $showDeleteStatusModal = false;
+
+    public ?string $confirmingDeleteStatusId = null;
+
+    public bool $showDeleteCurrencyModal = false;
+
+    public ?string $confirmingDeleteCurrencyId = null;
+
     public function mount(): void
     {
         Gate::forUser(Auth::guard('platform')->user())->authorize('viewAny', LeadStatus::class);
@@ -140,6 +148,22 @@ class Settings extends Component
         Flux::toast(variant: 'success', text: __('Lead status saved.'));
     }
 
+    public function confirmDeleteStatus(string $id): void
+    {
+        $this->confirmingDeleteStatusId = $id;
+        $this->showDeleteStatusModal = true;
+    }
+
+    public function deleteStatusConfirmed(): void
+    {
+        if ($this->confirmingDeleteStatusId) {
+            $this->deleteStatus($this->confirmingDeleteStatusId);
+        }
+
+        $this->showDeleteStatusModal = false;
+        $this->confirmingDeleteStatusId = null;
+    }
+
     public function deleteStatus(string $id): void
     {
         $status = LeadStatus::findOrFail($id);
@@ -220,6 +244,22 @@ class Settings extends Component
 
         $this->showCurrencyModal = false;
         Flux::toast(variant: 'success', text: __('Currency saved.'));
+    }
+
+    public function confirmDeleteCurrency(string $id): void
+    {
+        $this->confirmingDeleteCurrencyId = $id;
+        $this->showDeleteCurrencyModal = true;
+    }
+
+    public function deleteCurrencyConfirmed(): void
+    {
+        if ($this->confirmingDeleteCurrencyId) {
+            $this->deleteCurrency($this->confirmingDeleteCurrencyId);
+        }
+
+        $this->showDeleteCurrencyModal = false;
+        $this->confirmingDeleteCurrencyId = null;
     }
 
     public function deleteCurrency(string $id): void

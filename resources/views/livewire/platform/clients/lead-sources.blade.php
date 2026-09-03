@@ -33,19 +33,14 @@
                     @if ($position !== false)
                         {{-- Selected: removing it is a mutating, hard-to-undo-cleanly
                         action (re-adding appends at the end rather than restoring the
-                        original order), so it's the only branch carrying wire:confirm.
-                        Livewire treats a present-but-empty wire:confirm as "Are you
-                        sure?", not "no confirm" — the attribute has to be genuinely
-                        absent for the add case below, which is why this is two
-                        separate button blocks rather than one with a conditional
-                        attribute (Blade doesn't evaluate @if directives placed inside
-                        a component tag's own attribute list). --}}
+                        original order), so it's the only branch that confirms —
+                        confirmRemoveStatus() opens the shared removal modal below,
+                        the add case below just toggles immediately. --}}
                         <flux:button
                             size="sm"
                             variant="primary"
                             :color="$status->color"
-                            wire:click="toggleLeadStatus('{{ $status->id }}')"
-                            wire:confirm="{{ __('Remove :name from this client\'s pipeline?', ['name' => $status->name]) }}"
+                            wire:click="confirmRemoveStatus('{{ $status->id }}')"
                         >
                             <span class="mr-1 font-semibold">{{ $position + 1 }}.</span>
                             {{ $status->name }}
@@ -125,7 +120,7 @@
                                 <flux:button size="sm" wire:click="toggleActive('{{ $source->id }}')">
                                     {{ $source->is_active ? __('Deactivate') : __('Activate') }}
                                 </flux:button>
-                                <flux:button size="sm" variant="danger" wire:click="delete('{{ $source->id }}')" wire:confirm="{{ __('Delete this lead source?') }}">
+                                <flux:button size="sm" variant="danger" wire:click="confirmDelete('{{ $source->id }}')">
                                     {{ __('Delete') }}
                                 </flux:button>
                             </div>
@@ -188,4 +183,18 @@
             </div>
         </form>
     </flux:modal>
+
+    <x-confirm-modal
+        wire:model.self="showDeleteModal"
+        :title="__('Delete this lead source?')"
+        confirm-action="deleteConfirmed"
+        :confirm-label="__('Delete')"
+    />
+
+    <x-confirm-modal
+        wire:model.self="showRemoveStatusModal"
+        :title="__('Remove :name from this client\'s pipeline?', ['name' => $this->allLeadStatuses->firstWhere('id', $confirmingRemoveStatusId)?->name ?? ''])"
+        confirm-action="removeStatusConfirmed"
+        :confirm-label="__('Remove')"
+    />
 </div>

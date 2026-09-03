@@ -44,6 +44,14 @@ class LeadSources extends Component
     /** @var array<string, mixed> */
     public array $config = [];
 
+    public bool $showDeleteModal = false;
+
+    public ?string $confirmingDeleteId = null;
+
+    public bool $showRemoveStatusModal = false;
+
+    public ?string $confirmingRemoveStatusId = null;
+
     public function mount(Tenant $tenant): void
     {
         Gate::forUser(Auth::guard('platform')->user())->authorize('update', $tenant);
@@ -365,6 +373,22 @@ class LeadSources extends Component
         $source->update(['is_active' => ! $source->is_active]);
     }
 
+    public function confirmDelete(string $id): void
+    {
+        $this->confirmingDeleteId = $id;
+        $this->showDeleteModal = true;
+    }
+
+    public function deleteConfirmed(): void
+    {
+        if ($this->confirmingDeleteId) {
+            $this->delete($this->confirmingDeleteId);
+        }
+
+        $this->showDeleteModal = false;
+        $this->confirmingDeleteId = null;
+    }
+
     public function delete(string $id): void
     {
         Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
@@ -372,6 +396,28 @@ class LeadSources extends Component
         $this->tenant->leadSources()->findOrFail($id)->delete();
 
         Flux::toast(variant: 'success', text: __('Lead source deleted.'));
+    }
+
+    /**
+     * Only the "remove from pipeline" direction of toggleLeadStatus() needs
+     * confirming — adding a status is a one-click, freely-reversible action.
+     * The Blade side only ever calls this from the "already selected"
+     * button, never the "add" one, so this always means removal.
+     */
+    public function confirmRemoveStatus(string $statusId): void
+    {
+        $this->confirmingRemoveStatusId = $statusId;
+        $this->showRemoveStatusModal = true;
+    }
+
+    public function removeStatusConfirmed(): void
+    {
+        if ($this->confirmingRemoveStatusId) {
+            $this->toggleLeadStatus($this->confirmingRemoveStatusId);
+        }
+
+        $this->showRemoveStatusModal = false;
+        $this->confirmingRemoveStatusId = null;
     }
 
     public function testConnection(string $id): void

@@ -7,6 +7,46 @@ use App\Models\LeadDetailUpdateLog;
 use Illuminate\Support\Facades\Event;
 use Livewire\Livewire;
 
+test('the cancel meeting modal confirms before the date is actually cleared', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today()->addDays(3)]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->call('confirmCancelMeeting')
+        ->assertSet('showCancelMeetingModal', true);
+
+    expect($lead->fresh()->meeting_date)->not->toBeNull();
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->call('confirmCancelMeeting')
+        ->call('cancelMeetingConfirmed')
+        ->assertSet('showCancelMeetingModal', false);
+
+    expect($lead->fresh()->meeting_date)->toBeNull();
+});
+
+test('the cancel follow-up modal confirms before the date is actually cleared', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'next_follow_up_at' => today()->addDays(3)]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->call('confirmCancelFollowUp')
+        ->assertSet('showCancelFollowUpModal', true);
+
+    expect($lead->fresh()->next_follow_up_at)->not->toBeNull();
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->call('confirmCancelFollowUp')
+        ->call('cancelFollowUpConfirmed')
+        ->assertSet('showCancelFollowUpModal', false);
+
+    expect($lead->fresh()->next_follow_up_at)->toBeNull();
+});
+
 test('cancelling a meeting clears the date and logs a friendly activity entry', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today()->addDays(3)]);

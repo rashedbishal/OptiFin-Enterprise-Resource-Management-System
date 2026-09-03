@@ -26,6 +26,7 @@ class CreateClient
             $tenant = Tenant::create([
                 ...$tenantData,
                 'tenant_code' => $this->nextTenantCode(),
+                'lead_id_prefix' => Tenant::generateLeadIdPrefix($tenantData['name']),
                 'created_by' => $createdBy->id,
             ]);
 

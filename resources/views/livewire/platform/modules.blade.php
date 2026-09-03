@@ -37,7 +37,7 @@
                                     {{ $module->status->value === 'active' ? __('Deactivate') : __('Activate') }}
                                 </flux:button>
                                 @unless ($module->is_system)
-                                    <flux:button size="sm" variant="danger" wire:click="delete('{{ $module->id }}')" wire:confirm="{{ __('Delete this module?') }}">
+                                    <flux:button size="sm" variant="danger" wire:click="confirmDelete('{{ $module->id }}')">
                                         {{ __('Delete') }}
                                     </flux:button>
                                 @endunless
@@ -62,4 +62,11 @@
             </div>
         </form>
     </flux:modal>
+
+    <x-confirm-modal
+        wire:model.self="showDeleteModal"
+        :title="__('Delete this module?')"
+        confirm-action="deleteConfirmed"
+        :confirm-label="__('Delete')"
+    />
 </div>

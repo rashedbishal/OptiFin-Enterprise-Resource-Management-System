@@ -39,4 +39,22 @@
             @endif
         </div>
     </div>
+
+    <x-confirm-password-delete-modal wire:model.self="showDeleteModal" />
+
+    <x-confirm-modal
+        wire:model.self="showCancelMeetingModal"
+        :title="__('Cancel this meeting?')"
+        confirm-action="cancelMeetingConfirmed"
+        :confirm-label="__('Cancel Meeting')"
+        variant="filled"
+    />
+
+    <x-confirm-modal
+        wire:model.self="showCancelFollowUpModal"
+        :title="__('Cancel this follow-up?')"
+        confirm-action="cancelFollowUpConfirmed"
+        :confirm-label="__('Cancel Follow-up')"
+        variant="filled"
+    />
 </div>
