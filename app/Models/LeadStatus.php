@@ -172,4 +172,32 @@ class LeadStatus extends Model
             default => 'border-l-zinc-400 dark:border-l-zinc-500',
         };
     }
+
+    /**
+     * RGB triples ("R G B", for CSS `rgb(var(--x) / alpha)`) for the Kanban
+     * card's alert shimmer — grouped by hue family and matched to a roughly
+     * complementary color, rather than one fixed color for every status.
+     * A fixed amber shimmer reads as "needs attention" against a blue or
+     * green card, but disappears into an amber/orange status's own
+     * cardBackgroundClasses() tint. Each bucket's counter-color is chosen
+     * so it stays visible against every status color in that bucket, in
+     * both cardBackgroundClasses()'s light (-100) and dark (-900/40) tint.
+     *
+     * @return array{light: string, dark: string}
+     */
+    public function alertShimmerRgb(): array
+    {
+        return match ($this->color) {
+            // Amber/orange cards: shimmer in indigo (opposite hue family).
+            'amber', 'orange' => ['light' => '79 70 229', 'dark' => '129 140 248'],
+            // Blue/cool cards: shimmer in amber, the original "needs attention" color.
+            'blue', 'sky', 'indigo', 'purple' => ['light' => '217 119 6', 'dark' => '251 191 36'],
+            // Green/teal cards: shimmer in pink.
+            'green', 'emerald', 'teal' => ['light' => '219 39 119', 'dark' => '244 114 182'],
+            // Red/pink cards: shimmer in teal.
+            'red', 'pink' => ['light' => '13 148 136', 'dark' => '45 212 191'],
+            // No status color (zinc/default): amber, same as the original design.
+            default => ['light' => '217 119 6', 'dark' => '251 191 36'],
+        };
+    }
 }

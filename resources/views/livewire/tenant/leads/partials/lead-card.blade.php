@@ -6,6 +6,7 @@
     $meetingAlertActive = $lead->meetingAlertActive($tenant->meeting_alert_enabled, $tenant->meeting_alert_days_before);
     $followUpAlertActive = $lead->followUpAlertActive($tenant->followup_alert_enabled, $tenant->followup_alert_days_before);
     $hasActiveAlert = $meetingAlertActive || $followUpAlertActive;
+    $shimmerRgb = $hasActiveAlert ? $lead->status->alertShimmerRgb() : null;
 @endphp
 
 {{-- ui-tooltip defaults to display:inline-flex (see flux.css), which
@@ -23,7 +24,11 @@
             own empty box.
         --}}
         <div class="relative w-full">
-            <div class="lead-alert-shimmer pointer-events-none absolute inset-0 rounded-lg" aria-hidden="true"></div>
+            <div
+                class="lead-alert-shimmer pointer-events-none absolute inset-0 rounded-lg"
+                style="--shimmer-light: {{ $shimmerRgb['light'] }}; --shimmer-dark: {{ $shimmerRgb['dark'] }};"
+                aria-hidden="true"
+            ></div>
 @endif
 
 <div

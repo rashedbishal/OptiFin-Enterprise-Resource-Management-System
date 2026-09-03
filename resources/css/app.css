@@ -195,11 +195,14 @@ Ensures first & last columns have comfortable breathing space and do not touch e
 
 /*
 Kanban card alert shimmer — a lead with a meeting/follow-up date inside its
-tenant's configured alert window gets an animated amber light sweeping
-around its border, until the date is cancelled or marked done. Amber rather
-than --color-accent: this needs to read as "needs attention" against every
-possible status/priority card background color, not blend in as a themed
-accent.
+tenant's configured alert window gets an animated light sweeping around its
+border, until the date is cancelled or marked done. Not a fixed color across
+every status: this needs to read as "needs attention" against every possible
+status card background color, and a single fixed color (amber, say) blends
+into a status whose own color already IS amber/orange. --shimmer-light/
+--shimmer-dark are set inline per-card from LeadStatus::alertShimmerRgb(),
+chosen to contrast against that status's own cardBackgroundClasses() tint;
+the values below are just the fallback if those variables are ever unset.
 
 Rendered as a masked sibling overlay (position:absolute; inset:0) next to
 the card in lead-card.blade.php, not a wrapper the card sits inside of —
@@ -233,7 +236,7 @@ before assuming the old bug is back if this ever looks stuck again.
 */
 .lead-alert-shimmer {
     padding: 2px;
-    background-image: linear-gradient(115deg, transparent 15%, rgb(217 119 6 / 0.95) 50%, transparent 85%);
+    background-image: linear-gradient(115deg, transparent 15%, rgb(var(--shimmer-light, 217 119 6) / 0.95) 50%, transparent 85%);
     /*
     background-size/keyframe pair is chosen, not arbitrary: background-position
     percentages resolve as (1 - size) * percent, so with a 200% size the
@@ -250,7 +253,7 @@ before assuming the old bug is back if this ever looks stuck again.
 }
 
 :where(.dark, .dark *) .lead-alert-shimmer {
-    background-image: linear-gradient(115deg, transparent 15%, rgb(251 191 36 / 0.95) 50%, transparent 85%);
+    background-image: linear-gradient(115deg, transparent 15%, rgb(var(--shimmer-dark, 251 191 36) / 0.95) 50%, transparent 85%);
 }
 
 @keyframes lead-alert-shimmer-sweep {
@@ -267,12 +270,12 @@ before assuming the old bug is back if this ever looks stuck again.
     .lead-alert-shimmer {
         animation: none;
         background-image: none;
-        background-color: rgb(217 119 6 / 0.7);
+        background-color: rgb(var(--shimmer-light, 217 119 6) / 0.7);
     }
 
     :where(.dark, .dark *) .lead-alert-shimmer {
         background-image: none;
-        background-color: rgb(251 191 36 / 0.75);
+        background-color: rgb(var(--shimmer-dark, 251 191 36) / 0.75);
     }
 }
 
