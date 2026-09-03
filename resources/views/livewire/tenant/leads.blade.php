@@ -295,6 +295,10 @@
                                 $isRecentlyCreated = $this->recentlyCreatedLeadId === $lead->id
                                     || ($lead->created_at && $lead->created_at->diffInSeconds(now()) < 30);
                                 $isRecentlyUpdated = ! $isRecentlyCreated && $lead->hasUnseenUpdate();
+                                $rowTenant = auth()->user()->tenant;
+                                $rowMeetingAlertActive = $lead->meetingAlertActive($rowTenant->meeting_alert_enabled, $rowTenant->meeting_alert_days_before);
+                                $rowFollowUpAlertActive = $lead->followUpAlertActive($rowTenant->followup_alert_enabled, $rowTenant->followup_alert_days_before);
+                                $rowHasActiveAlert = $rowMeetingAlertActive || $rowFollowUpAlertActive;
                             @endphp
                             <flux:table.row
                                 wire:key="lead-{{ $lead->id }}"
@@ -305,7 +309,34 @@
                                 ])
                             >
                                 <flux:table.cell>
-                                    <span class="font-mono text-xs text-zinc-500 dark:text-zinc-400">{{ $lead->identifier }}</span>
+                                    @if ($rowHasActiveAlert)
+                                        {{-- Text itself shimmers (background-clip: text sweep,
+                                        see .lead-id-shimmer-text in app.css) rather than a
+                                        border/ring around it — a deliberately different effect
+                                        from the Kanban card's lead-alert-shimmer, which is
+                                        untouched by this. Fixed zinc/silver tones, not the
+                                        per-status shimmer color the Kanban card uses. --}}
+                                        <flux:tooltip position="right">
+                                            <span class="lead-id-shimmer-text font-mono text-xs font-semibold">{{ $lead->identifier }}</span>
+
+                                            <flux:tooltip.content>
+                                                <div class="flex flex-col gap-1">
+                                                    <div>{{ __('Assigned to :name', ['name' => $lead->assignedUser?->name ?? __('Unassigned')]) }}</div>
+                                                    @if ($rowMeetingAlertActive)
+                                                        <div>
+                                                            {{ __('Meeting scheduled on :date', ['date' => $lead->meeting_date->format('l, M j, Y')]) }}
+                                                            {{ $lead->meetingTimeFormatted() ? __('at :time', ['time' => $lead->meetingTimeFormatted()]) : '' }}
+                                                        </div>
+                                                    @endif
+                                                    @if ($rowFollowUpAlertActive)
+                                                        <div>{{ __('Follow-up scheduled on :date', ['date' => $lead->next_follow_up_at->format('l, M j, Y')]) }}</div>
+                                                    @endif
+                                                </div>
+                                            </flux:tooltip.content>
+                                        </flux:tooltip>
+                                    @else
+                                        <span class="font-mono text-xs text-zinc-500 dark:text-zinc-400">{{ $lead->identifier }}</span>
+                                    @endif
                                 </flux:table.cell>
                                 <flux:table.cell>
                                     <div class="flex items-center gap-2">

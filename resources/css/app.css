@@ -366,3 +366,80 @@ ui-toast-group[position*="bottom"] [data-flux-toast-dialog].showing {
     }
 }
 
+/*
+Lead ID text shimmer — the Client Admin table's alert indicator (see
+resources/views/livewire/tenant/leads.blade.php). Deliberately a different
+effect from .lead-alert-shimmer above (a sweeping gradient through the
+letters themselves via background-clip: text, not a border ring around a
+box) since this sits inline in a text cell rather than wrapping a whole
+card. Fixed zinc/silver tones on purpose, not the per-status
+--shimmer-light/--shimmer-dark colors .lead-alert-shimmer uses — this is a
+plain "pay attention" indicator, not meant to carry status-color meaning.
+*/
+.lead-id-shimmer-text {
+    /* One single band (plain linear-gradient, not repeating — no other
+    copies of it elsewhere in the sweep), narrow enough to cover roughly
+    3 characters of the identifier at a time, passing through once per
+    animation loop rather than thickly washing over the whole word. */
+    background-image: linear-gradient(
+        100deg,
+        rgb(113 113 122) 0%,
+        rgb(113 113 122) 42%,
+        rgb(244 244 245) 50%,
+        rgb(113 113 122) 58%,
+        rgb(113 113 122) 100%
+    );
+    background-size: 220% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    /* Not animation-direction: alternate — that would replay the same
+    duration both ways. Instead the keyframes below encode an asymmetric
+    round trip directly: 3s left-to-right (0%–66.7% of this 4.5s total),
+    then a quicker 1.5s right-to-left (66.7%–100%), all within one
+    infinite loop. ease-in-out (not linear) smooths the velocity change
+    at each turnaround — linear here gave the sweep a constant speed
+    within each leg but an instant jump in speed at 66.7% (slow forward
+    rate to 2x-faster reverse rate), which reads as a stutter/freeze
+    right at the turn even though the position itself never stops. */
+    animation: lead-id-shimmer-text-move 4.5s ease-in-out infinite;
+}
+
+:where(.dark, .dark *) .lead-id-shimmer-text {
+    background-image: linear-gradient(
+        100deg,
+        rgb(161 161 170) 0%,
+        rgb(161 161 170) 42%,
+        rgb(244 244 245) 50%,
+        rgb(161 161 170) 58%,
+        rgb(161 161 170) 100%
+    );
+}
+
+@keyframes lead-id-shimmer-text-move {
+    0% {
+        background-position: 0% 0;
+    }
+    66.7% {
+        background-position: -220% 0;
+    }
+    100% {
+        background-position: 0% 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .lead-id-shimmer-text {
+        animation: none;
+        background-image: none;
+        -webkit-text-fill-color: rgb(113 113 122);
+        color: rgb(113 113 122);
+    }
+
+    :where(.dark, .dark *) .lead-id-shimmer-text {
+        -webkit-text-fill-color: rgb(161 161 170);
+        color: rgb(161 161 170);
+    }
+}
+

@@ -5,9 +5,12 @@ use App\Models\Lead;
 use Livewire\Livewire;
 
 /**
- * The Kanban board (not the Client Admin's table) is the only view that
- * renders partials.lead-card, so these all act as a rep (clientUserWithLeadPermission),
+ * The Kanban board is the only view that renders partials.lead-card
+ * (whole-card shimmer), so these all act as a rep (clientUserWithLeadPermission),
  * never the client admin — Index::render() picks the table view for admins.
+ * The Client Admin's table has its own, separate shimmer on just the Lead ID
+ * badge (same lead-alert-shimmer CSS class, reused rather than duplicated) —
+ * see LeadIdShimmerRenderTest.php for that view's coverage.
  */
 test('a lead inside its tenant\'s meeting alert window shows the shimmer class on the Kanban board', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
