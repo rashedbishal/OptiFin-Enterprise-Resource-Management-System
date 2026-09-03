@@ -54,6 +54,7 @@ use Illuminate\Support\Facades\DB;
  * @property Carbon|null $closed_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ * @property Carbon|null $update_seen_at
  * @property-read Tenant $tenant
  * @property-read Currency|null $estimatedBudgetCurrency
  * @property-read Currency|null $dealValueCurrency
@@ -85,6 +86,7 @@ class Lead extends Model
             'assigned_at' => 'datetime',
             'first_contacted_at' => 'datetime',
             'closed_at' => 'datetime',
+            'update_seen_at' => 'datetime',
         ];
     }
 
@@ -330,6 +332,40 @@ class Lead extends Model
         }
 
         return today()->gte($this->next_follow_up_at->copy()->subDays($daysBefore));
+    }
+
+    /**
+     * Whether this lead has an update nobody has opened it to see yet —
+     * drives the Leads list's amber "recently updated" bold/highlight,
+     * which (unlike the separate, still time-windowed "just created"
+     * highlight) stays until markUpdateSeen() runs, not on any timer, and
+     * survives a full page reload since it's read from the DB rather than
+     * a Livewire component property. Excludes the first 2 seconds after
+     * creation so the initial `updated_at` a fresh row gets doesn't also
+     * register as an "update" on top of the creation highlight.
+     */
+    public function hasUnseenUpdate(): bool
+    {
+        if ($this->updated_at === null || $this->created_at === null || $this->updated_at->lte($this->created_at->addSeconds(2))) {
+            return false;
+        }
+
+        return $this->update_seen_at === null || $this->updated_at->gt($this->update_seen_at);
+    }
+
+    /**
+     * Marks any pending update as seen — call when a viewer opens the lead
+     * (Show::mount(), Index::viewLead()). A plain query builder update
+     * rather than save(), deliberately: it must not touch `updated_at`
+     * itself (that would make the lead look freshly updated again to every
+     * other viewer) or fire model events/broadcasts for what is, from
+     * their perspective, a no-op.
+     */
+    public function markUpdateSeen(): void
+    {
+        DB::table('leads')->where('id', $this->id)->update(['update_seen_at' => now()]);
+
+        $this->update_seen_at = now();
     }
 
     public function assignedUser(): BelongsTo

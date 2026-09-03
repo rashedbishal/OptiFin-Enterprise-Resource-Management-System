@@ -184,10 +184,11 @@
                     @php
                         $isRecentlyCreated = $this->recentlyCreatedLeadId === $lead->id
                             || ($lead->created_at && $lead->created_at->diffInSeconds(now()) < 30);
-                        $isRecentlyUpdated = ! $isRecentlyCreated && (
-                            $this->recentlyUpdatedLeadId === $lead->id
-                            || ($lead->updated_at && $lead->updated_at->diffInSeconds(now()) < 30 && $lead->updated_at->gt($lead->created_at->addSeconds(2)))
-                        );
+                        // Unlike $isRecentlyCreated above, this isn't time-windowed — it
+                        // stays true (surviving a full page reload) until someone actually
+                        // opens the lead, at which point Show::mount()/Index::viewLead()
+                        // call Lead::markUpdateSeen(). See Lead::hasUnseenUpdate() for why.
+                        $isRecentlyUpdated = ! $isRecentlyCreated && $lead->hasUnseenUpdate();
                     @endphp
                     <div
                         wire:key="lead-card-{{ $lead->id }}"
@@ -293,10 +294,7 @@
                             @php
                                 $isRecentlyCreated = $this->recentlyCreatedLeadId === $lead->id
                                     || ($lead->created_at && $lead->created_at->diffInSeconds(now()) < 30);
-                                $isRecentlyUpdated = ! $isRecentlyCreated && (
-                                    $this->recentlyUpdatedLeadId === $lead->id
-                                    || ($lead->updated_at && $lead->updated_at->diffInSeconds(now()) < 30 && $lead->updated_at->gt($lead->created_at->addSeconds(2)))
-                                );
+                                $isRecentlyUpdated = ! $isRecentlyCreated && $lead->hasUnseenUpdate();
                             @endphp
                             <flux:table.row
                                 wire:key="lead-{{ $lead->id }}"

@@ -96,8 +96,6 @@ class Index extends Component
 
     public ?string $recentlyCreatedLeadId = null;
 
-    public ?string $recentlyUpdatedLeadId = null;
-
     public bool $showMeetingAlertModal = false;
 
     public string $meetingAlertDaysInput = '0';
@@ -306,7 +304,6 @@ class Index extends Component
         ], $user, $assignee);
 
         $this->recentlyCreatedLeadId = $createdLead->id;
-        $this->recentlyUpdatedLeadId = null;
 
         $this->showCreateLeadModal = false;
         $this->refreshBoard();
@@ -330,23 +327,24 @@ class Index extends Component
     {
         if (is_array($payload) && isset($payload['lead']['id'])) {
             $this->recentlyCreatedLeadId = $payload['lead']['id'];
-            $this->recentlyUpdatedLeadId = null;
         }
         $this->refreshBoard();
     }
 
-    public function onLeadUpdated($payload = null): void
+    /**
+     * Just a re-render trigger — the "recently updated" highlight itself
+     * comes from Lead::hasUnseenUpdate() reading the DB (see leads.blade.php),
+     * so nothing needs to be stashed here for it to show up once the board
+     * re-queries.
+     */
+    public function onLeadUpdated(): void
     {
-        if (is_array($payload) && isset($payload['lead']['id'])) {
-            $this->recentlyUpdatedLeadId = $payload['lead']['id'];
-        }
         $this->refreshBoard();
     }
 
     public function onPanelLeadUpdated(?string $leadId = null): void
     {
         if ($leadId) {
-            $this->recentlyUpdatedLeadId = $leadId;
             $this->recentlyCreatedLeadId = null;
         }
         $this->refreshBoard();
@@ -475,6 +473,8 @@ class Index extends Component
 
             return;
         }
+
+        $lead->markUpdateSeen();
 
         $this->selectedLeadId = $lead->id;
         $this->showLeadPanel = true;

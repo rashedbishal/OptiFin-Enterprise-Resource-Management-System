@@ -136,6 +136,8 @@ class Show extends Component
     {
         Gate::authorize('view', $lead);
 
+        $lead->markUpdateSeen();
+
         $this->lead = $lead;
         $this->status = $lead->status_id;
         $this->priority = $lead->priority->value;
