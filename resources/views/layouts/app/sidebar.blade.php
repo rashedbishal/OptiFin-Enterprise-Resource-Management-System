@@ -98,6 +98,9 @@
                                 <div class="grid flex-1 text-start text-sm leading-tight">
                                     <flux:heading class="truncate">{{ auth()->user()->name }}</flux:heading>
                                     <flux:text class="truncate">{{ auth()->user()->email }}</flux:text>
+                                    <flux:text class="truncate text-xs text-zinc-400 dark:text-white/60">
+                                        {{ auth()->user()->isClientAdmin() ? __('Client Admin') : auth()->user()->role->name }}
+                                    </flux:text>
                                 </div>
                             </div>
                         </div>
