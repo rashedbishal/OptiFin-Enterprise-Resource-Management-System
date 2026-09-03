@@ -109,7 +109,7 @@
     @if ($lead->deal_value !== null || $lead->win_probability !== null)
         <div class="mt-1 grid grid-cols-2 gap-2 rounded-md border border-zinc-950/10 bg-white/60 p-2 dark:border-white/10 dark:bg-white/5">
             <div class="min-w-0">
-                <p class="text-[9px] font-medium tracking-wide text-zinc-400 uppercase dark:text-zinc-500">{{ __('Deal Value') }}</p>
+                <p class="text-[7px] leading-none font-medium tracking-wide text-zinc-400 uppercase dark:text-zinc-500">{{ __('Deal Value') }}</p>
                 <p class="truncate text-sm font-medium text-zinc-700 dark:text-zinc-200">
                     @if ($lead->deal_value !== null)
                         {{ $lead->dealValueCurrency?->code }} {{ number_format((float) $lead->deal_value, 0) }}
@@ -120,7 +120,7 @@
             </div>
 
             <div class="min-w-0 text-right">
-                <p class="text-[9px] font-medium tracking-wide text-zinc-400 uppercase dark:text-zinc-500">{{ __('Win Probability') }}</p>
+                <p class="text-[7px] leading-none font-medium tracking-wide text-zinc-400 uppercase dark:text-zinc-500">{{ __('Win Probability') }}</p>
                 <p class="truncate text-sm font-medium text-zinc-700 dark:text-zinc-200">
                     @if ($lead->win_probability !== null)
                         {{ $lead->win_probability }}%
