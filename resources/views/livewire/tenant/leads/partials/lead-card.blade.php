@@ -66,8 +66,8 @@
 >
     <div class="flex items-start justify-between gap-2">
         <div class="flex min-w-0 flex-nowrap items-center gap-1.5">
-            <flux:badge size="sm" variant="pill" class="shrink-0 font-mono">{{ $lead->identifier }}</flux:badge>
-            <flux:badge size="sm" variant="pill" :color="$lead->priority->color()" class="shrink-0">{{ $lead->priority->label() }}</flux:badge>
+            <flux:badge size="sm" variant="pill" class="shrink-0 px-1.5 py-0.5 font-mono text-[8px] leading-none">{{ $lead->identifier }}</flux:badge>
+            <flux:badge size="sm" variant="pill" :color="$lead->priority->color()" class="shrink-0 px-1.5 py-0.5 text-[8px] leading-none">{{ $lead->priority->label() }}</flux:badge>
         </div>
 
         @if ($canMove)
@@ -109,7 +109,7 @@
     @if ($lead->deal_value !== null || $lead->win_probability !== null)
         <div class="mt-1 grid grid-cols-2 gap-2 rounded-md border border-zinc-950/10 bg-white/60 p-2 dark:border-white/10 dark:bg-white/5">
             <div class="min-w-0">
-                <p class="text-[10px] font-medium tracking-wide text-zinc-400 uppercase dark:text-zinc-500">{{ __('Deal Value') }}</p>
+                <p class="text-[9px] font-medium tracking-wide text-zinc-400 uppercase dark:text-zinc-500">{{ __('Deal Value') }}</p>
                 <p class="truncate text-sm font-medium text-zinc-700 dark:text-zinc-200">
                     @if ($lead->deal_value !== null)
                         {{ $lead->dealValueCurrency?->code }} {{ number_format((float) $lead->deal_value, 0) }}
@@ -120,7 +120,7 @@
             </div>
 
             <div class="min-w-0 text-right">
-                <p class="text-[10px] font-medium tracking-wide text-zinc-400 uppercase dark:text-zinc-500">{{ __('Win Probability') }}</p>
+                <p class="text-[9px] font-medium tracking-wide text-zinc-400 uppercase dark:text-zinc-500">{{ __('Win Probability') }}</p>
                 <p class="truncate text-sm font-medium text-zinc-700 dark:text-zinc-200">
                     @if ($lead->win_probability !== null)
                         {{ $lead->win_probability }}%
