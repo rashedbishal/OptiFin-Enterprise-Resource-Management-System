@@ -91,6 +91,14 @@ class Index extends Component
 
     public ?string $recentlyUpdatedLeadId = null;
 
+    public bool $showMeetingAlertModal = false;
+
+    public string $meetingAlertDaysInput = '0';
+
+    public bool $showFollowUpAlertModal = false;
+
+    public string $followUpAlertDaysInput = '0';
+
     public function mount(): void
     {
         Gate::authorize('viewAny', Lead::class);
@@ -407,6 +415,18 @@ class Index extends Component
             $this->refreshBoard();
         }
 
+        // Est. Budget and Deal Value are almost always quoted in the same
+        // currency, and a mismatched pair here is more often a slip than
+        // an intentional choice — so the two pickers stay mirrored rather
+        // than independent, whichever one the user changes.
+        if ($property === 'leadEstimatedBudgetCurrencyId') {
+            $this->leadDealValueCurrencyId = $this->leadEstimatedBudgetCurrencyId;
+        }
+
+        if ($property === 'leadDealValueCurrencyId') {
+            $this->leadEstimatedBudgetCurrencyId = $this->leadDealValueCurrencyId;
+        }
+
         // The flyout was closed (Flux's own close button, backdrop click or
         // Escape all sync this property back down via wire:model) — drop
         // the selected lead so the nested detail component un-mounts
@@ -601,6 +621,112 @@ class Index extends Component
         $source->delete();
 
         Flux::toast(variant: 'success', text: __('Lead source deleted.'));
+    }
+
+    /**
+     * Turning an alert OFF is immediate — nothing to confirm. Turning it ON
+     * needs a days-before number first, so this only opens the modal; the
+     * setting itself isn't persisted as enabled until saveMeetingAlertDays()
+     * runs. Client-admin-only, same as the rest of this tenant's Lead
+     * Management configuration.
+     */
+    public function toggleMeetingAlert(): void
+    {
+        if (! $this->isClientAdmin) {
+            return;
+        }
+
+        $tenant = Auth::user()->tenant;
+
+        if ($tenant->meeting_alert_enabled) {
+            $tenant->update(['meeting_alert_enabled' => false]);
+
+            return;
+        }
+
+        $this->meetingAlertDaysInput = (string) $tenant->meeting_alert_days_before;
+        $this->showMeetingAlertModal = true;
+    }
+
+    /**
+     * Reopens the same days-before editor without touching whether the
+     * alert is enabled — the "N days before" text next to an already-on
+     * toggle is clickable for exactly this.
+     */
+    public function openMeetingAlertDaysEditor(): void
+    {
+        if (! $this->isClientAdmin) {
+            return;
+        }
+
+        $this->meetingAlertDaysInput = (string) Auth::user()->tenant->meeting_alert_days_before;
+        $this->showMeetingAlertModal = true;
+    }
+
+    public function saveMeetingAlertDays(): void
+    {
+        if (! $this->isClientAdmin) {
+            return;
+        }
+
+        $validated = $this->validate([
+            'meetingAlertDaysInput' => ['required', 'integer', 'min:0'],
+        ]);
+
+        Auth::user()->tenant->update([
+            'meeting_alert_enabled' => true,
+            'meeting_alert_days_before' => $validated['meetingAlertDaysInput'],
+        ]);
+
+        $this->showMeetingAlertModal = false;
+        Flux::toast(variant: 'success', text: __('Meeting date alerts updated.'));
+    }
+
+    public function toggleFollowUpAlert(): void
+    {
+        if (! $this->isClientAdmin) {
+            return;
+        }
+
+        $tenant = Auth::user()->tenant;
+
+        if ($tenant->followup_alert_enabled) {
+            $tenant->update(['followup_alert_enabled' => false]);
+
+            return;
+        }
+
+        $this->followUpAlertDaysInput = (string) $tenant->followup_alert_days_before;
+        $this->showFollowUpAlertModal = true;
+    }
+
+    public function openFollowUpAlertDaysEditor(): void
+    {
+        if (! $this->isClientAdmin) {
+            return;
+        }
+
+        $this->followUpAlertDaysInput = (string) Auth::user()->tenant->followup_alert_days_before;
+        $this->showFollowUpAlertModal = true;
+    }
+
+    public function saveFollowUpAlertDays(): void
+    {
+        if (! $this->isClientAdmin) {
+            return;
+        }
+
+        $validated = $this->validate([
+            'followUpAlertDaysInput' => ['required', 'integer', 'min:0'],
+        ]);
+
+        Auth::user()->tenant->update([
+            'followup_alert_enabled' => true,
+            'followup_alert_days_before' => $validated['followUpAlertDaysInput'],
+        ]);
+
+        $this->showFollowUpAlertModal = false;
+        Flux::toast(variant: 'success', text: __('Follow-up alerts updated.'));
     }
 
     public function export(): StreamedResponse

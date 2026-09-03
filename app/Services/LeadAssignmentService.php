@@ -37,6 +37,20 @@ class LeadAssignmentService
     }
 
     /**
+     * Clears a lead's assignment. Unlike assign(), this doesn't write a
+     * LeadAssignment history row (that table requires a real assignee) or
+     * fire LeadAssigned (nobody to notify) — the caller is responsible for
+     * broadcasting LeadUpdated if the change needs to reach other viewers.
+     */
+    public function unassign(Lead $lead): void
+    {
+        $lead->update([
+            'assigned_to' => null,
+            'assigned_at' => null,
+        ]);
+    }
+
+    /**
      * Automatically assign a newly received lead based on its tenant's lead
      * distribution settings. Does nothing if distribution is manual or
      * there are no eligible users to assign to.

@@ -12,6 +12,14 @@
                     <flux:text>{{ __('Assigned to :name', ['name' => $event['assigned_to']]) }}</flux:text>
                 @elseif ($event['type'] === 'details_updated')
                     <flux:text>{{ __('Updated: :fields', ['fields' => implode(', ', $event['fields'])]) }}</flux:text>
+                @elseif ($event['type'] === 'meeting_cancelled')
+                    <flux:text>{{ __('Meeting scheduled for :date was cancelled', ['date' => $event['action_date']->format('l, M j, Y')]) }}</flux:text>
+                @elseif ($event['type'] === 'meeting_done')
+                    <flux:text>{{ __('Meeting scheduled for :date was marked as done', ['date' => $event['action_date']->format('l, M j, Y')]) }}</flux:text>
+                @elseif ($event['type'] === 'followup_cancelled')
+                    <flux:text>{{ __('Follow-up scheduled for :date was cancelled', ['date' => $event['action_date']->format('l, M j, Y')]) }}</flux:text>
+                @elseif ($event['type'] === 'followup_done')
+                    <flux:text>{{ __('Follow-up scheduled for :date was marked as done', ['date' => $event['action_date']->format('l, M j, Y')]) }}</flux:text>
                 @else
                     <flux:text>{{ $event['note'] }}</flux:text>
                 @endif

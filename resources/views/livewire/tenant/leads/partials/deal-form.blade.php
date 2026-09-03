@@ -16,7 +16,7 @@
             <div class="grid grid-cols-2 gap-3">
                 <flux:input.group :label="__('Est. Budget')">
                     <flux:input.group.prefix class="!px-2">
-                        <select wire:model="leadEstimatedBudgetCurrencyId" class="cursor-pointer border-0 bg-transparent p-0 pe-5 text-sm font-medium focus:ring-0">
+                        <select wire:model.live="leadEstimatedBudgetCurrencyId" class="cursor-pointer border-0 bg-transparent p-0 pe-5 text-sm font-medium focus:ring-0">
                             @foreach ($this->tenantCurrencies as $currency)
                                 <option value="{{ $currency->id }}">{{ $currency->code }}</option>
                             @endforeach
@@ -27,7 +27,7 @@
 
                 <flux:input.group :label="__('Deal Value')">
                     <flux:input.group.prefix class="!px-2">
-                        <select wire:model="leadDealValueCurrencyId" class="cursor-pointer border-0 bg-transparent p-0 pe-5 text-sm font-medium focus:ring-0">
+                        <select wire:model.live="leadDealValueCurrencyId" class="cursor-pointer border-0 bg-transparent p-0 pe-5 text-sm font-medium focus:ring-0">
                             @foreach ($this->tenantCurrencies as $currency)
                                 <option value="{{ $currency->id }}">{{ $currency->code }}</option>
                             @endforeach
@@ -41,9 +41,33 @@
                     <flux:input.group.suffix>%</flux:input.group.suffix>
                 </flux:input.group>
 
-                <flux:input wire:model="leadNextFollowUpAt" type="date" min="{{ now()->toDateString() }}" :label="__('Next Follow-up Date')" />
+                <div class="flex items-end gap-1">
+                    <flux:input wire:model="leadNextFollowUpAt" type="date" min="{{ now()->toDateString() }}" :label="__('Next Follow-up Date')" class="min-w-0 flex-1" />
+                    @if ($lead->next_follow_up_at)
+                        <flux:tooltip content="{{ __('Cancel follow-up') }}">
+                            <flux:button size="sm" variant="ghost" icon="x-mark" aria-label="{{ __('Cancel follow-up') }}" wire:click="cancelFollowUp" wire:confirm="{{ __('Cancel this follow-up?') }}" />
+                        </flux:tooltip>
+                        @if (! today()->lt($lead->next_follow_up_at))
+                            <flux:tooltip content="{{ __('Mark follow-up as done') }}">
+                                <flux:button size="sm" variant="primary" icon="check" aria-label="{{ __('Mark follow-up as done') }}" wire:click="markFollowUpDone" />
+                            </flux:tooltip>
+                        @endif
+                    @endif
+                </div>
 
-                <flux:input wire:model="leadMeetingDate" type="date" min="{{ now()->toDateString() }}" :label="__('Meeting Date')" />
+                <div class="flex items-end gap-1">
+                    <flux:input wire:model="leadMeetingDate" type="date" min="{{ now()->toDateString() }}" :label="__('Meeting Date')" class="min-w-0 flex-1" />
+                    @if ($lead->meeting_date)
+                        <flux:tooltip content="{{ __('Cancel meeting') }}">
+                            <flux:button size="sm" variant="ghost" icon="x-mark" aria-label="{{ __('Cancel meeting') }}" wire:click="cancelMeeting" wire:confirm="{{ __('Cancel this meeting?') }}" />
+                        </flux:tooltip>
+                        @if (! today()->lt($lead->meeting_date))
+                            <flux:tooltip content="{{ __('Mark meeting as done') }}">
+                                <flux:button size="sm" variant="primary" icon="check" aria-label="{{ __('Mark meeting as done') }}" wire:click="markMeetingDone" />
+                            </flux:tooltip>
+                        @endif
+                    @endif
+                </div>
             </div>
 
             <div>

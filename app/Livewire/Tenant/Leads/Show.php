@@ -152,6 +152,23 @@ class Show extends Component
     }
 
     /**
+     * Est. Budget and Deal Value are almost always quoted in the same
+     * currency, so the Kanban flyout's two pickers stay mirrored — see the
+     * matching hook in App\Livewire\Tenant\Leads\Index (the "New Lead"
+     * form uses that component instead of this one).
+     */
+    public function updated(string $property): void
+    {
+        if ($property === 'leadEstimatedBudgetCurrencyId') {
+            $this->leadDealValueCurrencyId = $this->leadEstimatedBudgetCurrencyId;
+        }
+
+        if ($property === 'leadDealValueCurrencyId') {
+            $this->leadEstimatedBudgetCurrencyId = $this->leadDealValueCurrencyId;
+        }
+    }
+
+    /**
      * @return array<string, string>
      */
     public function getListeners(): array
@@ -303,6 +320,17 @@ class Show extends Component
         }
 
         foreach ($this->lead->detailUpdateLogs()->with('changedBy')->get() as $log) {
+            if ($log->action !== null) {
+                $events[] = [
+                    'type' => $log->action,
+                    'created_at' => $log->created_at,
+                    'user' => $log->changedBy?->name,
+                    'action_date' => $log->action_date,
+                ];
+
+                continue;
+            }
+
             $events[] = [
                 'type' => 'details_updated',
                 'created_at' => $log->created_at,
@@ -522,6 +550,19 @@ class Show extends Component
         }
 
         if (! $this->assigneeId) {
+            $assignmentService->unassign($this->lead);
+
+            $this->lead->refresh();
+            unset($this->activity);
+
+            event(new LeadUpdated($this->lead));
+
+            if ($this->panel) {
+                $this->dispatch('lead-panel-updated');
+            }
+
+            Flux::toast(variant: 'success', text: __('Lead unassigned.'));
+
             return;
         }
 
@@ -532,11 +573,123 @@ class Show extends Component
         $this->lead->refresh();
         unset($this->activity);
 
+        event(new LeadUpdated($this->lead));
+
         if ($this->panel) {
             $this->dispatch('lead-panel-updated');
         }
 
         Flux::toast(variant: 'success', text: __('Lead assigned to :name.', ['name' => $assignee->name]));
+    }
+
+    public function cancelMeeting(): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        if ($this->lead->meeting_date === null) {
+            return;
+        }
+
+        $this->recordDateAlertAction('meeting_date', 'meeting_cancelled');
+        $this->leadMeetingDate = '';
+
+        Flux::toast(variant: 'success', text: __('Meeting cancelled.'));
+    }
+
+    /**
+     * Guarded server-side against today() < meeting_date regardless of what
+     * the UI shows — the "Done" button is only rendered from the scheduled
+     * day onward, but that's a display rule, not something to trust from
+     * the client.
+     */
+    public function markMeetingDone(): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        if ($this->lead->meeting_date === null || today()->lt($this->lead->meeting_date)) {
+            return;
+        }
+
+        $this->recordDateAlertAction('meeting_date', 'meeting_done');
+        $this->leadMeetingDate = '';
+
+        Flux::toast(variant: 'success', text: __('Meeting marked as done.'));
+    }
+
+    public function cancelFollowUp(): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        if ($this->lead->next_follow_up_at === null) {
+            return;
+        }
+
+        $this->recordDateAlertAction('next_follow_up_at', 'followup_cancelled');
+        $this->leadNextFollowUpAt = '';
+
+        Flux::toast(variant: 'success', text: __('Follow-up cancelled.'));
+    }
+
+    public function markFollowUpDone(): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        if ($this->lead->next_follow_up_at === null || today()->lt($this->lead->next_follow_up_at)) {
+            return;
+        }
+
+        $this->recordDateAlertAction('next_follow_up_at', 'followup_done');
+        $this->leadNextFollowUpAt = '';
+
+        Flux::toast(variant: 'success', text: __('Follow-up marked as done.'));
+    }
+
+    /**
+     * Shared by cancelMeeting()/markMeetingDone()/cancelFollowUp()/
+     * markFollowUpDone(): clears the given date column, logs a
+     * LeadDetailUpdateLog carrying the cleared date under $action so
+     * activity() can render a friendly "X was cancelled/marked done"
+     * line instead of the generic "Updated: :fields" one, and broadcasts
+     * LeadUpdated so the Kanban card's shimmer stops live for every viewer,
+     * not just this session.
+     */
+    private function recordDateAlertAction(string $column, string $action): void
+    {
+        $oldDate = $this->lead->{$column};
+
+        $this->lead->update([$column => null]);
+
+        LeadDetailUpdateLog::create([
+            'lead_id' => $this->lead->id,
+            'changed_by' => Auth::id(),
+            'changed_fields' => [$column],
+            'action' => $action,
+            'action_date' => $oldDate,
+        ]);
+
+        unset($this->activity);
+
+        event(new LeadUpdated($this->lead));
+
+        if ($this->panel) {
+            $this->dispatch('lead-panel-updated');
+        }
     }
 
     public function addNote(): void

@@ -49,7 +49,61 @@
                 <x-dropdown-select wire:model.live="assignedTo" :placeholder="__('All users')" :options="$assignedToOptionsFormatted" icon="user" />
             @endif
         </div>
+
+        @if ($this->isClientAdmin)
+            <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+                <div class="flex items-center gap-2">
+                    <flux:switch :checked="auth()->user()->tenant->meeting_alert_enabled" wire:click="toggleMeetingAlert" />
+                    <flux:text>{{ __('Meeting date alerts') }}</flux:text>
+                    @if (auth()->user()->tenant->meeting_alert_enabled)
+                        <flux:link as="button" type="button" variant="subtle" wire:click="openMeetingAlertDaysEditor">
+                            {{ trans_choice('(:count day before)|(:count days before)', auth()->user()->tenant->meeting_alert_days_before, ['count' => auth()->user()->tenant->meeting_alert_days_before]) }}
+                        </flux:link>
+                    @endif
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <flux:switch :checked="auth()->user()->tenant->followup_alert_enabled" wire:click="toggleFollowUpAlert" />
+                    <flux:text>{{ __('Next follow-up alerts') }}</flux:text>
+                    @if (auth()->user()->tenant->followup_alert_enabled)
+                        <flux:link as="button" type="button" variant="subtle" wire:click="openFollowUpAlertDaysEditor">
+                            {{ trans_choice('(:count day before)|(:count days before)', auth()->user()->tenant->followup_alert_days_before, ['count' => auth()->user()->tenant->followup_alert_days_before]) }}
+                        </flux:link>
+                    @endif
+                </div>
+            </div>
+        @endif
     </div>
+
+    @if ($this->isClientAdmin)
+        <flux:modal wire:model.self="showMeetingAlertModal" class="md:w-96">
+            <form wire:submit="saveMeetingAlertDays" class="flex flex-col gap-4">
+                <div>
+                    <flux:heading size="lg">{{ __('Meeting Date Alerts') }}</flux:heading>
+                    <flux:text class="mt-1">{{ __('How many days before the meeting date should the Kanban card start alerting the assigned user? 0 means alert only on the exact day.') }}</flux:text>
+                </div>
+                <flux:input wire:model="meetingAlertDaysInput" type="number" min="0" :label="__('Days before')" />
+                <div class="flex justify-end gap-2">
+                    <flux:button type="button" wire:click="$set('showMeetingAlertModal', false)">{{ __('Cancel') }}</flux:button>
+                    <flux:button type="submit" variant="primary">{{ __('Save') }}</flux:button>
+                </div>
+            </form>
+        </flux:modal>
+
+        <flux:modal wire:model.self="showFollowUpAlertModal" class="md:w-96">
+            <form wire:submit="saveFollowUpAlertDays" class="flex flex-col gap-4">
+                <div>
+                    <flux:heading size="lg">{{ __('Next Follow-up Alerts') }}</flux:heading>
+                    <flux:text class="mt-1">{{ __('How many days before the follow-up date should the Kanban card start alerting the assigned user? 0 means alert only on the exact day.') }}</flux:text>
+                </div>
+                <flux:input wire:model="followUpAlertDaysInput" type="number" min="0" :label="__('Days before')" />
+                <div class="flex justify-end gap-2">
+                    <flux:button type="button" wire:click="$set('showFollowUpAlertModal', false)">{{ __('Cancel') }}</flux:button>
+                    <flux:button type="submit" variant="primary">{{ __('Save') }}</flux:button>
+                </div>
+            </form>
+        </flux:modal>
+    @endif
 
     {{-- Table content area (scrollbar touches right edge & bottom edge) --}}
     <div class="flex-1 min-h-0 overflow-auto">
@@ -348,7 +402,7 @@
 
                                 <flux:input.group :label="__('Est. Budget')">
                                     <flux:input.group.prefix class="!px-2">
-                                        <select wire:model="leadEstimatedBudgetCurrencyId" class="cursor-pointer border-0 bg-transparent p-0 pe-5 text-sm font-medium focus:ring-0">
+                                        <select wire:model.live="leadEstimatedBudgetCurrencyId" class="cursor-pointer border-0 bg-transparent p-0 pe-5 text-sm font-medium focus:ring-0">
                                             @foreach ($this->tenantCurrencies as $currency)
                                                 <option value="{{ $currency->id }}">{{ $currency->code }}</option>
                                             @endforeach
@@ -359,7 +413,7 @@
 
                                 <flux:input.group :label="__('Deal Value')">
                                     <flux:input.group.prefix class="!px-2">
-                                        <select wire:model="leadDealValueCurrencyId" class="cursor-pointer border-0 bg-transparent p-0 pe-5 text-sm font-medium focus:ring-0">
+                                        <select wire:model.live="leadDealValueCurrencyId" class="cursor-pointer border-0 bg-transparent p-0 pe-5 text-sm font-medium focus:ring-0">
                                             @foreach ($this->tenantCurrencies as $currency)
                                                 <option value="{{ $currency->id }}">{{ $currency->code }}</option>
                                             @endforeach

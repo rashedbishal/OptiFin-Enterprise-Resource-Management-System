@@ -193,3 +193,78 @@ Ensures first & last columns have comfortable breathing space and do not touch e
     padding-right: 1.5rem !important;
 }
 
+/*
+Kanban card alert shimmer — a lead with a meeting/follow-up date inside its
+tenant's configured alert window gets an animated amber light sweeping
+around its border, until the date is cancelled or marked done. Amber rather
+than --color-accent: this needs to read as "needs attention" against every
+possible status/priority card background color, not blend in as a themed
+accent.
+
+Rendered as a masked sibling overlay (position:absolute; inset:0) next to
+the card in lead-card.blade.php, not a wrapper the card sits inside of —
+masking a *parent* clips its entire rendered subtree, so wrapping the card
+would mask the card's own content along with the background. As a
+childless sibling, masking it only ever touches its own empty box.
+
+The mask-composite: exclude trick needs `padding` here to separate its two
+mask layers (content-box vs border-box) — with no padding the two layers
+are identical, and excluding a shape from itself leaves nothing visible at
+all, which is why this rule must keep its own padding rather than relying
+on a p-[2px] class in the blade (there's nothing there for it to apply to
+now that this element has no children/content-box of its own to speak of;
+padding on a childless element still shifts where mask's content-box
+reference sits, which is exactly what the trick needs).
+
+Masking confines the paint to the ring itself regardless of what's drawn on
+top of it — needed because several statuses' dark-mode card backgrounds are
+semi-transparent (e.g. dark:bg-blue-900/40 — see
+LeadStatus::cardBackgroundClasses()), so an unmasked layer behind the card
+would bleed through the whole card, not just the edge.
+
+This *looks* like the same mask-composite trick that caused a repaint bug
+earlier (animating background-position on a masked ::after froze visually
+despite getAnimations() reporting it as still running), but it isn't the
+same case: that bug was specifically tied to masking a *pseudo-element*.
+Masking this real element instead was verified frame-by-frame (screenshot
+pixel hashes, not just computed style) to repaint correctly in both light
+and dark mode — see the verification note in the PR/commit for this change
+before assuming the old bug is back if this ever looks stuck again.
+*/
+.lead-alert-shimmer {
+    padding: 2px;
+    background-image: linear-gradient(115deg, transparent 15%, rgb(217 119 6 / 0.95) 50%, transparent 85%);
+    background-size: 250% 250%;
+    animation: lead-alert-shimmer-sweep 1.8s linear infinite;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+}
+
+:where(.dark, .dark *) .lead-alert-shimmer {
+    background-image: linear-gradient(115deg, transparent 15%, rgb(251 191 36 / 0.95) 50%, transparent 85%);
+}
+
+@keyframes lead-alert-shimmer-sweep {
+    0% {
+        background-position: 200% 0%;
+    }
+
+    100% {
+        background-position: -50% 0%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .lead-alert-shimmer {
+        animation: none;
+        background-image: none;
+        background-color: rgb(217 119 6 / 0.7);
+    }
+
+    :where(.dark, .dark *) .lead-alert-shimmer {
+        background-image: none;
+        background-color: rgb(251 191 36 / 0.75);
+    }
+}
+

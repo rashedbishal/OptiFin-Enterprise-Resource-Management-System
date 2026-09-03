@@ -196,7 +196,7 @@
 
                             <div class="flex flex-1 flex-col gap-2 px-3 pb-3">
                                 @forelse ($columnLeads as $lead)
-                                    @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'draggable' => true, 'canMove' => $this->canUpdateLeads, 'tenantStatuses' => $this->tenantLeadStatuses])
+                                    @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'draggable' => true, 'canMove' => $this->canUpdateLeads, 'tenantStatuses' => $this->tenantLeadStatuses, 'tenant' => auth()->user()->tenant])
                                 @empty
                                     <div class="rounded-md border border-dashed border-zinc-200 py-6 text-center dark:border-zinc-700">
                                         <flux:text size="sm" variant="subtle">{{ __('No leads') }}</flux:text>
@@ -225,7 +225,7 @@
                                 </div>
                                 <div class="flex flex-col gap-2">
                                     @foreach ($columnLeads as $lead)
-                                        @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'draggable' => false, 'canMove' => $this->canUpdateLeads, 'tenantStatuses' => $this->tenantLeadStatuses])
+                                        @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'draggable' => false, 'canMove' => $this->canUpdateLeads, 'tenantStatuses' => $this->tenantLeadStatuses, 'tenant' => auth()->user()->tenant])
                                     @endforeach
                                 </div>
                             </div>
@@ -290,7 +290,7 @@
 
                                 <flux:input.group :label="__('Est. Budget')">
                                     <flux:input.group.prefix class="!px-2">
-                                        <select wire:model="leadEstimatedBudgetCurrencyId" class="cursor-pointer border-0 bg-transparent p-0 pe-5 text-sm font-medium focus:ring-0">
+                                        <select wire:model.live="leadEstimatedBudgetCurrencyId" class="cursor-pointer border-0 bg-transparent p-0 pe-5 text-sm font-medium focus:ring-0">
                                             @foreach ($this->tenantCurrencies as $currency)
                                                 <option value="{{ $currency->id }}">{{ $currency->code }}</option>
                                             @endforeach
@@ -301,7 +301,7 @@
 
                                 <flux:input.group :label="__('Deal Value')">
                                     <flux:input.group.prefix class="!px-2">
-                                        <select wire:model="leadDealValueCurrencyId" class="cursor-pointer border-0 bg-transparent p-0 pe-5 text-sm font-medium focus:ring-0">
+                                        <select wire:model.live="leadDealValueCurrencyId" class="cursor-pointer border-0 bg-transparent p-0 pe-5 text-sm font-medium focus:ring-0">
                                             @foreach ($this->tenantCurrencies as $currency)
                                                 <option value="{{ $currency->id }}">{{ $currency->code }}</option>
                                             @endforeach

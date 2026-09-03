@@ -257,6 +257,36 @@ class Lead extends Model
         return $pipeline->get($currentIndex + 1);
     }
 
+    /**
+     * Whether the Kanban card's meeting-date shimmer should be showing right
+     * now. $enabled/$daysBefore come from the tenant's alert settings and
+     * are passed in rather than read from $this->tenant, so a board render
+     * doesn't do a per-card tenant lookup (every lead on one board shares
+     * the same tenant). No upper bound once the window opens — it stays
+     * "active" indefinitely until the meeting is cancelled or marked done,
+     * which is the only thing that's supposed to stop it.
+     */
+    public function meetingAlertActive(bool $enabled, int $daysBefore): bool
+    {
+        if (! $enabled || $this->meeting_date === null) {
+            return false;
+        }
+
+        return today()->gte($this->meeting_date->copy()->subDays($daysBefore));
+    }
+
+    /**
+     * Same rules as meetingAlertActive(), for the Next Follow-up date.
+     */
+    public function followUpAlertActive(bool $enabled, int $daysBefore): bool
+    {
+        if (! $enabled || $this->next_follow_up_at === null) {
+            return false;
+        }
+
+        return today()->gte($this->next_follow_up_at->copy()->subDays($daysBefore));
+    }
+
     public function assignedUser(): BelongsTo
     {
         return $this->belongsTo(TenantUser::class, 'assigned_to');

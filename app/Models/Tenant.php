@@ -33,6 +33,10 @@ class Tenant extends Model
         'created_by',
         'lead_distribution_mode',
         'auto_distribution_method',
+        'meeting_alert_enabled',
+        'meeting_alert_days_before',
+        'followup_alert_enabled',
+        'followup_alert_days_before',
     ];
 
     /**
@@ -44,6 +48,10 @@ class Tenant extends Model
             'status' => TenantStatus::class,
             'lead_distribution_mode' => LeadDistributionMode::class,
             'auto_distribution_method' => AutoDistributionMethod::class,
+            'meeting_alert_enabled' => 'boolean',
+            'meeting_alert_days_before' => 'integer',
+            'followup_alert_enabled' => 'boolean',
+            'followup_alert_days_before' => 'integer',
         ];
     }
 
