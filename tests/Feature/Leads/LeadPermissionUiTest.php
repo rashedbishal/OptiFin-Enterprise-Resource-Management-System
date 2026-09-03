@@ -38,8 +38,9 @@ test('the status/note forms are visible to a viewer with update permission', fun
 
     Livewire::actingAs($rep)
         ->test(Show::class, ['lead' => $lead])
-        ->assertSee('Add Note')
-        ->assertSeeHtml('wire:submit="updateStatus"');
+        ->set('activeTab', 'activity')
+        ->assertSeeHtml('wire:submit="updateStatusAndAssignment"')
+        ->assertSee('Add Note');
 });
 
 test('the delete button on the board is hidden from a viewer without delete permission', function () {

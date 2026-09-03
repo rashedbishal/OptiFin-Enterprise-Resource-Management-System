@@ -72,6 +72,13 @@ class Show extends Component
 
     public string $bodyView = 'text';
 
+    /**
+     * Which panel the full-page view's Overview/Activity Timeline toggle is
+     * showing — display-only, doesn't affect the flyout (show-panel.blade.php
+     * has no tabs) or any of the underlying data/actions.
+     */
+    public string $activeTab = 'overview';
+
     public string $leadName = '';
 
     public string $leadPhone = '';
@@ -607,6 +614,29 @@ class Show extends Component
         }
 
         Flux::toast(variant: 'success', text: __('Lead assigned to :name.', ['name' => $assignee->name]));
+    }
+
+    /**
+     * Submit handler for the full page's merged "Status & Assignment" card
+     * (partials/status-assignment-form.blade.php) — runs updateStatus()/
+     * assign() exactly as their own separate forms already did (same
+     * validation, activity logging, and LeadUpdated/LeadStatusChanged
+     * broadcasting to Reverb, so other viewers — the Kanban board, another
+     * open tab — still update live), just from one button instead of two.
+     * Each keeps its own permission check and toast, so this only runs the
+     * half a given viewer can actually see the fields for; the flyout
+     * (show-panel.blade.php) still shows Status and Assignment as two
+     * separate cards/buttons, untouched.
+     */
+    public function updateStatusAndAssignment(LeadAssignmentService $assignmentService): void
+    {
+        if ($this->canUpdate()) {
+            $this->updateStatus();
+        }
+
+        if ($this->canAssign()) {
+            $this->assign($assignmentService);
+        }
     }
 
     public function confirmCancelMeeting(): void

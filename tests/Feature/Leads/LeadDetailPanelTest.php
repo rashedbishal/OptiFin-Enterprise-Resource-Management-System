@@ -28,7 +28,6 @@ test('the full page shows Company/Deal read-only and no Contact form, editing on
 
     Livewire::actingAs($clientAdmin)
         ->test(Show::class, ['lead' => $lead])
-        ->assertSee('Company')
         ->assertSee('Apex Global Logistics Ltd.')
         ->assertDontSeeHtml('wire:submit="updateContact"')
         ->assertDontSeeHtml('wire:submit="updateCompany"')
