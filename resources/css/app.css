@@ -234,16 +234,22 @@ pixel hashes, not just computed style) to repaint correctly in both light
 and dark mode — see the verification note in the PR/commit for this change
 before assuming the old bug is back if this ever looks stuck again.
 
-A translating linear-gradient (animating background-position) was tried
-first and is mathematically loop-safe when the travel distance is an exact
-multiple of the tile width — but "loop-safe" only means pixel-identical at
-the restart instant. The motion itself is still a one-way conveyor belt that
-jumps back to its start position every cycle, which reads as a visible
-"snap" even when nothing is technically discontinuous. A conic-gradient
-rotated by --shimmer-angle has no such seam: an angle is periodic modulo
-360deg by definition, so 0deg and 360deg are the *same* gradient, not just
-numerically equal endpoints — the sweep is a real rotation, a full circle,
-with nothing to reset.
+A translating linear-gradient, a rotated single-arc conic-gradient, and a
+radar-style scale+fade "ping" were all tried before this. The ping read as
+disconnected pulses rather than one continuous motion; a single rotating
+arc read as "loading" rather than "attention". This version keeps the
+conic-gradient rotation (still driven by --shimmer-angle, still seamless
+because an angle is periodic modulo 360deg by construction — 0deg and
+360deg are the same gradient, not just equal endpoints) but gives it two
+bright lobes 180deg apart instead of one. `from calc(-45deg + var(...))`
+roughly lines the two dim points up with a typical card's corners (a
+rectangle's actual corner angle depends on its aspect ratio, so this is an
+approximation, not a geometric guarantee) — each lobe brightens from one
+corner, peaks at the diagonally opposite corner, and fades back down into
+the next corner where the other lobe is simultaneously fading up, so the
+two arcs visually "meet" at the two corners the first pair didn't start
+from. Because the pattern itself repeats every 180deg, one full 0->360deg
+rotation plays that meeting twice per cycle with no seam either time.
 */
 @property --shimmer-angle {
     syntax: '<angle>';
@@ -253,7 +259,14 @@ with nothing to reset.
 
 .lead-alert-shimmer {
     padding: 2px;
-    background-image: conic-gradient(from var(--shimmer-angle), transparent 0deg, rgb(var(--shimmer-light, 217 119 6) / 0.95) 45deg, transparent 100deg, transparent 360deg);
+    background-image: conic-gradient(
+        from calc(-45deg + var(--shimmer-angle)),
+        rgb(var(--shimmer-light, 217 119 6) / 0.08) 0deg,
+        rgb(var(--shimmer-light, 217 119 6) / 0.95) 90deg,
+        rgb(var(--shimmer-light, 217 119 6) / 0.08) 180deg,
+        rgb(var(--shimmer-light, 217 119 6) / 0.95) 270deg,
+        rgb(var(--shimmer-light, 217 119 6) / 0.08) 360deg
+    );
     animation: lead-alert-shimmer-spin 1.8s linear infinite;
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
@@ -261,7 +274,14 @@ with nothing to reset.
 }
 
 :where(.dark, .dark *) .lead-alert-shimmer {
-    background-image: conic-gradient(from var(--shimmer-angle), transparent 0deg, rgb(var(--shimmer-dark, 251 191 36) / 0.95) 45deg, transparent 100deg, transparent 360deg);
+    background-image: conic-gradient(
+        from calc(-45deg + var(--shimmer-angle)),
+        rgb(var(--shimmer-dark, 251 191 36) / 0.08) 0deg,
+        rgb(var(--shimmer-dark, 251 191 36) / 0.95) 90deg,
+        rgb(var(--shimmer-dark, 251 191 36) / 0.08) 180deg,
+        rgb(var(--shimmer-dark, 251 191 36) / 0.95) 270deg,
+        rgb(var(--shimmer-dark, 251 191 36) / 0.08) 360deg
+    );
 }
 
 @keyframes lead-alert-shimmer-spin {
