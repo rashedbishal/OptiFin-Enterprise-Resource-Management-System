@@ -29,7 +29,19 @@
                                         {{ $module->name }}
                                     </flux:sidebar.item>
                                 @else
-                                    <flux:sidebar.item :href="route('modules.show', $module)" :current="request()->routeIs('modules.show') && request()->route('module')?->id === $module->id" wire:navigate>
+                                    @php
+                                        $moduleIcon = match ($module->slug) {
+                                            'finance-accounting' => 'banknotes',
+                                            'sales-crm' => 'chart-bar',
+                                            'procurement' => 'shopping-cart',
+                                            'inventory-management' => 'archive-box',
+                                            'human-resource-management' => 'user-group',
+                                            'payroll-management' => 'credit-card',
+                                            'fixed-assets-management' => 'building-office-2',
+                                            default => 'squares-2x2',
+                                        };
+                                    @endphp
+                                    <flux:sidebar.item :icon="$moduleIcon" :href="route('modules.show', $module)" :current="request()->routeIs('modules.show') && request()->route('module')?->id === $module->id" wire:navigate>
                                         {{ $module->name }}
                                     </flux:sidebar.item>
                                 @endif
