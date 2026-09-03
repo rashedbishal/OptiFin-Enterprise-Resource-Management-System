@@ -51,7 +51,7 @@
         </div>
 
         @if ($this->isClientAdmin)
-            <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <div class="flex flex-wrap items-center gap-x-8 gap-y-3">
                 <div class="flex items-center gap-2">
                     <flux:switch :checked="auth()->user()->tenant->meeting_alert_enabled" wire:click="toggleMeetingAlert" />
                     <flux:text>{{ __('Meeting date alerts') }}</flux:text>
