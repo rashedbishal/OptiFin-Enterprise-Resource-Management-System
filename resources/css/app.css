@@ -303,3 +303,66 @@ rotation plays that meeting twice per cycle with no seam either time.
     }
 }
 
+/*
+Toast slide-in/out from the side. Flux's own entrance transition (see
+vendor/livewire/flux/dist/flux.css, ui-toast's @starting-style block) only
+defines a horizontal offset for the "top" position combined with left/right;
+the "bottom" position — what every flux:toast/flux:toast.group in this app
+uses, since none of the Flux::toast() calls or the layout partials pass a
+`position` prop — only gets an 8px vertical nudge. Its exits are a pure
+fade too: the non-.showing base rule resets straight to `transform:
+translate(0)`, discarding whatever offset @starting-style animated in from.
+
+This overrides both ends of that for the bottom/right ("bottom end") case
+this app actually uses: the closed/base state itself now carries the same
+rightward offset the entrance starts from, so hiding a toast (removing
+`.showing`) transitions back out the same way it came in, instead of
+fading in place. The selectors are more specific than Flux's own
+(an extra [position] attribute on ui-toast itself), so this wins on the
+cascade regardless of @import order.
+
+translateX(100vw) rather than a fixed rem value or 100% (of the dialog's
+own width): the dialog sits close to the right edge already (1.5rem
+margin), so a same-width or fixed-distance offset wouldn't clear the
+viewport on a wide screen. 100vw guarantees the starting position is
+completely off the right edge of the screen regardless of viewport width
+or the dialog's own size.
+
+--toast-slide-transition overrides Flux's own duration (0.2s entrance /
+0.35s exit — see the ui-toast rule above) with one longer, symmetric
+duration and an ease-out-ish curve for both directions, since the default
+pace read as too quick once the slide travels the full viewport width
+instead of a small nudge. `allow-discrete` is kept on every property (not
+just transform) because Flux's own opacity/height transitions need it too —
+dropping it here would silently disable @starting-style for those.
+*/
+:root {
+    --toast-slide-transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1) allow-discrete, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1) allow-discrete, height 0.6s cubic-bezier(0.16, 1, 0.3, 1) allow-discrete;
+}
+
+ui-toast[position*="bottom"] [data-flux-toast-dialog],
+ui-toast-group[position*="bottom"] [data-flux-toast-dialog] {
+    transform: translateX(100vw);
+    transition: var(--toast-slide-transition);
+}
+
+ui-toast[position*="bottom"] [data-flux-toast-dialog].showing,
+ui-toast-group[position*="bottom"] [data-flux-toast-dialog].showing {
+    transform: translateX(0);
+    transition: var(--toast-slide-transition);
+}
+
+@starting-style {
+    ui-toast[position*="bottom"] [data-flux-toast-dialog],
+    ui-toast-group[position*="bottom"] [data-flux-toast-dialog] {
+        transform: translateX(100vw);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    ui-toast[position*="bottom"] [data-flux-toast-dialog],
+    ui-toast-group[position*="bottom"] [data-flux-toast-dialog] {
+        transform: translate(0);
+    }
+}
+
