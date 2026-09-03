@@ -5,7 +5,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | Applies to | Rule file |
 | --- | --- |
 | app/{Models,Livewire,Http/Controllers/Api}/** | .ai/rules/api.md |
-| app/{Enums/LeadSourceType.php,Models/LeadSource.php,Livewire/Platform/Clients/LeadSources.php} | .ai/rules/clients.md |
+| app/{Enums/LeadSourceType.php,Models/LeadSource.php,Livewire/Platform/Clients/LeadSources.php}, app/{Enums/LeadSourceType.php,Livewire/Platform/Clients/LeadSources.php} | .ai/rules/clients.md |
 | resources/{js,css}/** | .ai/rules/jscss.md |
 | app/{Livewire/Tenant/Leads,Policies,Exports}/** | .ai/rules/leads-policies-exports.md |
 | app/Livewire/Tenant/Leads/** | .ai/rules/leads.md |

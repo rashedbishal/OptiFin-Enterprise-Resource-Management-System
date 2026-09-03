@@ -1,6 +1,7 @@
 ---
 paths:
   - 'app/{Enums/LeadSourceType.php,Models/LeadSource.php,Livewire/Platform/Clients/LeadSources.php}'
+  - 'app/{Enums/LeadSourceType.php,Livewire/Platform/Clients/LeadSources.php}'
 ---
 
 # Clients
@@ -20,3 +21,8 @@ Adding this enum case required updating every exhaustive `match ($type)`/`match 
 Non-admin creators are auto-assigned the lead they create (LeadPolicy::view requires isClientAdmin() or assigned_to === self, so an unassigned lead they created would be invisible to them); client admins get an optional assignee dropdown instead, same as elsewhere in Leads.
 
 The manual-entry form also collects a fuller CRM field set beyond the Lead baseline: `company`, `website`, `industry`, `location`, `service_interest` (all nullable strings), `estimated_budget`/`deal_value` (decimal:2, tenant-currency-labeled via Auth::user()->tenant->currency), `win_probability` (0-100 int), `next_follow_up_at` (date). All are real Lead columns (not source_data JSON) so they're queryable/filterable later, all nullable since only the manual-entry path populates them today, and Show.blade.php renders them in a "CRM details" block only when at least one is present (harmless no-op for webhook-sourced leads).
+
+## A select-type config field's key must exist in $config before it renders, or entangle() silently drops it
+LeadSourceType::configFields() entries with `'type' => 'select'` render via `<x-dropdown-select>`, which binds through Alpine's `$wire.entangle('config.{key}')` — not a native wire:model. entangle() requires the target path to already exist on the component; if `config` doesn't have that key yet (e.g. still `[]`), the browser throws "Livewire property cannot be found on component" and the selection never reaches the server. Any field with `depends_on` pointing at it then stays permanently disabled, and the value silently never saves (this bit Instagram's `auth_mode` and, unnoticed, LinkedIn's `lead_type` too — direct `->set()` in tests bypasses entangle() and can't catch it).
+
+Fix: `LeadSources::updatedType()` seeds `$config = array_fill_keys(array_column($type->configFields(), 'key'), null)` whenever `type` changes, and `edit()` merges the same defaults under the source's stored config. Adding a new `select`-type field to any LeadSourceType case is covered by this automatically — but if you ever bypass `updatedType()`/`edit()` to set `type`/`config` some other way, you must seed the same way or the pattern breaks again.

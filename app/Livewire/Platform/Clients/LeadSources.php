@@ -268,6 +268,26 @@ class LeadSources extends Component
         $this->showModal = true;
     }
 
+    /**
+     * A `select`-type config field is rendered via <x-dropdown-select>,
+     * which binds to Livewire through Alpine's $wire.entangle() rather than
+     * a native wire:model on an <input>/<select>. Unlike native wire:model,
+     * entangle() throws "Livewire property cannot be found on component"
+     * and never syncs if the target path doesn't already exist server-side
+     * — so every config key for the current type must be pre-seeded (even
+     * as null) before the field renders, or the dropdown-select silently
+     * stays local-only and any field depending on it via `depends_on` never
+     * sees a value and stays disabled forever.
+     */
+    public function updatedType(): void
+    {
+        $type = LeadSourceType::tryFrom($this->type);
+
+        $this->config = $type
+            ? array_fill_keys(array_column($type->configFields(), 'key'), null)
+            : [];
+    }
+
     public function edit(string $id): void
     {
         $source = $this->tenant->leadSources()->findOrFail($id);
@@ -275,7 +295,10 @@ class LeadSources extends Component
         $this->editingId = $source->id;
         $this->type = $source->type->value;
         $this->name = $source->name;
-        $this->config = $this->maskedConfig($source);
+        $this->config = array_merge(
+            array_fill_keys(array_column($source->type->configFields(), 'key'), null),
+            $this->maskedConfig($source)
+        );
         $this->showModal = true;
     }
 

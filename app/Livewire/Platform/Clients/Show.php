@@ -9,8 +9,10 @@ use App\Enums\TenantStatus;
 use App\Models\Module;
 use App\Models\Tenant;
 use Flux\Flux;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Title;
@@ -60,10 +62,22 @@ class Show extends Component
 
         $module = Module::findOrFail($moduleId);
 
-        if (in_array($moduleId, $this->assignedModuleIds, true)) {
-            app(RemoveModuleFromTenant::class)->handle($this->tenant, $module);
-        } else {
-            app(AssignModuleToTenant::class)->handle($this->tenant, $module, Auth::guard('platform')->user());
+        try {
+            if (in_array($moduleId, $this->assignedModuleIds, true)) {
+                app(RemoveModuleFromTenant::class)->handle($this->tenant, $module);
+            } else {
+                app(AssignModuleToTenant::class)->handle($this->tenant, $module, Auth::guard('platform')->user());
+            }
+        } catch (QueryException $e) {
+            Log::error('Failed to update tenant modules.', [
+                'tenant_id' => $this->tenant->id,
+                'module_id' => $moduleId,
+                'exception' => $e,
+            ]);
+
+            Flux::toast(variant: 'danger', text: __('Something went wrong updating this client\'s modules. Please try again or contact support.'));
+
+            return;
         }
 
         unset($this->assignedModuleIds);
