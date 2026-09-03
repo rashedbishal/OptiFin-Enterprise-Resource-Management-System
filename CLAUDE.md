@@ -54,6 +54,9 @@ Ported from a sibling project (`OpticoreLeadManagementHub`, Inertia/React) onto 
 
 Facebook Lead Ads (Instant Forms) submissions land on the same webhook URL as Messenger (`/api/webhook/facebook/{tenant_code}`) as a `leadgen` change event rather than a `messaging` event, and — unlike attachment downloads — are processed synchronously inside the webhook request, not queued. See `README.md` for the full setup/debugging runbook (`meta:subscribe-leadgen`, `leads:fetch-test`, and the `/admin/clients/{tenant}/lead-sources/{leadSource}/meta-permissions` scope-check route).
 
+### Multi-currency
+`App\Models\Currency` is a Platform-Admin-managed catalog (same shape as `LeadStatus`): not tenant-scoped itself, shared across tenants that opt in via the `tenant_currencies` pivot (`Tenant::currencies()`). Tenants pick which currencies they support at `/admin/clients/{tenant}/lead-sources` (`LeadSources::toggleCurrency()`); those choices populate the per-field currency dropdowns on `estimated_budget`/`deal_value`. A currency in use (enabled by any tenant, or referenced by a Lead's `estimated_budget_currency_id`/`deal_value_currency_id`) can't be deleted — enforced in `App\Livewire\Platform\LeadManagement\Settings::deleteCurrency()`. The currencies-catalog migration unconditionally seeds a "USD" row, so it's a permanent baseline fixture in every test (same trap as `LeadStatus`'s legacy-seeded statuses) — see `.ai/rules/migrations-models.md`.
+
 ### Skills
 Domain skills exist under `**/skills/**` (Livewire, Flux UI, Fortify, Echo/broadcasting, Tailwind, testing, Laravel best practices). Activate the matching skill proactively when working in that domain rather than waiting to get stuck.
 
