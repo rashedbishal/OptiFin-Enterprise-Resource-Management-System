@@ -108,6 +108,16 @@
 
                     <flux:menu.separator />
 
+                    <div class="px-1 py-1.5" x-data>
+                        <flux:radio.group variant="segmented" size="sm" x-model="$flux.appearance" class="w-full">
+                            <flux:radio value="light" icon="sun" :aria-label="__('Light')" />
+                            <flux:radio value="dark" icon="moon" :aria-label="__('Dark')" />
+                            <flux:radio value="system" icon="computer-desktop" :aria-label="__('System')" />
+                        </flux:radio.group>
+                    </div>
+
+                    <flux:menu.separator />
+
                     <flux:menu.radio.group>
                         <flux:menu.item :href="route('profile.edit')" icon="cog" wire:navigate>
                             {{ __('Settings') }}

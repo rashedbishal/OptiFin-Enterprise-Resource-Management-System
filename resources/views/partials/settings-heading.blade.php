@@ -4,7 +4,6 @@
         ['label' => __('Settings'), 'href' => route('profile.edit')],
         ['label' => match (true) {
             request()->routeIs('security.edit') => __('Security'),
-            request()->routeIs('appearance.edit') => __('Appearance'),
             default => __('Profile'),
         }],
     ]" />
