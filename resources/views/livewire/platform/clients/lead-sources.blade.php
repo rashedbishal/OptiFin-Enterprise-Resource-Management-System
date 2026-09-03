@@ -140,7 +140,7 @@
         </flux:table>
     </div>
 
-    <flux:modal wire:model.self="showModal" class="md:w-[32rem]">
+    <flux:modal wire:model.self="showModal" scroll="body" class="w-full md:max-w-[36rem]">
         <form wire:submit="save" class="flex flex-col gap-6">
             <flux:heading size="lg">{{ $editingId ? __('Edit Lead Source') : __('New Lead Source') }}</flux:heading>
 
