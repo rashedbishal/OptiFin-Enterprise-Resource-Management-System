@@ -5,7 +5,7 @@
     $lastIndex = $items->count() - 1;
 @endphp
 
-<nav aria-label="{{ __('Breadcrumb') }}" class="mb-4 flex min-w-0 items-center overflow-x-auto text-sm">
+<nav aria-label="{{ __('Breadcrumb') }}" class="mb-4 flex min-w-0 shrink-0 items-center overflow-x-auto text-sm">
     @foreach ($items as $index => $item)
         @php
             $isFirst = $index === 0;
