@@ -50,7 +50,7 @@
 
         {{ $this->users->links() }}
 
-    <flux:modal wire:model.self="showModal" class="md:w-96">
+    <flux:modal wire:model.self="showModal" scroll="body" class="md:w-96">
         <form wire:submit="save" class="flex flex-col gap-6">
             <flux:heading size="lg">{{ $editingId ? __('Edit User') : __('New User') }}</flux:heading>
 

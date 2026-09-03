@@ -85,7 +85,7 @@
         </flux:table>
     </div>
 
-    <flux:modal wire:model.self="showStatusModal" class="md:w-96">
+    <flux:modal wire:model.self="showStatusModal" scroll="body" class="md:w-96">
         <form wire:submit="saveStatus" class="flex flex-col gap-6">
             <flux:heading size="lg">{{ $editingStatusId ? __('Edit Status') : __('New Status') }}</flux:heading>
 

@@ -52,7 +52,7 @@
         {{ $this->admins->links() }}
     </div>
 
-    <flux:modal wire:model.self="showModal" class="md:w-96">
+    <flux:modal wire:model.self="showModal" scroll="body" class="md:w-96">
         <form wire:submit="save" class="flex flex-col gap-6">
             <flux:heading size="lg">{{ $editingId ? __('Edit Admin') : __('New Admin') }}</flux:heading>
 
