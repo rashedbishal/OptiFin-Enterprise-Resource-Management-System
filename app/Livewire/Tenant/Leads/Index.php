@@ -73,6 +73,12 @@ class Index extends Component
 
     public string $leadNextFollowUpAt = '';
 
+    /**
+     * Bound to a single <input type="datetime-local">, e.g.
+     * "2026-09-05T14:30" — split into the separate meeting_date/meeting_time
+     * columns before saving, since the time is record-only and stored apart
+     * from the date meetingAlertActive() actually compares against.
+     */
     public string $leadMeetingDate = '';
 
     /**
@@ -233,7 +239,7 @@ class Index extends Component
             'leadDealValueCurrencyId' => ['nullable', 'string', Rule::exists('tenant_currencies', 'currency_id')->where('tenant_id', $tenant->id)],
             'leadWinProbability' => ['nullable', 'integer', 'min:0', 'max:100'],
             'leadNextFollowUpAt' => ['nullable', 'date', 'after_or_equal:today'],
-            'leadMeetingDate' => ['nullable', 'date', 'after_or_equal:today'],
+            'leadMeetingDate' => ['nullable', 'date_format:Y-m-d\TH:i', 'after_or_equal:today'],
         ], [
             'leadName.regex' => __('Contact person may only contain letters, spaces, apostrophes, periods and hyphens.'),
             'leadCompany.regex' => __('Company name contains characters that are not allowed.'),
@@ -265,6 +271,14 @@ class Index extends Component
             $assignee = $user;
         }
 
+        // The single datetime-local field splits back into the separate
+        // meeting_date/meeting_time columns here — meeting_time is
+        // record-only and never read by meetingAlertActive(), which stays
+        // purely date-based.
+        [$meetingDate, $meetingTime] = $validated['leadMeetingDate']
+            ? explode('T', $validated['leadMeetingDate'])
+            : [null, null];
+
         $createdLead = $action->handle($tenant, [
             'name' => $validated['leadName'],
             'company' => $validated['leadCompany'] ?: null,
@@ -287,7 +301,8 @@ class Index extends Component
             'deal_value_currency_id' => $validated['leadDealValue'] ? ($validated['leadDealValueCurrencyId'] ?: null) : null,
             'win_probability' => $validated['leadWinProbability'] ?: null,
             'next_follow_up_at' => $validated['leadNextFollowUpAt'] ?: null,
-            'meeting_date' => $validated['leadMeetingDate'] ?: null,
+            'meeting_date' => $meetingDate,
+            'meeting_time' => $meetingTime,
         ], $user, $assignee);
 
         $this->recentlyCreatedLeadId = $createdLead->id;

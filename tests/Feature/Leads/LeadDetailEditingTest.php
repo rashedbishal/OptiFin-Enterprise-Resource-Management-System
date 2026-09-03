@@ -7,6 +7,24 @@ use App\Models\LeadDetailUpdateLog;
 use App\Models\LeadSource;
 use Livewire\Livewire;
 
+test('the meeting date field is pre-filled as a single date+time value from the stored date and time', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => '2026-09-05', 'meeting_time' => '14:30']);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->assertSet('leadMeetingDate', '2026-09-05T14:30');
+});
+
+test('the meeting date field defaults the time to midnight when only a date was stored', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => '2026-09-05', 'meeting_time' => null]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->assertSet('leadMeetingDate', '2026-09-05T00:00');
+});
+
 test('a client admin can update a lead\'s contact details', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'name' => 'Old Name', 'phone' => null, 'email' => null]);
@@ -72,7 +90,7 @@ test('deal details can be filled in on a lead that never had them', function () 
         ->set('leadDealValueCurrencyId', $currency->id)
         ->set('leadWinProbability', '50')
         ->set('leadNextFollowUpAt', now()->addDays(3)->toDateString())
-        ->set('leadMeetingDate', now()->addDays(5)->toDateString())
+        ->set('leadMeetingDate', now()->addDays(5)->format('Y-m-d').'T14:30')
         ->call('updateDeal')
         ->assertHasNoErrors();
 
@@ -85,11 +103,13 @@ test('deal details can be filled in on a lead that never had them', function () 
     expect($lead->win_probability)->toBe(50);
     expect($lead->next_follow_up_at->toDateString())->toBe(now()->addDays(3)->toDateString());
     expect($lead->meeting_date->toDateString())->toBe(now()->addDays(5)->toDateString());
+    expect(substr($lead->meeting_time, 0, 5))->toBe('14:30');
+    expect($lead->meetingTimeFormatted())->toBe('2:30 PM');
 
     $log = LeadDetailUpdateLog::where('lead_id', $lead->id)->firstOrFail();
     expect($log->changed_fields)->toEqualCanonicalizing([
         'service_interest', 'estimated_budget', 'estimated_budget_currency_id',
-        'deal_value', 'deal_value_currency_id', 'win_probability', 'next_follow_up_at', 'meeting_date',
+        'deal_value', 'deal_value_currency_id', 'win_probability', 'next_follow_up_at', 'meeting_date', 'meeting_time',
     ]);
 });
 
@@ -99,7 +119,7 @@ test('a meeting date in the past is rejected when editing deal details', functio
 
     Livewire::actingAs($clientAdmin)
         ->test(Show::class, ['lead' => $lead])
-        ->set('leadMeetingDate', now()->subDay()->toDateString())
+        ->set('leadMeetingDate', now()->subDay()->format('Y-m-d').'T09:00')
         ->call('updateDeal')
         ->assertHasErrors(['leadMeetingDate' => 'after_or_equal']);
 

@@ -131,7 +131,10 @@
         <flux:tooltip.content>
             <div class="flex flex-col gap-1">
                 @if ($meetingAlertActive)
-                    <div>{{ __('Meeting scheduled on :date', ['date' => $lead->meeting_date->format('l, M j, Y')]) }}</div>
+                    <div>
+                        {{ __('Meeting scheduled on :date', ['date' => $lead->meeting_date->format('l, M j, Y')]) }}
+                        {{ $lead->meetingTimeFormatted() ? __('at :time', ['time' => $lead->meetingTimeFormatted()]) : '' }}
+                    </div>
                 @endif
                 @if ($followUpAlertActive)
                     <div>{{ __('Follow-up scheduled on :date', ['date' => $lead->next_follow_up_at->format('l, M j, Y')]) }}</div>

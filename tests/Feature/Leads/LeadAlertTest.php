@@ -28,6 +28,15 @@ test('meeting alert activates exactly N days before the meeting when enabled', f
     expect($insideWindow->meetingAlertActive(true, 3))->toBeTrue();
 });
 
+test('meeting_time is record-only and never affects the alert, whether set or not', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    $withTime = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today()->addDays(1), 'meeting_time' => '09:00']);
+    $withoutTime = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today()->addDays(1), 'meeting_time' => null]);
+
+    expect($withTime->meetingAlertActive(true, 3))->toBe($withoutTime->meetingAlertActive(true, 3));
+});
+
 test('a daysBefore of 0 only alerts on the exact meeting day', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
 

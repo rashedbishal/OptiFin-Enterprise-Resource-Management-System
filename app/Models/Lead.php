@@ -48,6 +48,7 @@ use Illuminate\Support\Facades\DB;
  * @property int|null $win_probability
  * @property Carbon|null $next_follow_up_at
  * @property Carbon|null $meeting_date
+ * @property string|null $meeting_time
  * @property Carbon|null $assigned_at
  * @property Carbon|null $first_contacted_at
  * @property Carbon|null $closed_at
@@ -61,7 +62,7 @@ use Illuminate\Support\Facades\DB;
     'tenant_id', 'source_id', 'assigned_to', 'name', 'company', 'website', 'industry', 'location',
     'service_interest', 'lead_source', 'email', 'phone', 'message', 'html_body', 'source_data', 'status_id', 'priority',
     'notes', 'estimated_budget', 'estimated_budget_currency_id', 'deal_value', 'deal_value_currency_id',
-    'win_probability', 'next_follow_up_at', 'meeting_date', 'assigned_at', 'first_contacted_at', 'closed_at',
+    'win_probability', 'next_follow_up_at', 'meeting_date', 'meeting_time', 'assigned_at', 'first_contacted_at', 'closed_at',
 ])]
 class Lead extends Model
 {
@@ -307,6 +308,16 @@ class Lead extends Model
         }
 
         return today()->gte($this->meeting_date->copy()->subDays($daysBefore));
+    }
+
+    /**
+     * "2:30 PM" if a time was recorded alongside the meeting date, else
+     * null — record-only metadata, never read by meetingAlertActive()'s
+     * date-based comparison above.
+     */
+    public function meetingTimeFormatted(): ?string
+    {
+        return $this->meeting_time !== null ? Carbon::parse($this->meeting_time)->format('g:i A') : null;
     }
 
     /**

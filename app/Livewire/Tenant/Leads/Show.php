@@ -57,6 +57,7 @@ class Show extends Component
         'win_probability' => 'Win Probability',
         'next_follow_up_at' => 'Next Follow-up',
         'meeting_date' => 'Meeting Date',
+        'meeting_time' => 'Meeting Time',
     ];
 
     public Lead $lead;
@@ -101,6 +102,12 @@ class Show extends Component
 
     public string $leadNextFollowUpAt = '';
 
+    /**
+     * Bound to a single <input type="datetime-local">, e.g.
+     * "2026-09-05T14:30" — split into the separate meeting_date/meeting_time
+     * columns in updateDeal(), since the time is record-only and stored
+     * apart from the date meetingAlertActive() actually compares against.
+     */
     public string $leadMeetingDate = '';
 
     /**
@@ -152,7 +159,9 @@ class Show extends Component
         $this->leadDealValueCurrencyId = $this->lead->deal_value_currency_id ?? (string) $this->tenantCurrencies->first()?->id;
         $this->leadWinProbability = $this->lead->win_probability !== null ? (string) $this->lead->win_probability : '';
         $this->leadNextFollowUpAt = $this->lead->next_follow_up_at?->toDateString() ?? '';
-        $this->leadMeetingDate = $this->lead->meeting_date?->toDateString() ?? '';
+        $this->leadMeetingDate = $this->lead->meeting_date
+            ? $this->lead->meeting_date->format('Y-m-d').'T'.($this->lead->meeting_time !== null ? substr($this->lead->meeting_time, 0, 5) : '00:00')
+            : '';
     }
 
     public function render(): View
@@ -474,7 +483,7 @@ class Show extends Component
             'leadDealValueCurrencyId' => ['nullable', 'string', Rule::exists('tenant_currencies', 'currency_id')->where('tenant_id', $tenant->id)],
             'leadWinProbability' => ['nullable', 'integer', 'min:0', 'max:100'],
             'leadNextFollowUpAt' => ['nullable', 'date', 'after_or_equal:today'],
-            'leadMeetingDate' => ['nullable', 'date', 'after_or_equal:today'],
+            'leadMeetingDate' => ['nullable', 'date_format:Y-m-d\TH:i', 'after_or_equal:today'],
         ], [
             'leadServiceInterest.regex' => __('Service interested contains characters that are not allowed.'),
             'leadSource.regex' => __('Lead source contains characters that are not allowed.'),
@@ -483,6 +492,14 @@ class Show extends Component
             'leadNextFollowUpAt.after_or_equal' => __('Next follow-up date cannot be in the past.'),
             'leadMeetingDate.after_or_equal' => __('Meeting date cannot be in the past.'),
         ]);
+
+        // The single datetime-local field splits back into the separate
+        // meeting_date/meeting_time columns here — meeting_time is
+        // record-only and never read by meetingAlertActive(), which stays
+        // purely date-based.
+        [$meetingDate, $meetingTime] = $validated['leadMeetingDate']
+            ? explode('T', $validated['leadMeetingDate'])
+            : [null, null];
 
         $columns = [
             'service_interest' => $validated['leadServiceInterest'] ?: null,
@@ -496,7 +513,8 @@ class Show extends Component
             'deal_value_currency_id' => $validated['leadDealValue'] ? ($validated['leadDealValueCurrencyId'] ?: null) : null,
             'win_probability' => $validated['leadWinProbability'] ?: null,
             'next_follow_up_at' => $validated['leadNextFollowUpAt'] ?: null,
-            'meeting_date' => $validated['leadMeetingDate'] ?: null,
+            'meeting_date' => $meetingDate,
+            'meeting_time' => $meetingTime,
         ];
 
         // Lead Source is only ever shown to (and editable by) manual-entry
@@ -614,7 +632,7 @@ class Show extends Component
             return;
         }
 
-        $this->recordDateAlertAction('meeting_date', 'meeting_cancelled');
+        $this->recordDateAlertAction('meeting_date', 'meeting_cancelled', alsoNullify: 'meeting_time');
         $this->leadMeetingDate = '';
 
         Flux::toast(variant: 'success', text: __('Meeting cancelled.'));
@@ -638,7 +656,7 @@ class Show extends Component
             return;
         }
 
-        $this->recordDateAlertAction('meeting_date', 'meeting_done');
+        $this->recordDateAlertAction('meeting_date', 'meeting_done', alsoNullify: 'meeting_time');
         $this->leadMeetingDate = '';
 
         Flux::toast(variant: 'success', text: __('Meeting marked as done.'));
@@ -698,13 +716,21 @@ class Show extends Component
      * activity() can render a friendly "X was cancelled/marked done"
      * line instead of the generic "Updated: :fields" one, and broadcasts
      * LeadUpdated so the Kanban card's shimmer stops live for every viewer,
-     * not just this session.
+     * not just this session. $alsoNullify clears a companion column
+     * (meeting_time) in the same update — record-only, so it isn't itself
+     * logged as a changed field.
      */
-    private function recordDateAlertAction(string $column, string $action): void
+    private function recordDateAlertAction(string $column, string $action, ?string $alsoNullify = null): void
     {
         $oldDate = $this->lead->{$column};
 
-        $this->lead->update([$column => null]);
+        $updates = [$column => null];
+
+        if ($alsoNullify) {
+            $updates[$alsoNullify] = null;
+        }
+
+        $this->lead->update($updates);
 
         LeadDetailUpdateLog::create([
             'lead_id' => $this->lead->id,

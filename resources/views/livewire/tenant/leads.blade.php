@@ -434,7 +434,7 @@
                                 </flux:input.group>
 
                                 <flux:input wire:model="leadNextFollowUpAt" type="date" min="{{ now()->toDateString() }}" :label="__('Next Follow-up Date')" />
-                                <flux:input wire:model="leadMeetingDate" type="date" min="{{ now()->toDateString() }}" :label="__('Meeting Date')" />
+                                <flux:input wire:model="leadMeetingDate" type="datetime-local" min="{{ now()->format('Y-m-d\TH:i') }}" :label="__('Meeting Date')" />
                             </div>
                         </div>
 

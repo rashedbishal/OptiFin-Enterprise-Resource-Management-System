@@ -56,7 +56,7 @@
                 </div>
 
                 <div class="flex items-end gap-1">
-                    <flux:input wire:model="leadMeetingDate" type="date" min="{{ now()->toDateString() }}" :label="__('Meeting Date')" class="min-w-0 flex-1" />
+                    <flux:input wire:model="leadMeetingDate" type="datetime-local" min="{{ now()->format('Y-m-d\TH:i') }}" :label="__('Meeting Date')" class="min-w-0 flex-1" />
                     @if ($lead->meeting_date)
                         <flux:tooltip content="{{ __('Cancel meeting') }}">
                             <flux:button size="sm" variant="ghost" icon="x-mark" aria-label="{{ __('Cancel meeting') }}" wire:click="confirmCancelMeeting" />
@@ -117,7 +117,9 @@
                 @if ($lead->meeting_date)
                     <div>
                         <flux:text size="sm" variant="subtle">{{ __('Meeting Date') }}</flux:text>
-                        <flux:text class="block">{{ $lead->meeting_date->format('M j, Y') }}</flux:text>
+                        <flux:text class="block">
+                            {{ $lead->meeting_date->format('M j, Y') }}{{ $lead->meetingTimeFormatted() ? ' at '.$lead->meetingTimeFormatted() : '' }}
+                        </flux:text>
                     </div>
                 @endif
             </div>

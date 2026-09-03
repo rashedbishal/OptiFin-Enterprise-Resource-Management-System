@@ -47,9 +47,9 @@ test('the cancel follow-up modal confirms before the date is actually cleared', 
     expect($lead->fresh()->next_follow_up_at)->toBeNull();
 });
 
-test('cancelling a meeting clears the date and logs a friendly activity entry', function () {
+test('cancelling a meeting clears the date and time and logs a friendly activity entry', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
-    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today()->addDays(3)]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today()->addDays(3), 'meeting_time' => '14:30']);
     $oldDate = $lead->meeting_date;
 
     Livewire::actingAs($clientAdmin)
@@ -58,20 +58,22 @@ test('cancelling a meeting clears the date and logs a friendly activity entry', 
         ->assertSet('leadMeetingDate', '');
 
     expect($lead->fresh()->meeting_date)->toBeNull();
+    expect($lead->fresh()->meeting_time)->toBeNull();
 
     $log = LeadDetailUpdateLog::where('lead_id', $lead->id)->where('action', 'meeting_cancelled')->firstOrFail();
     expect($log->action_date->isSameDay($oldDate))->toBeTrue();
 });
 
-test('marking a meeting done clears the date and logs it separately from cancelling', function () {
+test('marking a meeting done clears the date and time, and logs it separately from cancelling', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
-    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today()]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today(), 'meeting_time' => '09:00']);
 
     Livewire::actingAs($clientAdmin)
         ->test(Show::class, ['lead' => $lead, 'panel' => true])
         ->call('markMeetingDone');
 
     expect($lead->fresh()->meeting_date)->toBeNull();
+    expect($lead->fresh()->meeting_time)->toBeNull();
     expect(LeadDetailUpdateLog::where('lead_id', $lead->id)->where('action', 'meeting_done')->exists())->toBeTrue();
 });
 

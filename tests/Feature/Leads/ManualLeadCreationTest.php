@@ -26,7 +26,7 @@ test('a client admin can create a manual lead with full CRM details', function (
         ->set('leadDealValue', '250000')
         ->set('leadWinProbability', '50')
         ->set('leadNextFollowUpAt', now()->addDays(3)->toDateString())
-        ->set('leadMeetingDate', now()->addDays(5)->toDateString())
+        ->set('leadMeetingDate', now()->addDays(5)->format('Y-m-d').'T15:00')
         ->call('saveLead')
         ->assertHasNoErrors();
 
@@ -46,6 +46,7 @@ test('a client admin can create a manual lead with full CRM details', function (
     expect($lead->win_probability)->toBe(50);
     expect($lead->next_follow_up_at->toDateString())->toBe(now()->addDays(3)->toDateString());
     expect($lead->meeting_date->toDateString())->toBe(now()->addDays(5)->toDateString());
+    expect($lead->meetingTimeFormatted())->toBe('3:00 PM');
     expect($lead->status_id)->toBe(leadStatus('new')->id);
     expect($lead->assigned_to)->toBeNull();
     expect($lead->source->type)->toBe(LeadSourceType::Manual);
@@ -257,7 +258,7 @@ test('a meeting date in the past is rejected', function () {
         ->call('createLead')
         ->set('leadName', 'Valid Name')
         ->set('leadPhone', '+8801700000094')
-        ->set('leadMeetingDate', now()->subDay()->toDateString())
+        ->set('leadMeetingDate', now()->subDay()->format('Y-m-d').'T09:00')
         ->call('saveLead')
         ->assertHasErrors(['leadMeetingDate' => 'after_or_equal']);
 
