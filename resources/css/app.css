@@ -234,7 +234,15 @@ before assuming the old bug is back if this ever looks stuck again.
 .lead-alert-shimmer {
     padding: 2px;
     background-image: linear-gradient(115deg, transparent 15%, rgb(217 119 6 / 0.95) 50%, transparent 85%);
-    background-size: 250% 250%;
+    /*
+    background-size/keyframe pair is chosen, not arbitrary: background-position
+    percentages resolve as (1 - size) * percent, so with a 200% size the
+    200% -> 0% sweep below travels exactly one tile-width (a delta of `size`)
+    regardless of the card's actual width. That's what makes the loop restart
+    land back on the same phase instead of visibly snapping — any pair whose
+    travel isn't an exact multiple of the tile width will break the loop.
+    */
+    background-size: 200% 200%;
     animation: lead-alert-shimmer-sweep 1.8s linear infinite;
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
@@ -251,7 +259,7 @@ before assuming the old bug is back if this ever looks stuck again.
     }
 
     100% {
-        background-position: -50% 0%;
+        background-position: 0% 0%;
     }
 }
 
