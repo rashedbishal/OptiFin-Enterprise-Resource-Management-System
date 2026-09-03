@@ -354,7 +354,7 @@ class Index extends Component
 
     public function updating(string $property): void
     {
-        if (in_array($property, ['status', 'priority', 'sourceType', 'assignedTo'], true)) {
+        if (in_array($property, ['status', 'priority', 'sourceType', 'assignedTo', 'fromDate', 'toDate'], true)) {
             $this->resetPage();
             unset($this->boardLeads, $this->boardLeadCounts, $this->leads);
         }
@@ -434,7 +434,7 @@ class Index extends Component
 
     public function updated(string $property): void
     {
-        if (in_array($property, ['status', 'priority', 'sourceType', 'assignedTo'], true)) {
+        if (in_array($property, ['status', 'priority', 'sourceType', 'assignedTo', 'fromDate', 'toDate'], true)) {
             $this->resetPage();
             $this->refreshBoard();
         }

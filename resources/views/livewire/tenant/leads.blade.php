@@ -40,7 +40,7 @@
             }
         @endphp
 
-        <div class="grid grid-cols-2 gap-2 md:grid-cols-4 lg:gap-3">
+        <div class="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6 lg:gap-3">
             <x-dropdown-select wire:model.live="status" :placeholder="__('All statuses')" :options="$statusOptionsFormatted" icon="squares-2x2" />
             <x-dropdown-select wire:model.live="priority" :placeholder="__('All priorities')" :options="$priorityOptionsFormatted" icon="funnel" />
             <x-dropdown-select wire:model.live="sourceType" :placeholder="__('All sources')" :options="$sourceTypeOptionsFormatted" icon="tag" />
@@ -48,6 +48,9 @@
             @if ($this->isClientAdmin)
                 <x-dropdown-select wire:model.live="assignedTo" :placeholder="__('All users')" :options="$assignedToOptionsFormatted" icon="user" />
             @endif
+
+            <x-date-picker wire:model.live="fromDate" :label="__('From Date')" :placeholder="__('From Date')" :max="$toDate ?: now()->toDateString()" />
+            <x-date-picker wire:model.live="toDate" :label="__('To Date')" :placeholder="__('To Date')" :min="$fromDate" :max="now()->toDateString()" />
         </div>
 
         @if ($this->isClientAdmin)
@@ -433,8 +436,8 @@
                                     <flux:input.group.suffix>%</flux:input.group.suffix>
                                 </flux:input.group>
 
-                                <flux:input wire:model="leadNextFollowUpAt" type="date" min="{{ now()->toDateString() }}" :label="__('Next Follow-up Date')" />
-                                <flux:input wire:model="leadMeetingDate" type="datetime-local" min="{{ now()->format('Y-m-d\TH:i') }}" :label="__('Meeting Date')" />
+                                <x-date-picker wire:model="leadNextFollowUpAt" :label="__('Next Follow-up Date')" :placeholder="__('Next Follow-up Date')" :min="now()->toDateString()" />
+                                <x-datetime-picker wire:model="leadMeetingDate" :label="__('Meeting Date')" :placeholder="__('Meeting Date')" :min="now()->toDateString()" />
                             </div>
                         </div>
 

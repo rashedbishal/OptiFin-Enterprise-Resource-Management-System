@@ -184,3 +184,29 @@ test('kanban board filters leads by priority and source type', function () {
     $newLeads = $board->get(leadStatus('new')->id, collect());
     expect($newLeads->pluck('id'))->toContain($lead1->id)->not->toContain($lead2->id);
 });
+
+test('the board filters leads by a created-at date range, applied instantly with no search button', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant);
+
+    $oldLead = Lead::factory()->create(['tenant_id' => $tenant->id, 'assigned_to' => $rep->id, 'status_id' => leadStatus('new')->id]);
+    $oldLead->forceFill(['created_at' => now()->subDays(10)])->save();
+
+    $recentLead = Lead::factory()->create(['tenant_id' => $tenant->id, 'assigned_to' => $rep->id, 'status_id' => leadStatus('new')->id]);
+    $recentLead->forceFill(['created_at' => now()->subDay()])->save();
+
+    $component = Livewire::actingAs($rep)
+        ->test(Index::class)
+        ->set('fromDate', now()->subDays(3)->toDateString());
+
+    $board = $component->get('boardLeads');
+    $newLeads = $board->get(leadStatus('new')->id, collect());
+    expect($newLeads->pluck('id'))->toContain($recentLead->id)->not->toContain($oldLead->id);
+
+    $component->set('fromDate', '')
+        ->set('toDate', now()->subDays(5)->toDateString());
+
+    $board = $component->get('boardLeads');
+    $newLeads = $board->get(leadStatus('new')->id, collect());
+    expect($newLeads->pluck('id'))->toContain($oldLead->id)->not->toContain($recentLead->id);
+});

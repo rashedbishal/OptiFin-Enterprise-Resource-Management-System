@@ -315,8 +315,8 @@
                                     <flux:input.group.suffix>%</flux:input.group.suffix>
                                 </flux:input.group>
 
-                                <flux:input wire:model="leadNextFollowUpAt" type="date" min="{{ now()->toDateString() }}" :label="__('Next Follow-up Date')" />
-                                <flux:input wire:model="leadMeetingDate" type="datetime-local" min="{{ now()->format('Y-m-d\TH:i') }}" :label="__('Meeting Date')" />
+                                <x-date-picker wire:model="leadNextFollowUpAt" :label="__('Next Follow-up Date')" :placeholder="__('Next Follow-up Date')" :min="now()->toDateString()" />
+                                <x-datetime-picker wire:model="leadMeetingDate" :label="__('Meeting Date')" :placeholder="__('Meeting Date')" :min="now()->toDateString()" />
                             </div>
                         </div>
 

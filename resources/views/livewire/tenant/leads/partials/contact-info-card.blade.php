@@ -1,6 +1,9 @@
 @php
     $hasContactDetails = collect([$lead->phone, $lead->email, $lead->website, $lead->location])->filter()->isNotEmpty();
     $whatsappDigits = $lead->phone ? preg_replace('/\D/', '', $lead->phone) : null;
+    // tel: is lenient but still shouldn't carry spaces/parens/dashes — keeps
+    // digits and a leading + (country code) only.
+    $telNumber = $lead->phone ? preg_replace('/[^\d+]/', '', $lead->phone) : null;
 @endphp
 
 <flux:card class="flex flex-col gap-4">
@@ -40,8 +43,13 @@
             @endif
         </div>
 
-        @if ($whatsappDigits || $lead->email)
+        @if ($telNumber || $whatsappDigits || $lead->email)
             <div class="flex flex-wrap gap-2">
+                @if ($telNumber)
+                    <flux:button type="button" size="sm" icon="phone" href="tel:{{ $telNumber }}">
+                        {{ __('Call Now') }}
+                    </flux:button>
+                @endif
                 @if ($whatsappDigits)
                     <flux:button type="button" size="sm" icon="chat-bubble-left-right" href="https://wa.me/{{ $whatsappDigits }}" target="_blank">
                         {{ __('WhatsApp') }}

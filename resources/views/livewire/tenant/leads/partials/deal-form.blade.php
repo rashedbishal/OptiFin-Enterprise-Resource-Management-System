@@ -41,8 +41,10 @@
                     <flux:input.group.suffix>%</flux:input.group.suffix>
                 </flux:input.group>
 
-                <div class="flex items-end gap-1">
-                    <flux:input wire:model="leadNextFollowUpAt" type="date" min="{{ now()->toDateString() }}" :label="__('Next Follow-up Date')" class="min-w-0 flex-1" />
+                <div class="flex items-center gap-1">
+                    <div class="min-w-0 flex-1">
+                        <x-date-picker wire:model="leadNextFollowUpAt" :label="__('Next Follow-up Date')" :placeholder="__('Next Follow-up Date')" :min="now()->toDateString()" />
+                    </div>
                     @if ($lead->next_follow_up_at)
                         <flux:tooltip content="{{ __('Cancel follow-up') }}">
                             <flux:button size="sm" variant="ghost" icon="x-mark" aria-label="{{ __('Cancel follow-up') }}" wire:click="confirmCancelFollowUp" />
@@ -55,8 +57,10 @@
                     @endif
                 </div>
 
-                <div class="flex items-end gap-1">
-                    <flux:input wire:model="leadMeetingDate" type="datetime-local" min="{{ now()->format('Y-m-d\TH:i') }}" :label="__('Meeting Date')" class="min-w-0 flex-1" />
+                <div class="flex items-center gap-1">
+                    <div class="min-w-0 flex-1">
+                        <x-datetime-picker wire:model="leadMeetingDate" :label="__('Meeting Date')" :placeholder="__('Meeting Date')" :min="now()->toDateString()" />
+                    </div>
                     @if ($lead->meeting_date)
                         <flux:tooltip content="{{ __('Cancel meeting') }}">
                             <flux:button size="sm" variant="ghost" icon="x-mark" aria-label="{{ __('Cancel meeting') }}" wire:click="confirmCancelMeeting" />

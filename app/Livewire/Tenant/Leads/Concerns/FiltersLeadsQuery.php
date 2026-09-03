@@ -25,6 +25,10 @@ trait FiltersLeadsQuery
 
     public string $assignedTo = '';
 
+    public string $fromDate = '';
+
+    public string $toDate = '';
+
     #[Computed]
     public function isClientAdmin(): bool
     {
@@ -95,6 +99,14 @@ trait FiltersLeadsQuery
             } else {
                 $query->assignedTo($this->assignedTo);
             }
+        }
+
+        if ($this->fromDate !== '') {
+            $query->whereDate('created_at', '>=', $this->fromDate);
+        }
+
+        if ($this->toDate !== '') {
+            $query->whereDate('created_at', '<=', $this->toDate);
         }
 
         return $query;
