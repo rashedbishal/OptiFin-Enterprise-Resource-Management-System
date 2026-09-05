@@ -49,16 +49,25 @@
             @include('livewire.tenant.leads.partials.detail-card', ['lead' => $lead, 'timeline' => $this->timeline, 'bodyView' => $bodyView])
         </div>
     @else
-        {{-- Right column is a flex column stretched (CSS Grid's default
-        align-items: stretch) to the same height as the Activity card's grid
-        cell, then justify-between spaces its two rows (Add Note, then the
-        merged Status & Assignment card) out to fill that height evenly —
-        no h-full/flex-1 on the cards themselves, since that combination
-        inside a grid row already broke the Contact/Company/Status/Note
-        cards once before (see .ai/rules/tenant-leads.md). --}}
+        {{-- Right column drives the row's height (its natural, in-flow
+        content); Activity must match it exactly without feeding its own
+        (much taller, scrollable) content back into the grid row's auto
+        height calculation — combining h-full+flex-1 directly in the grid
+        row did exactly that once before (see .ai/rules/tenant-leads.md):
+        the row ballooned to fit the whole activity list and the internal
+        scrollbar never kicked in. Fix: at md+ (where the grid actually
+        goes two-column), the Activity card is wrapped in an md:absolute
+        md:inset-0 box inside a md:relative cell — an absolutely positioned
+        box is out-of-flow, so it contributes zero intrinsic height to the
+        row, letting the right column alone size the row; the box then
+        simply fills whatever height that produces, and the card's own
+        overflow-y-auto region scrolls within it. Below md the grid is
+        single-column, so this reverts to plain natural-height stacking. --}}
         <div class="grid gap-6 md:grid-cols-2">
-            <div class="{{ ($this->canUpdate || $this->canAssign) ? '' : 'md:col-span-2' }}">
-                @include('livewire.tenant.leads.partials.activity-card', ['activity' => $this->activity])
+            <div class="md:relative {{ ($this->canUpdate || $this->canAssign) ? '' : 'md:col-span-2' }}">
+                <div class="md:absolute md:inset-0">
+                    @include('livewire.tenant.leads.partials.activity-card', ['activity' => $this->activity, 'fillHeight' => true])
+                </div>
             </div>
 
             @if ($this->canUpdate || $this->canAssign)

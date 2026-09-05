@@ -119,7 +119,7 @@ Show::updateDeal()/Index::saveLead()) keeps working exactly as before. --}}
         x-transition:leave-start="opacity-100 scale-100 translate-y-0"
         x-transition:leave-end="opacity-0 scale-95 -translate-y-1"
         x-cloak
-        class="absolute left-0 z-50 mt-1 w-64 rounded-xl border border-zinc-300/90 bg-white/98 p-3 shadow-xl backdrop-blur-md focus:outline-none dark:border-zinc-700/90 dark:bg-zinc-900/95"
+        class="absolute left-0 z-50 mt-1 w-64 rounded-xl border border-zinc-300/90 bg-white/98 p-3 shadow-xl backdrop-blur-md focus:outline-none dark:border-zinc-700/90 dark:bg-zinc-700/95"
     >
         @if ($label)
             <div class="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">{{ $label }}</div>

@@ -11,8 +11,14 @@ one submit button, wired to Show::updateStatusAndAssignment(). --}}
                 $statusOpts = collect($statusOptions)->map(fn ($o) => ['value' => (string) $o->id, 'label' => $o->label()])->toArray();
                 $priorityOpts = collect($priorityOptions)->map(fn ($o) => ['value' => $o, 'label' => ucfirst($o)])->toArray();
             @endphp
-            <x-dropdown-select wire:model="status" :label="__('Status')" :options="$statusOpts" />
-            <x-dropdown-select wire:model="priority" :label="__('Priority')" :options="$priorityOpts" />
+            <div class="flex flex-col gap-3 lg:flex-row">
+                <div class="lg:flex-1">
+                    <x-dropdown-select wire:model="status" :label="__('Status')" :options="$statusOpts" />
+                </div>
+                <div class="lg:flex-1">
+                    <x-dropdown-select wire:model="priority" :label="__('Priority')" :options="$priorityOpts" />
+                </div>
+            </div>
         @endif
 
         @if ($this->canAssign)

@@ -103,7 +103,7 @@
             <iframe
                 srcdoc="{{ $lead->html_body }}"
                 sandbox
-                class="{{ $compact ? 'h-80' : 'h-[500px]' }} w-full rounded border border-neutral-200 bg-white dark:border-neutral-700"
+                class="{{ $compact ? 'h-80' : 'h-[500px]' }} w-full rounded border border-zinc-200 bg-white dark:border-zinc-700"
             ></iframe>
         @elseif ($lead->message)
             {{-- Capped and internally scrollable, same reasoning as the

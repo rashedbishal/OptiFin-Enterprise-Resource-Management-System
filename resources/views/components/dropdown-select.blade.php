@@ -34,6 +34,7 @@
 <div
     x-data="{
         open: false,
+        dropUp: false,
         selected: @if($wireModelLive) $wire.entangle('{{ $wireModelLive }}').live @elseif($wireModel) $wire.entangle('{{ $wireModel }}') @else null @endif,
         options: {{ json_encode($formattedOptions) }},
         placeholder: {{ json_encode($placeholder) }},
@@ -43,6 +44,19 @@
             }
             const match = this.options.find(o => String(o.value) === String(this.selected));
             return match ? match.label : this.placeholder;
+        },
+        toggle() {
+            this.open = !this.open;
+            if (! this.open) {
+                return;
+            }
+            this.$nextTick(() => {
+                const buttonRect = this.$refs.button.getBoundingClientRect();
+                const panelHeight = this.$refs.panel.offsetHeight;
+                const spaceBelow = window.innerHeight - buttonRect.bottom;
+                const spaceAbove = buttonRect.top;
+                this.dropUp = spaceBelow < panelHeight && spaceAbove > spaceBelow;
+            });
         }
     }"
     x-on:keydown.escape.window="open = false"
@@ -55,7 +69,8 @@
 
     <button
         type="button"
-        x-on:click="open = !open"
+        x-ref="button"
+        x-on:click="toggle()"
         :aria-expanded="open"
         {{ $attributes->except(['wire:model', 'wire:model.live', 'label'])->merge([
             'class' => 'flex w-full items-center justify-between gap-2 rounded-lg border border-zinc-300/80 bg-zinc-100/90 px-3 py-1.5 text-xs sm:text-sm font-medium text-zinc-800 shadow-xs transition hover:border-zinc-400 hover:bg-zinc-200/80 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-zinc-700/80 dark:bg-zinc-900/90 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 cursor-pointer'
@@ -76,6 +91,7 @@
     </button>
 
     <div
+        x-ref="panel"
         x-show="open"
         x-transition:enter="transition ease-out duration-150"
         x-transition:enter-start="opacity-0 scale-95 -translate-y-1"
@@ -84,7 +100,8 @@
         x-transition:leave-start="opacity-100 scale-100 translate-y-0"
         x-transition:leave-end="opacity-0 scale-95 -translate-y-1"
         x-cloak
-        class="absolute left-0 z-50 mt-1 max-h-60 w-full min-w-44 overflow-auto rounded-xl border border-zinc-300/90 bg-white/98 p-1.5 shadow-xl backdrop-blur-md focus:outline-none dark:border-zinc-700/90 dark:bg-zinc-900/95"
+        :class="dropUp ? 'bottom-full mb-1' : 'mt-1'"
+        class="absolute left-0 z-50 max-h-60 w-full min-w-44 overflow-auto rounded-xl border border-zinc-300/90 bg-white/98 p-1.5 shadow-xl backdrop-blur-md focus:outline-none dark:border-zinc-700/90 dark:bg-zinc-700/95"
     >
         <template x-for="option in options" :key="option.value">
             <button
