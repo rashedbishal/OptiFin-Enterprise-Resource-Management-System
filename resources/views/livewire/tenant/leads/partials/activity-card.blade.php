@@ -1,8 +1,8 @@
-@php $compact ??= false; @endphp
+@php $compact ??= false; $fillHeight ??= false; @endphp
 
-<flux:card>
+<flux:card class="{{ $fillHeight ? 'flex flex-col md:h-full' : '' }}">
     <flux:heading size="lg" class="mb-4">{{ __('Activity') }}</flux:heading>
-    <div class="flex {{ $compact ? 'max-h-48' : 'max-h-96' }} flex-col gap-4 overflow-y-auto pe-1">
+    <div class="flex flex-col gap-4 overflow-y-auto pe-1 {{ $fillHeight ? 'max-h-96 md:max-h-none md:min-h-0 md:flex-1' : ($compact ? 'max-h-48' : 'max-h-96') }}">
         @forelse ($activity as $event)
             <div class="border-b border-neutral-200 pb-3 last:border-0 dark:border-neutral-700">
                 <flux:text class="text-xs text-zinc-500">{{ $event['created_at']?->diffForHumans() }} · {{ $event['user'] ?? __('System') }}</flux:text>

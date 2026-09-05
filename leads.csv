@@ -1,0 +1,7 @@
+"Lead ID",Name,Email,Phone,Source,Status,Priority,"Assigned To","Created At","Closed At"
+OPTICORE-LEAD-16,ASdafsdaf,email@email.com,4342342424,"Manual Entry",Unqualified,high,Saadman,"2026-09-01 12:29:53","2026-09-03 12:40:56"
+OPTICORE-LEAD-15,"person four",personfour@gmail.com,1029384701,"Manual Entry",New,medium,Saadman,"2026-09-01 10:34:05","2026-09-03 11:55:13"
+OPTICORE-LEAD-10,"Facebook User 27181450094857149",,,"Facebook Messenger",Won,medium,Saadman,"2026-09-01 07:58:14","2026-09-02 12:57:03"
+OPTICORE-LEAD-9,"person one",person@gmail.com,12345678,"Manual Entry",Won,medium,Saadman,"2026-09-01 05:28:16","2026-09-02 12:57:04"
+OPTICORE-LEAD-13,"person three",personthree@gmail.com,12345789,"Manual Entry",Won,urgent,Saadman,"2026-09-01 09:18:20","2026-09-03 09:50:57"
+OPTICORE-LEAD-14,"Rashed Bishal",,8801821144599,WhatsApp,Won,high,Saadman,"2026-09-01 09:35:17","2026-09-03 10:05:27"
