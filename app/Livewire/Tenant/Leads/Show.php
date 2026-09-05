@@ -14,6 +14,11 @@ use App\Models\LeadNote;
 use App\Models\LeadStatus;
 use App\Models\LeadStatusLog;
 use App\Models\TenantUser;
+use App\Notifications\FollowUpCancelledNotification;
+use App\Notifications\FollowUpUpdatedNotification;
+use App\Notifications\MeetingCancelledNotification;
+use App\Notifications\MeetingUpdatedNotification;
+use App\Services\LeadAdminNotifier;
 use App\Services\LeadAssignmentService;
 use Carbon\CarbonInterface;
 use Flux\Flux;
@@ -379,7 +384,22 @@ class Show extends Component
             return;
         }
 
-        $newStatus = LeadStatus::findOrFail($this->status);
+        $validated = $this->validate([
+            'priority' => ['required', Rule::enum(LeadPriority::class)],
+        ]);
+
+        // Scoped to this tenant's own configured pipeline, not the raw
+        // global lead_statuses catalog — $this->status is a plain public
+        // property (wire:model, no #[Locked]), so a tampered submission
+        // could otherwise name a status only ever added to a *different*
+        // tenant's pipeline. Same lookup/no-op-if-missing pattern as
+        // Index::moveLead().
+        $newStatus = $this->lead->tenant->leadStatuses->firstWhere('id', $this->status);
+
+        if ($newStatus === null) {
+            return;
+        }
+
         $oldStatus = $this->lead->status;
 
         if ($oldStatus->id === $newStatus->id) {
@@ -393,7 +413,7 @@ class Show extends Component
             'new_status_id' => $newStatus->id,
         ]);
 
-        $updates = ['status_id' => $newStatus->id, 'priority' => LeadPriority::from($this->priority)];
+        $updates = ['status_id' => $newStatus->id, 'priority' => LeadPriority::from($validated['priority'])];
 
         if ($oldStatus->id === $this->lead->tenant->initialLeadStatus()?->id) {
             $updates['first_contacted_at'] = $this->lead->first_contacted_at ?? now();
@@ -473,7 +493,7 @@ class Show extends Component
         ]);
     }
 
-    public function updateDeal(): void
+    public function updateDeal(LeadAdminNotifier $notifier): void
     {
         if (Gate::denies('update', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
@@ -534,7 +554,41 @@ class Show extends Component
             $columns['lead_source'] = $validated['leadSource'] ?: null;
         }
 
+        // Captured before applyDetailChanges() saves the new values below —
+        // comparing against the post-save value in notifyIfDateScheduled()
+        // is what tells a fresh schedule (was null) apart from a reschedule
+        // (was already set to something else).
+        $oldMeetingDate = $this->lead->meeting_date?->toDateString();
+        $oldFollowUpAt = $this->lead->next_follow_up_at?->toDateString();
+
         $this->applyDetailChanges($columns);
+
+        $this->notifyIfDateScheduled('meeting_date', $oldMeetingDate, MeetingUpdatedNotification::class, $notifier);
+        $this->notifyIfDateScheduled('next_follow_up_at', $oldFollowUpAt, FollowUpUpdatedNotification::class, $notifier);
+    }
+
+    /**
+     * Notifies every other Client Admin when updateDeal() actually set
+     * meeting_date/next_follow_up_at to something new — read from
+     * $this->lead *after* applyDetailChanges() above, so this only fires
+     * once the value is confirmed saved (a no-op submission that leaves the
+     * column unchanged never sends anything, since $oldValue then still
+     * equals the current value). Clearing the field to null isn't handled
+     * here at all — that's a cancellation, sent by cancelMeeting()/
+     * cancelFollowUp() instead.
+     *
+     * @param  'meeting_date'|'next_follow_up_at'  $column
+     * @param  class-string<MeetingUpdatedNotification>|class-string<FollowUpUpdatedNotification>  $notificationClass
+     */
+    private function notifyIfDateScheduled(string $column, ?string $oldValue, string $notificationClass, LeadAdminNotifier $notifier): void
+    {
+        $newValue = $this->lead->{$column}?->toDateString();
+
+        if ($newValue === null || $newValue === $oldValue) {
+            return;
+        }
+
+        $notifier->notifyExcept($this->lead, Auth::user(), new $notificationClass($this->lead, Auth::user(), rescheduled: $oldValue !== null));
     }
 
     /**
@@ -585,7 +639,23 @@ class Show extends Component
             return;
         }
 
-        if (! $this->assigneeId) {
+        $newAssigneeId = $this->assigneeId ?: null;
+
+        // Nothing actually changed — most commonly updateStatusAndAssignment()
+        // running this half of the merged form on a status/priority-only
+        // save. Silently no-op'ing here (same pattern applyDetailChanges()
+        // already uses for "did anything change") avoids three side effects
+        // an unrelated save shouldn't trigger: a duplicate LeadAssignment
+        // history row, LeadAssignedNotification re-firing "you've been
+        // assigned this lead" for an assignment that already happened, and
+        // assignee.last_assigned_at resetting — which would unfairly
+        // deprioritize this user in LeadAssignmentService::pickRoundRobinUser()'s
+        // future auto-distribution, for a lead that was never reassigned.
+        if ($newAssigneeId === $this->lead->assigned_to) {
+            return;
+        }
+
+        if (! $newAssigneeId) {
             $assignmentService->unassign($this->lead);
 
             $this->lead->refresh();
@@ -602,7 +672,7 @@ class Show extends Component
             return;
         }
 
-        $assignee = TenantUser::query()->where('tenant_id', $this->lead->tenant_id)->findOrFail($this->assigneeId);
+        $assignee = TenantUser::query()->where('tenant_id', $this->lead->tenant_id)->findOrFail($newAssigneeId);
 
         $assignmentService->assign($this->lead, $assignee, Auth::user());
 
@@ -646,13 +716,13 @@ class Show extends Component
         $this->showCancelMeetingModal = true;
     }
 
-    public function cancelMeetingConfirmed(): void
+    public function cancelMeetingConfirmed(LeadAdminNotifier $notifier): void
     {
-        $this->cancelMeeting();
+        $this->cancelMeeting($notifier);
         $this->showCancelMeetingModal = false;
     }
 
-    public function cancelMeeting(): void
+    public function cancelMeeting(LeadAdminNotifier $notifier): void
     {
         if (Gate::denies('update', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
@@ -663,6 +733,10 @@ class Show extends Component
         if ($this->lead->meeting_date === null) {
             return;
         }
+
+        // Sent before recordDateAlertAction() nulls meeting_date below, so
+        // the notification still carries the real date being cancelled.
+        $notifier->notifyExcept($this->lead, Auth::user(), new MeetingCancelledNotification($this->lead, Auth::user()));
 
         $this->recordDateAlertAction('meeting_date', 'meeting_cancelled', alsoNullify: 'meeting_time');
         $this->leadMeetingDate = '';
@@ -699,13 +773,13 @@ class Show extends Component
         $this->showCancelFollowUpModal = true;
     }
 
-    public function cancelFollowUpConfirmed(): void
+    public function cancelFollowUpConfirmed(LeadAdminNotifier $notifier): void
     {
-        $this->cancelFollowUp();
+        $this->cancelFollowUp($notifier);
         $this->showCancelFollowUpModal = false;
     }
 
-    public function cancelFollowUp(): void
+    public function cancelFollowUp(LeadAdminNotifier $notifier): void
     {
         if (Gate::denies('update', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
@@ -716,6 +790,11 @@ class Show extends Component
         if ($this->lead->next_follow_up_at === null) {
             return;
         }
+
+        // Sent before recordDateAlertAction() nulls next_follow_up_at
+        // below, so the notification still carries the real date being
+        // cancelled.
+        $notifier->notifyExcept($this->lead, Auth::user(), new FollowUpCancelledNotification($this->lead, Auth::user()));
 
         $this->recordDateAlertAction('next_follow_up_at', 'followup_cancelled');
         $this->leadNextFollowUpAt = '';

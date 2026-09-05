@@ -13,6 +13,9 @@ use App\Models\Lead;
 use App\Models\LeadSource;
 use App\Models\LeadStatusLog;
 use App\Models\TenantUser;
+use App\Notifications\FollowUpUpdatedNotification;
+use App\Notifications\MeetingUpdatedNotification;
+use App\Services\LeadAdminNotifier;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
@@ -21,6 +24,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
+use Livewire\Attributes\Url;
 use Livewire\Component;
 use Livewire\WithPagination;
 use RuntimeException;
@@ -32,6 +36,13 @@ class Index extends Component
     use ConfirmsLeadDeletionPassword, FiltersLeadsQuery, WithPagination;
 
     public string $sourceType = '';
+
+    /**
+     * Free-text search across Lead ID, contact name, phone, email, company,
+     * location, win probability, and deal value — see filteredQuery() for
+     * the actual matching.
+     */
+    public string $search = '';
 
     public bool $showCreateLeadModal = false;
 
@@ -90,6 +101,15 @@ class Index extends Component
      */
     private const BOARD_LEAD_LIMIT = 500;
 
+    /**
+     * Table view's page size — 15 on the sm+ desktop/tablet table, 10 on
+     * the mobile card stack, matching the same `sm` breakpoint the view
+     * already switches those two layouts at. Starts at the desktop value
+     * since the server can't see the viewport; the view's x-init corrects
+     * it to 10 immediately on load for anyone under that breakpoint.
+     */
+    public int $perPage = 15;
+
     public ?string $selectedLeadId = null;
 
     public bool $showLeadPanel = false;
@@ -112,9 +132,26 @@ class Index extends Component
 
     public ?string $confirmingDeleteSourceId = null;
 
+    /**
+     * Opens a specific lead's flyout panel on load via a `?lead=` query
+     * param — how a bell notification reaches a Client User's board (see
+     * NotificationBell::urlFor()): unlike a Client Admin, they have no
+     * full-page lead detail view of their own (tenant-leads.show renders
+     * the same standalone page for anyone who can reach it, laid out for
+     * the admin's table-based workflow, not the Kanban one a Client User
+     * actually uses), so this flyout is the only "view this lead" surface
+     * they have.
+     */
+    #[Url(as: 'lead')]
+    public ?string $openLeadId = null;
+
     public function mount(): void
     {
         Gate::authorize('viewAny', Lead::class);
+
+        if ($this->openLeadId !== null) {
+            $this->viewLead($this->openLeadId);
+        }
     }
 
     /**
@@ -200,7 +237,7 @@ class Index extends Component
         $this->showCreateLeadModal = true;
     }
 
-    public function saveLead(CreateManualLead $action): void
+    public function saveLead(CreateManualLead $action, LeadAdminNotifier $notifier): void
     {
         if (Gate::denies('create', Lead::class)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to create leads."));
@@ -305,6 +342,17 @@ class Index extends Component
 
         $this->recentlyCreatedLeadId = $createdLead->id;
 
+        // A brand new lead's meeting/follow-up is always a fresh schedule
+        // (rescheduled: false) — there's no "before" to compare against the
+        // way Show::updateDeal() has to for an existing lead.
+        if ($createdLead->meeting_date !== null) {
+            $notifier->notifyExcept($createdLead, $user, new MeetingUpdatedNotification($createdLead, $user, rescheduled: false));
+        }
+
+        if ($createdLead->next_follow_up_at !== null) {
+            $notifier->notifyExcept($createdLead, $user, new FollowUpUpdatedNotification($createdLead, $user, rescheduled: false));
+        }
+
         $this->showCreateLeadModal = false;
         $this->refreshBoard();
         Flux::toast(variant: 'success', text: __('Lead created.'));
@@ -352,7 +400,7 @@ class Index extends Component
 
     public function updating(string $property): void
     {
-        if (in_array($property, ['status', 'priority', 'sourceType', 'assignedTo', 'fromDate', 'toDate'], true)) {
+        if (in_array($property, ['status', 'priority', 'sourceType', 'assignedTo', 'fromDate', 'toDate', 'search'], true)) {
             $this->resetPage();
             unset($this->boardLeads, $this->boardLeadCounts, $this->leads);
         }
@@ -369,7 +417,27 @@ class Index extends Component
         return $this->applyDropdownFilters($this->applyAssignmentScope($this->filteredQuery()))
             ->with(['source', 'assignedUser', 'status', 'estimatedBudgetCurrency', 'dealValueCurrency'])
             ->latest('updated_at')
-            ->paginate(25);
+            ->paginate($this->perPage);
+    }
+
+    /**
+     * Called once from the view's x-init (and again on every sm-breakpoint
+     * crossing) rather than trusting a `wire:model` on perPage directly —
+     * this only ever needs to reflect the viewport, never arbitrary
+     * client input, so anything outside the two real page sizes is ignored
+     * instead of validated/rejected.
+     */
+    public function setPerPage(int $perPage): void
+    {
+        $perPage = in_array($perPage, [10, 15], true) ? $perPage : 15;
+
+        if ($perPage === $this->perPage) {
+            return;
+        }
+
+        $this->perPage = $perPage;
+        $this->resetPage();
+        unset($this->leads);
     }
 
     /**
@@ -432,7 +500,7 @@ class Index extends Component
 
     public function updated(string $property): void
     {
-        if (in_array($property, ['status', 'priority', 'sourceType', 'assignedTo', 'fromDate', 'toDate'], true)) {
+        if (in_array($property, ['status', 'priority', 'sourceType', 'assignedTo', 'fromDate', 'toDate', 'search'], true)) {
             $this->resetPage();
             $this->refreshBoard();
         }
@@ -453,8 +521,13 @@ class Index extends Component
         // Escape all sync this property back down via wire:model) — drop
         // the selected lead so the nested detail component un-mounts
         // instead of silently re-querying on every later board action.
+        // openLeadId is cleared alongside it (not just selectedLeadId) so
+        // the ?lead= query param it's bound to actually disappears from the
+        // URL too — otherwise a refresh right after closing the panel would
+        // silently reopen it.
         if ($property === 'showLeadPanel' && ! $this->showLeadPanel) {
             $this->selectedLeadId = null;
+            $this->openLeadId = null;
         }
     }
 
@@ -463,6 +536,13 @@ class Index extends Component
      * belong to the current user's assignment scope, but this is called
      * directly from the client (drag target / card click), so the
      * authorization is re-checked server-side rather than trusted.
+     *
+     * Also updates openLeadId (the ?lead= query param) to match, not just
+     * selectedLeadId — otherwise, after a notification link opens one lead
+     * and the viewer then clicks a *different* card, the address bar would
+     * keep pointing at the original lead: refreshing the page at that point
+     * would reopen it instead of whichever lead the viewer was actually
+     * looking at.
      */
     public function viewLead(string $id): void
     {
@@ -477,6 +557,7 @@ class Index extends Component
         $lead->markUpdateSeen();
 
         $this->selectedLeadId = $lead->id;
+        $this->openLeadId = $lead->id;
         $this->showLeadPanel = true;
     }
 
@@ -497,6 +578,7 @@ class Index extends Component
         if ($this->selectedLeadId === $leadId) {
             $this->showLeadPanel = false;
             $this->selectedLeadId = null;
+            $this->openLeadId = null;
         }
 
         $this->refreshBoard();
@@ -650,6 +732,7 @@ class Index extends Component
         if ($this->selectedLeadId === $id) {
             $this->showLeadPanel = false;
             $this->selectedLeadId = null;
+            $this->openLeadId = null;
         }
 
         $this->refreshBoard();
@@ -848,36 +931,96 @@ class Index extends Component
     }
 
     /**
+     * Facebook Lead Ads leads are excluded here only for the Client Admin's
+     * table view — they'd flood a flat table with dynamic-per-form fields
+     * that don't fit its fixed columns, so admins get an aggregate row per
+     * source instead (see facebookLeadAdsSources()) linking to a dedicated
+     * spreadsheet view. A Client User's Kanban board has no such row-shape
+     * constraint, so their assigned Facebook Lead Ads leads appear as
+     * normal cards in their pipeline column right alongside every other
+     * source, same as this method already treats every other type.
+     *
      * @return Builder<Lead>
      */
     private function filteredQuery(): Builder
     {
         $user = Auth::user();
 
-        $query = Lead::query()
-            ->where('tenant_id', $user->tenant_id)
-            ->whereHas('source', fn (Builder $q) => $q->where('type', '!=', LeadSourceType::FacebookLeadAds));
+        $query = Lead::query()->where('tenant_id', $user->tenant_id);
+
+        if ($this->isClientAdmin) {
+            $query->whereHas('source', fn (Builder $q) => $q->where('type', '!=', LeadSourceType::FacebookLeadAds));
+        }
 
         if ($this->sourceType !== '') {
             $sourceType = $this->sourceType;
             $query->whereHas('source', fn (Builder $q) => $q->where('type', $sourceType));
         }
 
+        if ($this->search !== '') {
+            $term = '%'.$this->search.'%';
+
+            // Grouped in its own closure so the OR chain doesn't escape into
+            // the surrounding AND conditions above (tenant scope, source
+            // type, ...) — an ungrouped orWhere() here would silently widen
+            // the query to "this tenant's leads OR any lead anywhere whose
+            // deal value matches", same class of precedence bug fixed
+            // elsewhere in this module (see SendLeadAlertNotifications).
+            // deal_value/win_probability are numeric columns — Postgres
+            // (unlike MySQL/SQLite) refuses to LIKE-compare those directly,
+            // so they're cast to text first.
+            $query->where(function (Builder $q) use ($term): void {
+                $q->where('identifier', 'like', $term)
+                    ->orWhere('name', 'like', $term)
+                    ->orWhere('phone', 'like', $term)
+                    ->orWhere('email', 'like', $term)
+                    ->orWhere('company', 'like', $term)
+                    ->orWhere('location', 'like', $term)
+                    ->orWhereRaw('CAST(win_probability AS TEXT) LIKE ?', [$term])
+                    ->orWhereRaw('CAST(deal_value AS TEXT) LIKE ?', [$term]);
+            });
+        }
+
         return $query;
     }
 
     /**
-     * Facebook Lead Ads is excluded: those leads never appear as individual
-     * rows in this list, so filtering by that source type here would always
-     * return nothing.
+     * Only source types this tenant actually has a LeadSource configured
+     * for — a static full-enum list left every tenant filtering by channels
+     * (LinkedIn, Instagram, ...) they never connected, which always
+     * returned zero rows. Manual ("Custom") is force-included regardless: it's
+     * lazily provisioned on first use (see App\Actions\Tenant\CreateManualLead),
+     * so a tenant that hasn't created a manual lead yet would otherwise have
+     * no LeadSource row for it to be "configured" from, even though any
+     * Client User can create one at any time.
+     *
+     * Facebook Lead Ads is additionally excluded on the Client Admin's
+     * table view specifically: filteredQuery() excludes that type outright
+     * for admins (see its docblock), so it would always return zero rows
+     * there regardless of configuration. A Client User's Kanban board has
+     * no such exclusion, so it's offered there whenever the tenant has an
+     * active Facebook Lead Ads source, same as every other type.
      *
      * @return array<int, string>
      */
     public function sourceTypeOptions(): array
     {
+        $configuredTypes = LeadSource::query()
+            ->where('tenant_id', Auth::user()->tenant_id)
+            ->distinct()
+            ->pluck('type')
+            ->map(fn (LeadSourceType $type): string => $type->value)
+            ->all();
+
         return array_values(array_filter(
             LeadSourceType::values(),
-            fn (string $value): bool => $value !== LeadSourceType::FacebookLeadAds->value,
+            function (string $value) use ($configuredTypes): bool {
+                if ($this->isClientAdmin && $value === LeadSourceType::FacebookLeadAds->value) {
+                    return false;
+                }
+
+                return $value === LeadSourceType::Manual->value || in_array($value, $configuredTypes, true);
+            },
         ));
     }
 }

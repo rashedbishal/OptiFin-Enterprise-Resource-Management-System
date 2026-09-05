@@ -5,6 +5,9 @@ use App\Livewire\Tenant\Leads\Show;
 use App\Models\Lead;
 use App\Models\LeadDetailUpdateLog;
 use App\Models\LeadSource;
+use App\Models\TenantUser;
+use App\Notifications\FollowUpUpdatedNotification;
+use App\Notifications\MeetingUpdatedNotification;
 use Livewire\Livewire;
 
 test('the meeting date field is pre-filled as a single date+time value from the stored date and time', function () {
@@ -111,6 +114,78 @@ test('deal details can be filled in on a lead that never had them', function () 
         'service_interest', 'estimated_budget', 'estimated_budget_currency_id',
         'deal_value', 'deal_value_currency_id', 'win_probability', 'next_follow_up_at', 'meeting_date', 'meeting_time',
     ]);
+});
+
+test('scheduling a meeting for the first time notifies other admins, but not the one who scheduled it', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $otherAdmin = TenantUser::factory()->clientAdmin()->create(['tenant_id' => $tenant->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => null]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->set('leadMeetingDate', now()->addDays(5)->format('Y-m-d').'T14:30')
+        ->call('updateDeal');
+
+    expect($clientAdmin->notifications()->where('type', MeetingUpdatedNotification::class)->count())->toBe(0);
+
+    $notification = $otherAdmin->notifications()->where('type', MeetingUpdatedNotification::class)->firstOrFail();
+    expect($notification->data['rescheduled'])->toBeFalse();
+    expect($notification->data['meeting_time'])->toBe('2:30 PM');
+});
+
+test('changing an already-scheduled meeting to a different date notifies admins that it was rescheduled', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $otherAdmin = TenantUser::factory()->clientAdmin()->create(['tenant_id' => $tenant->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => now()->addDays(2)]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->set('leadMeetingDate', now()->addDays(9)->format('Y-m-d').'T10:00')
+        ->call('updateDeal');
+
+    $notification = $otherAdmin->notifications()->where('type', MeetingUpdatedNotification::class)->firstOrFail();
+    expect($notification->data['rescheduled'])->toBeTrue();
+});
+
+test('resubmitting the deal form with the same meeting date sends no notification', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $otherAdmin = TenantUser::factory()->clientAdmin()->create(['tenant_id' => $tenant->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => now()->addDays(2), 'meeting_time' => '10:00:00']);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->set('leadMeetingDate', now()->addDays(2)->format('Y-m-d').'T10:00')
+        ->call('updateDeal');
+
+    expect($otherAdmin->notifications()->where('type', MeetingUpdatedNotification::class)->count())->toBe(0);
+});
+
+test('scheduling a follow-up for the first time notifies other admins as a fresh schedule, not a reschedule', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $otherAdmin = TenantUser::factory()->clientAdmin()->create(['tenant_id' => $tenant->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'next_follow_up_at' => null]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->set('leadNextFollowUpAt', now()->addDays(3)->toDateString())
+        ->call('updateDeal');
+
+    $notification = $otherAdmin->notifications()->where('type', FollowUpUpdatedNotification::class)->firstOrFail();
+    expect($notification->data['rescheduled'])->toBeFalse();
+});
+
+test('the assigned rep scheduling a meeting notifies every admin (there is no self to exclude)', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant, ['view', 'update']);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => null, 'assigned_to' => $rep->id]);
+
+    Livewire::actingAs($rep)
+        ->test(Show::class, ['lead' => $lead])
+        ->set('leadMeetingDate', now()->addDays(5)->format('Y-m-d').'T14:30')
+        ->call('updateDeal');
+
+    expect($clientAdmin->notifications()->where('type', MeetingUpdatedNotification::class)->count())->toBe(1);
+    expect($rep->notifications()->where('type', MeetingUpdatedNotification::class)->count())->toBe(0);
 });
 
 test('a meeting date in the past is rejected when editing deal details', function () {

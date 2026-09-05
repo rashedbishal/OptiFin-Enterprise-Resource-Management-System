@@ -1,11 +1,21 @@
-<div class="flex flex-1 flex-col h-full min-h-0 overflow-hidden">
-    {{-- Header: breadcrumbs, heading, actions, and filters stay fixed at top. --}}
-    <div class="shrink-0 z-10 flex flex-col gap-2 bg-white px-4 py-3 lg:gap-3.5 lg:px-8 lg:py-4 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
-        <x-breadcrumbs class="hidden sm:flex" :items="[
-            ['label' => __('Dashboard'), 'href' => route('dashboard')],
-            ['label' => __('Leads')],
-        ]" />
+@push('breadcrumbs')
+    <x-breadcrumbs :items="[
+        ['label' => __('Dashboard'), 'href' => route('dashboard')],
+        ['label' => __('Leads')],
+    ]" />
+@endpush
 
+<div
+    class="flex flex-1 flex-col h-full min-h-0 overflow-hidden"
+    x-data
+    x-init="
+        let mobile = window.matchMedia('(max-width: 639px)');
+        $wire.setPerPage(mobile.matches ? 10 : 15);
+        mobile.addEventListener('change', (e) => $wire.setPerPage(e.matches ? 10 : 15));
+    "
+>
+    {{-- Header: heading, actions, and filters stay fixed at top. --}}
+    <div class="shrink-0 z-10 flex flex-col gap-2 bg-white px-4 py-3 lg:gap-3.5 lg:px-8 lg:py-4 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
         <div class="flex items-center justify-between gap-2">
             <flux:heading size="lg" class="hidden lg:block lg:text-2xl font-semibold">{{ __('Leads') }}</flux:heading>
             <div class="flex items-center gap-1.5 sm:gap-2">
@@ -27,7 +37,7 @@
             );
             $sourceTypeOptionsFormatted = array_merge(
                 [['value' => '', 'label' => __('All sources')]],
-                collect($this->sourceTypeOptions())->map(fn($opt) => ['value' => $opt, 'label' => ucfirst(str_replace('_', ' ', $opt))])->toArray()
+                collect($this->sourceTypeOptions())->map(fn($opt) => ['value' => $opt, 'label' => \App\Enums\LeadSourceType::from($opt)->label()])->toArray()
             );
             if ($this->isClientAdmin) {
                 $assignedToOptionsFormatted = array_merge(
@@ -40,7 +50,7 @@
             }
         @endphp
 
-        <div class="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6 lg:gap-3">
+        <div class="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-7 lg:gap-3">
             <x-dropdown-select wire:model.live="status" :placeholder="__('All statuses')" :options="$statusOptionsFormatted" icon="squares-2x2" />
             <x-dropdown-select wire:model.live="priority" :placeholder="__('All priorities')" :options="$priorityOptionsFormatted" icon="funnel" />
             <x-dropdown-select wire:model.live="sourceType" :placeholder="__('All sources')" :options="$sourceTypeOptionsFormatted" icon="tag" />
@@ -51,6 +61,20 @@
 
             <x-date-picker wire:model.live="fromDate" :label="__('From Date')" :placeholder="__('From Date')" :max="$toDate ?: now()->toDateString()" />
             <x-date-picker wire:model.live="toDate" :label="__('To Date')" :placeholder="__('To Date')" :min="$fromDate" :max="now()->toDateString()" />
+
+            {{-- col-span-2/3 keeps it on its own full-width row below the
+            dropdowns/dates on mobile and tablet (2- and 3-column grids) —
+            no span at all from lg up, where the grid grows to 7 columns
+            (one more than the 6 dropdown/date fields) specifically so the
+            search box sits as a normal 7th cell in that same row instead
+            of on its own line. --}}
+            <flux:input
+                wire:model.live.debounce.400ms="search"
+                icon="magnifying-glass"
+                clearable
+                :placeholder="__('Search by Lead ID, name, phone, email, company, location, win %, or deal value')"
+                class="col-span-2 md:col-span-3 lg:col-span-1"
+            />
         </div>
 
         @if ($this->isClientAdmin)
@@ -155,29 +179,49 @@
             {{-- Mobile Card Stack (sm:hidden) --}}
             <div class="flex flex-col gap-3.5 sm:hidden">
                 @foreach ($this->facebookLeadAdsSources as $source)
-                    <div wire:key="fb-lead-ads-source-card-{{ $source->id }}" class="flex flex-col gap-3 rounded-xl border border-blue-200/80 bg-blue-50/50 p-4 shadow-sm dark:border-blue-900/60 dark:bg-blue-950/30">
-                        <div class="flex items-start justify-between gap-2">
-                            <div class="flex flex-col">
-                                <span class="font-medium text-zinc-900 dark:text-white">{{ $source->name }}</span>
-                                <flux:text size="sm" variant="subtle">
-                                    {{ $source->leads_max_created_at ? __('Last submission :time', ['time' => \Illuminate\Support\Carbon::parse($source->leads_max_created_at)->diffForHumans()]) : __('No submissions yet') }}
-                                </flux:text>
+                    @if ($source->leads_count > 0)
+                        {{-- Whole card is the click target once there's something to view —
+                        no separate View All button, same treatment as the lead cards below.
+                        A <div> below (not clickable) when there are no leads yet: there's
+                        nothing for "view all" to open, and Delete lives there instead. --}}
+                        <a
+                            href="{{ route('tenant-leads.source', $source) }}"
+                            wire:navigate
+                            wire:key="fb-lead-ads-source-card-{{ $source->id }}"
+                            class="flex flex-col gap-3 rounded-xl border border-blue-200/80 bg-blue-50/50 p-4 shadow-sm active:opacity-80 dark:border-blue-900/60 dark:bg-blue-950/30"
+                        >
+                            <div class="flex items-start justify-between gap-2">
+                                <div class="flex flex-col">
+                                    <span class="font-medium text-zinc-900 dark:text-white">{{ $source->name }}</span>
+                                    <flux:text size="sm" variant="subtle">
+                                        {{ __('Last submission :time', ['time' => \Illuminate\Support\Carbon::parse($source->leads_max_created_at)->diffForHumans()]) }}
+                                    </flux:text>
+                                </div>
+                                <flux:badge size="sm" icon="{{ $source->type->icon() }}">{{ $source->type->label() }}</flux:badge>
                             </div>
-                            <flux:badge size="sm" icon="{{ $source->type->icon() }}">{{ $source->type->label() }}</flux:badge>
-                        </div>
-                        <div class="flex items-center justify-between gap-2 pt-2.5 border-t border-blue-200/60 dark:border-blue-900/50">
-                            <flux:badge size="sm" color="zinc">{{ trans_choice(':count lead|:count leads', $source->leads_count, ['count' => $source->leads_count]) }}</flux:badge>
-                            <div class="flex gap-2">
-                                @if ($source->leads_count > 0)
-                                    <flux:button size="sm" :href="route('tenant-leads.source', $source)" wire:navigate>{{ __('View All') }}</flux:button>
-                                @elseif ($this->canDeleteLeads)
+                            <div class="flex items-center justify-between gap-2 pt-2.5 border-t border-blue-200/60 dark:border-blue-900/50">
+                                <flux:badge size="sm" color="zinc">{{ trans_choice(':count lead|:count leads', $source->leads_count, ['count' => $source->leads_count]) }}</flux:badge>
+                            </div>
+                        </a>
+                    @else
+                        <div wire:key="fb-lead-ads-source-card-{{ $source->id }}" class="flex flex-col gap-3 rounded-xl border border-blue-200/80 bg-blue-50/50 p-4 shadow-sm dark:border-blue-900/60 dark:bg-blue-950/30">
+                            <div class="flex items-start justify-between gap-2">
+                                <div class="flex flex-col">
+                                    <span class="font-medium text-zinc-900 dark:text-white">{{ $source->name }}</span>
+                                    <flux:text size="sm" variant="subtle">{{ __('No submissions yet') }}</flux:text>
+                                </div>
+                                <flux:badge size="sm" icon="{{ $source->type->icon() }}">{{ $source->type->label() }}</flux:badge>
+                            </div>
+                            <div class="flex items-center justify-between gap-2 pt-2.5 border-t border-blue-200/60 dark:border-blue-900/50">
+                                <flux:badge size="sm" color="zinc">{{ trans_choice(':count lead|:count leads', $source->leads_count, ['count' => $source->leads_count]) }}</flux:badge>
+                                @if ($this->canDeleteLeads)
                                     <flux:button size="sm" variant="danger" wire:click="confirmDeleteSource('{{ $source->id }}')">
                                         {{ __('Delete') }}
                                     </flux:button>
                                 @endif
                             </div>
                         </div>
-                    </div>
+                    @endif
                 @endforeach
 
                 @forelse ($this->leads as $lead)
@@ -189,27 +233,64 @@
                         // opens the lead, at which point Show::mount()/Index::viewLead()
                         // call Lead::markUpdateSeen(). See Lead::hasUnseenUpdate() for why.
                         $isRecentlyUpdated = ! $isRecentlyCreated && $lead->hasUnseenUpdate();
+                        $cardTenant = auth()->user()->tenant;
+                        $cardMeetingAlertActive = $lead->meetingAlertActive($cardTenant->meeting_alert_enabled, $cardTenant->meeting_alert_days_before);
+                        $cardFollowUpAlertActive = $lead->followUpAlertActive($cardTenant->followup_alert_enabled, $cardTenant->followup_alert_days_before);
+                        $cardHasActiveAlert = $cardMeetingAlertActive || $cardFollowUpAlertActive;
                     @endphp
-                    <div
+                    {{-- The whole card is the click target (no separate View button
+                    any more) — a real <a> rather than a stretched absolute overlay,
+                    since there's no other interactive element left inside it to
+                    layer above (the shimmering ID's flux:tooltip trigger is a plain
+                    span, not a link/button, so nesting it inside <a> is valid HTML
+                    and its hover/focus tooltip keeps working normally). --}}
+                    <a
+                        href="{{ route('tenant-leads.show', $lead) }}"
+                        wire:navigate
                         wire:key="lead-card-{{ $lead->id }}"
                         @class([
-                            'flex flex-col gap-3.5 rounded-xl p-4 shadow-sm transition-all duration-700 ease-out',
+                            'flex flex-col gap-2 rounded-lg p-3 shadow-sm transition-all duration-700 ease-out active:opacity-80',
                             'bg-zinc-50 border border-zinc-200/80 dark:bg-zinc-900/90 dark:border-zinc-700/80' => ! $isRecentlyCreated && ! $isRecentlyUpdated,
                             'animate-lead-insert bg-emerald-50/90 dark:bg-emerald-950/40 border-l-4 border-l-emerald-500 border-y border-r border-emerald-200 dark:border-emerald-800/80 shadow-emerald-500/10' => $isRecentlyCreated,
                             'animate-lead-lift bg-amber-50/90 dark:bg-amber-950/40 border-l-4 border-l-amber-500 border-y border-r border-amber-200 dark:border-amber-800/80 shadow-amber-500/10' => $isRecentlyUpdated,
                         ])
                     >
                         <div class="flex items-start justify-between gap-2">
-                            <div class="flex items-center gap-2.5">
+                            <div class="flex items-center gap-2">
                                 @if ($lead->avatarUrl())
-                                    <img src="{{ $lead->avatarUrl() }}" alt="" loading="lazy" class="size-8 shrink-0 rounded-full object-cover">
+                                    <img src="{{ $lead->avatarUrl() }}" alt="" loading="lazy" class="size-7 shrink-0 rounded-full object-cover">
                                 @endif
-                                <div class="flex flex-col">
-                                    <span class="font-mono text-[11px] text-zinc-400 dark:text-zinc-500">{{ $lead->identifier }}</span>
-                                    <span @class(['text-base font-semibold text-zinc-900 dark:text-white', 'font-bold' => $isRecentlyUpdated])>
+                                <div class="flex flex-col leading-tight">
+                                    @if ($cardHasActiveAlert)
+                                        {{-- Same per-character shimmer as the desktop table's Lead
+                                        ID cell (see .lead-id-shimmer-text in app.css) — was missing
+                                        here entirely, since this card stack never computed the
+                                        alert flags the table's cell needs in the first place. --}}
+                                        <flux:tooltip position="right">
+                                            <span class="lead-id-shimmer-text font-mono text-[11px] font-semibold">{{ $lead->identifier }}</span>
+
+                                            <flux:tooltip.content>
+                                                <div class="flex flex-col gap-1">
+                                                    <div>{{ __('Assigned to :name', ['name' => $lead->assignedUser?->name ?? __('Unassigned')]) }}</div>
+                                                    @if ($cardMeetingAlertActive)
+                                                        <div>
+                                                            {{ __('Meeting scheduled on :date', ['date' => $lead->meeting_date->format('l, M j, Y')]) }}
+                                                            {{ $lead->meetingTimeFormatted() ? __('at :time', ['time' => $lead->meetingTimeFormatted()]) : '' }}
+                                                        </div>
+                                                    @endif
+                                                    @if ($cardFollowUpAlertActive)
+                                                        <div>{{ __('Follow-up scheduled on :date', ['date' => $lead->next_follow_up_at->format('l, M j, Y')]) }}</div>
+                                                    @endif
+                                                </div>
+                                            </flux:tooltip.content>
+                                        </flux:tooltip>
+                                    @else
+                                        <span class="font-mono text-[11px] font-medium text-zinc-700 dark:text-zinc-300">{{ $lead->identifier }}</span>
+                                    @endif
+                                    <span @class(['text-sm font-semibold text-zinc-900 dark:text-white', 'font-bold' => $isRecentlyUpdated])>
                                         {{ $lead->name }}
                                     </span>
-                                    <span class="text-xs text-zinc-500 dark:text-zinc-400">
+                                    <span class="text-[11px] text-zinc-500 dark:text-zinc-400">
                                         {{ $lead->assignedUser?->name ? __('Assigned to :name', ['name' => $lead->assignedUser->name]) : __('Unassigned') }}
                                     </span>
                                 </div>
@@ -217,7 +298,7 @@
                             <flux:badge size="sm" icon="{{ $lead->source->type->icon() }}">{{ $lead->source->type->label() }}</flux:badge>
                         </div>
 
-                        <div class="flex items-center justify-between gap-2 py-1 text-xs">
+                        <div class="flex items-center justify-between gap-2 text-xs">
                             <div class="flex items-center gap-2">
                                 <span class="text-zinc-500 dark:text-zinc-400">{{ __('Stage:') }}</span>
                                 <flux:badge size="sm" :color="$lead->status->color()">{{ $lead->status->label() }}</flux:badge>
@@ -229,16 +310,7 @@
                                 </span>
                             </div>
                         </div>
-
-                        <div class="flex items-center justify-end gap-2 pt-2.5 border-t border-zinc-100 dark:border-zinc-700/60">
-                            <flux:button size="sm" :href="route('tenant-leads.show', $lead)" wire:navigate>{{ __('View') }}</flux:button>
-                            @if ($this->canDeleteLeads && in_array($lead->source->type->value, ['email', 'website_form', 'manual']))
-                                <flux:button size="sm" variant="danger" wire:click="confirmDeleteLead('{{ $lead->id }}')">
-                                    {{ __('Delete') }}
-                                </flux:button>
-                            @endif
-                        </div>
-                    </div>
+                    </a>
                 @empty
                     @if ($this->facebookLeadAdsSources->isEmpty())
                         <div class="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-200 p-8 text-center dark:border-zinc-700">

@@ -4,11 +4,13 @@ namespace App\Jobs;
 
 use App\Enums\LeadAttachmentStatus;
 use App\Events\LeadReceived;
+use App\Events\LeadUpdated;
 use App\Models\Lead;
 use App\Models\LeadSource;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -20,6 +22,15 @@ use Throwable;
 class ProcessEmailLeadSource implements ShouldQueue
 {
     use Queueable;
+
+    /**
+     * Bumped from the framework default (1) to tolerate WithoutOverlapping
+     * below releasing this job back onto the queue a time or two while a
+     * previous run for the same source is still in flight — that's normal
+     * contention (see middleware()), not a real failure, and shouldn't
+     * exhaust retries and get this job marked permanently failed.
+     */
+    public int $tries = 3;
 
     /**
      * Cap on unseen messages processed per run. Unbounded processing on a
@@ -54,6 +65,25 @@ class ProcessEmailLeadSource implements ShouldQueue
 
     public function __construct(public LeadSource $source) {}
 
+    /**
+     * Without this, a job that overruns its source's fetch_interval_minutes
+     * (plausible on a slow IMAP connection near the 180s timeout above)
+     * would let leads:fetch-emails' next tick dispatch a second run for the
+     * same source before the first finishes — since last_synced_at only
+     * updates at the very end of handle() — and two concurrent IMAP
+     * sessions against the same mailbox could both see the same UNSEEN
+     * message before either flags it \Seen, creating duplicate leads.
+     * expireAfter matches $timeout: if a run dies without releasing the
+     * lock, it can't hold it any longer than it would have been allowed to
+     * run anyway.
+     *
+     * @return array<int, WithoutOverlapping>
+     */
+    public function middleware(): array
+    {
+        return [(new WithoutOverlapping((string) $this->source->id))->releaseAfter(30)->expireAfter($this->timeout)];
+    }
+
     public function handle(): void
     {
         $config = $this->source->config ?? [];
@@ -81,7 +111,20 @@ class ProcessEmailLeadSource implements ShouldQueue
         $messageNumbers = array_slice($messageNumbers, 0, self::MAX_MESSAGES_PER_RUN);
 
         foreach ($messageNumbers as $messageNumber) {
-            $this->createLeadFromEmail($inbox, (int) $messageNumber);
+            try {
+                $this->createLeadFromEmail($inbox, (int) $messageNumber);
+            } catch (Throwable $e) {
+                Log::error("Failed to process email message [{$messageNumber}] on lead source [{$this->source->id}]: {$e->getMessage()}");
+            }
+
+            // Flagged \Seen even on failure above — a message that can't be
+            // parsed won't suddenly parse successfully on a later run, so
+            // leaving it unseen would mean re-fetching and re-failing on
+            // the exact same message every run from now on, permanently
+            // blocking every *other* unseen message queued behind it
+            // (imap_search results are processed in ascending order) and
+            // never letting last_synced_at advance. The lead is lost, but
+            // logged above, and this source keeps working.
             imap_setflag_full($inbox, (string) $messageNumber, '\\Seen');
         }
 
@@ -110,6 +153,28 @@ class ProcessEmailLeadSource implements ShouldQueue
         $from = $header->from[0] ?? null;
         $email = $from !== null ? "{$from->mailbox}@{$from->host}" : null;
         $name = $from->personal ?? $email ?? 'Unknown Sender';
+        $sentAt = $this->emailSentAt($header);
+
+        // A second email from the same address is a follow-up on the same
+        // inquiry, not a new one — mirrors how Messenger/Instagram/WhatsApp
+        // already append a follow-up message to the sender's existing lead
+        // instead of creating a duplicate (see
+        // LeadWebhookController::appendFacebookMessage()). Skipped entirely
+        // when the address couldn't be parsed at all, since there's nothing
+        // reliable to match a later email against.
+        $existingLead = $email !== null
+            ? Lead::query()->where('source_id', $this->source->id)->where('email', $email)->first()
+            : null;
+
+        if ($existingLead instanceof Lead) {
+            $this->appendEmailMessage($existingLead, $header, $body, $email);
+
+            if ($structure !== false) {
+                $this->saveAttachments($inbox, $messageNumber, $structure, $existingLead, $sentAt);
+            }
+
+            return;
+        }
 
         $lead = Lead::create([
             'tenant_id' => $this->source->tenant_id,
@@ -125,8 +190,45 @@ class ProcessEmailLeadSource implements ShouldQueue
         event(new LeadReceived($lead));
 
         if ($structure !== false) {
-            $this->saveAttachments($inbox, $messageNumber, $structure, $lead, $this->emailSentAt($header));
+            $this->saveAttachments($inbox, $messageNumber, $structure, $lead, $sentAt);
         }
+    }
+
+    /**
+     * Appends a follow-up email from the same sender onto their existing
+     * lead — mirrors LeadWebhookController::appendFacebookMessage(), with
+     * one difference: there's no per-message conversation timeline for
+     * email the way Lead::messageTimeline() gives Messenger/WhatsApp, so
+     * html_body is simply replaced with the newest email's own content
+     * (only one slot exists; showing the latest message beats a stale
+     * first one), and message is newline-appended the same way those
+     * channels already do.
+     */
+    private function appendEmailMessage(Lead $lead, object $header, array $body, string $email): void
+    {
+        $personalName = $header->from[0]->personal ?? null;
+
+        if ($lead->name === $email && is_string($personalName) && $personalName !== '') {
+            $lead->name = $personalName;
+        }
+
+        $messageText = trim($body['message']);
+
+        if ($messageText !== '') {
+            $lead->message = trim(($lead->message ?? '')."\n".$messageText);
+        }
+
+        if ($body['html'] !== null) {
+            $lead->html_body = $body['html'];
+        }
+
+        $sourceData = $lead->source_data ?? [];
+        $sourceData['subject'] = $header->subject ?? ($sourceData['subject'] ?? null);
+        $lead->source_data = $sourceData;
+
+        $lead->save();
+
+        event(new LeadUpdated($lead));
     }
 
     /**

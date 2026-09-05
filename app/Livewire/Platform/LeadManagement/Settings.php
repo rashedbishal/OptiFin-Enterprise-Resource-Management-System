@@ -6,6 +6,7 @@ use App\Models\Currency;
 use App\Models\Lead;
 use App\Models\LeadStatus;
 use Flux\Flux;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -122,26 +123,40 @@ class Settings extends Component
             return;
         }
 
-        if ($this->editingStatusId) {
-            $status = LeadStatus::findOrFail($this->editingStatusId);
-            Gate::forUser($actor)->authorize('update', $status);
+        // The slugTaken check above and this insert/update aren't atomic —
+        // two admins submitting the same name at the exact same moment
+        // could both pass that check. slug has a real unique() constraint
+        // (see the migration), so the race can't produce a duplicate row,
+        // but without this catch the loser would get an uncaught
+        // UniqueConstraintViolationException (a raw 500) instead of the
+        // same graceful validation error the check above was meant to give
+        // everyone.
+        try {
+            if ($this->editingStatusId) {
+                $status = LeadStatus::findOrFail($this->editingStatusId);
+                Gate::forUser($actor)->authorize('update', $status);
 
-            $status->update([
-                'name' => $validated['statusName'],
-                'slug' => Str::slug($validated['statusName']),
-                'color' => $validated['statusColor'],
-                'is_closed' => $validated['statusIsClosed'],
-            ]);
-        } else {
-            Gate::forUser($actor)->authorize('create', LeadStatus::class);
+                $status->update([
+                    'name' => $validated['statusName'],
+                    'slug' => Str::slug($validated['statusName']),
+                    'color' => $validated['statusColor'],
+                    'is_closed' => $validated['statusIsClosed'],
+                ]);
+            } else {
+                Gate::forUser($actor)->authorize('create', LeadStatus::class);
 
-            LeadStatus::create([
-                'name' => $validated['statusName'],
-                'slug' => Str::slug($validated['statusName']),
-                'color' => $validated['statusColor'],
-                'is_closed' => $validated['statusIsClosed'],
-                'sort_order' => LeadStatus::query()->max('sort_order') + 1,
-            ]);
+                LeadStatus::create([
+                    'name' => $validated['statusName'],
+                    'slug' => Str::slug($validated['statusName']),
+                    'color' => $validated['statusColor'],
+                    'is_closed' => $validated['statusIsClosed'],
+                    'sort_order' => LeadStatus::query()->max('sort_order') + 1,
+                ]);
+            }
+        } catch (UniqueConstraintViolationException) {
+            $this->addError('statusName', __('A status with this name already exists.'));
+
+            return;
         }
 
         $this->showStatusModal = false;
@@ -231,15 +246,27 @@ class Settings extends Component
             return;
         }
 
-        if ($this->editingCurrencyId) {
-            $currency = Currency::findOrFail($this->editingCurrencyId);
-            Gate::forUser($actor)->authorize('update', $currency);
+        // See the matching comment in saveStatus(): the codeTaken check
+        // above and this insert/update aren't atomic, and code has a real
+        // unique() constraint — this turns the race's failure mode from an
+        // uncaught UniqueConstraintViolationException into the same
+        // graceful validation error the check above was meant to give
+        // everyone.
+        try {
+            if ($this->editingCurrencyId) {
+                $currency = Currency::findOrFail($this->editingCurrencyId);
+                Gate::forUser($actor)->authorize('update', $currency);
 
-            $currency->update(['code' => $code, 'name' => $validated['currencyName']]);
-        } else {
-            Gate::forUser($actor)->authorize('create', Currency::class);
+                $currency->update(['code' => $code, 'name' => $validated['currencyName']]);
+            } else {
+                Gate::forUser($actor)->authorize('create', Currency::class);
 
-            Currency::create(['code' => $code, 'name' => $validated['currencyName']]);
+                Currency::create(['code' => $code, 'name' => $validated['currencyName']]);
+            }
+        } catch (UniqueConstraintViolationException) {
+            $this->addError('currencyCode', __('A currency with this code already exists.'));
+
+            return;
         }
 
         $this->showCurrencyModal = false;

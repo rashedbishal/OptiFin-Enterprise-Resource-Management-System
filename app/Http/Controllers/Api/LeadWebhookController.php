@@ -51,57 +51,69 @@ class LeadWebhookController extends Controller
      * `messaging` event needs it — a tenant may configure Lead Ads without
      * ever setting up Messenger, and this must not 404 for them just
      * because no Messenger source exists.
+     *
+     * Always acknowledges with 200, even when processing fails — mirrors
+     * whatsapp()'s own reasoning: Meta disables a webhook subscription
+     * after enough non-200 responses, so an inactive tenant/source, a
+     * transient DB hiccup, or a lock timeout under contention (see
+     * withDedupeLock()) must not surface as a 404/500 here.
      */
     public function facebookMessenger(Request $request, string $tenant_code): JsonResponse
     {
-        $source = null;
+        try {
+            $source = null;
 
-        foreach ($request->array('entry') as $entry) {
-            foreach (($entry['messaging'] ?? []) as $messaging) {
-                $source ??= $this->resolveSource($tenant_code, LeadSourceType::FacebookMessenger);
+            foreach ($request->array('entry') as $entry) {
+                foreach (($entry['messaging'] ?? []) as $messaging) {
+                    $source ??= $this->resolveSource($tenant_code, LeadSourceType::FacebookMessenger);
 
-                $senderId = (string) ($messaging['sender']['id'] ?? 'unknown');
-                $messageText = $messaging['message']['text'] ?? null;
-                $attachments = $this->extractMessagingAttachments($messaging);
-                $sentAt = $this->messagingTimestamp($messaging);
+                    $senderId = (string) ($messaging['sender']['id'] ?? 'unknown');
+                    $messageText = $messaging['message']['text'] ?? null;
+                    $attachments = $this->extractMessagingAttachments($messaging);
+                    $sentAt = $this->messagingTimestamp($messaging);
 
-                $existingLead = Lead::query()
-                    ->where('source_id', $source->id)
-                    ->where('source_data->facebook_user_id', $senderId)
-                    ->first();
+                    $this->withDedupeLock($source->id, $senderId, function () use ($source, $senderId, $messageText, $messaging, $attachments, $sentAt): void {
+                        $existingLead = Lead::query()
+                            ->where('source_id', $source->id)
+                            ->where('source_data->facebook_user_id', $senderId)
+                            ->first();
 
-                if ($existingLead instanceof Lead) {
-                    $this->appendFacebookMessage($existingLead, $messageText, $messaging, $attachments, $senderId, $source, $sentAt);
+                        if ($existingLead instanceof Lead) {
+                            $this->appendFacebookMessage($existingLead, $messageText, $messaging, $attachments, $senderId, $source, $sentAt);
 
-                    $source->update(['last_synced_at' => now()]);
+                            $source->update(['last_synced_at' => now()]);
 
-                    continue;
+                            return;
+                        }
+
+                        $profile = $this->fetchFacebookProfile($source, $senderId);
+
+                        $lead = $this->createLead($source, [
+                            'name' => $profile['name'] ?? "Facebook User {$senderId}",
+                            'message' => $messageText,
+                            'source_data' => [
+                                'facebook_user_id' => $senderId,
+                                'facebook_profile_pic' => $profile['profile_pic'],
+                                'messages' => [$messaging],
+                            ],
+                        ]);
+
+                        $this->logIfMultipleAttachments($attachments, $lead);
+
+                        foreach ($attachments as $attachment) {
+                            $this->createPendingAttachmentAndDispatch($lead, LeadSourceType::FacebookMessenger, $attachment, $senderId, $source, $sentAt);
+                        }
+                    });
                 }
 
-                $profile = $this->fetchFacebookProfile($source, $senderId);
-
-                $lead = $this->createLead($source, [
-                    'name' => $profile['name'] ?? "Facebook User {$senderId}",
-                    'message' => $messageText,
-                    'source_data' => [
-                        'facebook_user_id' => $senderId,
-                        'facebook_profile_pic' => $profile['profile_pic'],
-                        'messages' => [$messaging],
-                    ],
-                ]);
-
-                $this->logIfMultipleAttachments($attachments, $lead);
-
-                foreach ($attachments as $attachment) {
-                    $this->createPendingAttachmentAndDispatch($lead, LeadSourceType::FacebookMessenger, $attachment, $senderId, $source, $sentAt);
+                foreach (($entry['changes'] ?? []) as $change) {
+                    if (($change['field'] ?? null) === 'leadgen') {
+                        $this->handleFacebookLeadAd($tenant_code, $change['value'] ?? []);
+                    }
                 }
             }
-
-            foreach (($entry['changes'] ?? []) as $change) {
-                if (($change['field'] ?? null) === 'leadgen') {
-                    $this->handleFacebookLeadAd($tenant_code, $change['value'] ?? []);
-                }
-            }
+        } catch (Throwable $e) {
+            Log::error("Facebook Messenger webhook processing failed for tenant [{$tenant_code}]: {$e->getMessage()}");
         }
 
         return response()->json(['status' => 'ok']);
@@ -119,49 +131,58 @@ class LeadWebhookController extends Controller
      * Handle an incoming Instagram Direct Message webhook. Instagram
      * Messaging (via a linked Facebook Page) delivers the same
      * entry[].messaging[] shape as Messenger.
+     *
+     * Always acknowledges with 200, even when processing fails — see
+     * facebookMessenger()'s docblock for why.
      */
     public function instagram(Request $request, string $tenant_code): JsonResponse
     {
-        $source = $this->resolveSource($tenant_code, LeadSourceType::Instagram);
+        try {
+            $source = $this->resolveSource($tenant_code, LeadSourceType::Instagram);
 
-        foreach ($request->array('entry') as $entry) {
-            foreach (($entry['messaging'] ?? []) as $messaging) {
-                $senderId = (string) ($messaging['sender']['id'] ?? 'unknown');
-                $messageText = $messaging['message']['text'] ?? null;
-                $attachments = $this->extractMessagingAttachments($messaging);
-                $sentAt = $this->messagingTimestamp($messaging);
+            foreach ($request->array('entry') as $entry) {
+                foreach (($entry['messaging'] ?? []) as $messaging) {
+                    $senderId = (string) ($messaging['sender']['id'] ?? 'unknown');
+                    $messageText = $messaging['message']['text'] ?? null;
+                    $attachments = $this->extractMessagingAttachments($messaging);
+                    $sentAt = $this->messagingTimestamp($messaging);
 
-                $existingLead = Lead::query()
-                    ->where('source_id', $source->id)
-                    ->where('source_data->instagram_user_id', $senderId)
-                    ->first();
+                    $this->withDedupeLock($source->id, $senderId, function () use ($source, $senderId, $messageText, $messaging, $attachments, $sentAt): void {
+                        $existingLead = Lead::query()
+                            ->where('source_id', $source->id)
+                            ->where('source_data->instagram_user_id', $senderId)
+                            ->first();
 
-                if ($existingLead instanceof Lead) {
-                    $this->appendInstagramMessage($existingLead, $messageText, $messaging, $attachments, $senderId, $source, $sentAt);
+                        if ($existingLead instanceof Lead) {
+                            $this->appendInstagramMessage($existingLead, $messageText, $messaging, $attachments, $senderId, $source, $sentAt);
 
-                    $source->update(['last_synced_at' => now()]);
+                            $source->update(['last_synced_at' => now()]);
 
-                    continue;
-                }
+                            return;
+                        }
 
-                $profile = $this->fetchInstagramProfile($source, $senderId);
+                        $profile = $this->fetchInstagramProfile($source, $senderId);
 
-                $lead = $this->createLead($source, [
-                    'name' => $profile['name'] ?? "Instagram User {$senderId}",
-                    'message' => $messageText,
-                    'source_data' => [
-                        'instagram_user_id' => $senderId,
-                        'instagram_profile_pic' => $profile['profile_pic'],
-                        'messages' => [$messaging],
-                    ],
-                ]);
+                        $lead = $this->createLead($source, [
+                            'name' => $profile['name'] ?? "Instagram User {$senderId}",
+                            'message' => $messageText,
+                            'source_data' => [
+                                'instagram_user_id' => $senderId,
+                                'instagram_profile_pic' => $profile['profile_pic'],
+                                'messages' => [$messaging],
+                            ],
+                        ]);
 
-                $this->logIfMultipleAttachments($attachments, $lead);
+                        $this->logIfMultipleAttachments($attachments, $lead);
 
-                foreach ($attachments as $attachment) {
-                    $this->createPendingAttachmentAndDispatch($lead, LeadSourceType::Instagram, $attachment, $senderId, $source, $sentAt);
+                        foreach ($attachments as $attachment) {
+                            $this->createPendingAttachmentAndDispatch($lead, LeadSourceType::Instagram, $attachment, $senderId, $source, $sentAt);
+                        }
+                    });
                 }
             }
+        } catch (Throwable $e) {
+            Log::error("Instagram webhook processing failed for tenant [{$tenant_code}]: {$e->getMessage()}");
         }
 
         return response()->json(['status' => 'ok']);
@@ -210,29 +231,42 @@ class LeadWebhookController extends Controller
                             ? Carbon::createFromTimestamp((int) $message['timestamp'])
                             : now();
 
-                        $existingLead = is_string($senderPhone) && $senderPhone !== ''
-                            ? Lead::query()->where('source_id', $source->id)->where('phone', $senderPhone)->first()
-                            : null;
+                        $handleMessage = function () use ($source, $senderPhone, $senderId, $messageText, $message, $attachment, $sentAt, $change): void {
+                            $existingLead = is_string($senderPhone) && $senderPhone !== ''
+                                ? Lead::query()->where('source_id', $source->id)->where('phone', $senderPhone)->first()
+                                : null;
 
-                        if ($existingLead instanceof Lead) {
-                            $this->appendWhatsappMessage($existingLead, $messageText, $message, $attachment, $senderId, $source, $sentAt);
+                            if ($existingLead instanceof Lead) {
+                                $this->appendWhatsappMessage($existingLead, $messageText, $message, $attachment, $senderId, $source, $sentAt);
 
-                            $source->update(['last_synced_at' => now()]);
+                                $source->update(['last_synced_at' => now()]);
 
-                            continue;
-                        }
+                                return;
+                            }
 
-                        $contactName = $this->whatsappContactName($change, $senderPhone);
+                            $contactName = $this->whatsappContactName($change, $senderPhone);
 
-                        $lead = $this->createLead($source, [
-                            'name' => $contactName ?? ('WhatsApp User '.$senderId),
-                            'phone' => $senderPhone,
-                            'message' => $messageText,
-                            'source_data' => ['messages' => [$message]],
-                        ]);
+                            $lead = $this->createLead($source, [
+                                'name' => $contactName ?? ('WhatsApp User '.$senderId),
+                                'phone' => $senderPhone,
+                                'message' => $messageText,
+                                'source_data' => ['messages' => [$message]],
+                            ]);
 
-                        if ($attachment !== null) {
-                            $this->createPendingAttachmentAndDispatch($lead, LeadSourceType::Whatsapp, $attachment, $senderId, $source, $sentAt);
+                            if ($attachment !== null) {
+                                $this->createPendingAttachmentAndDispatch($lead, LeadSourceType::Whatsapp, $attachment, $senderId, $source, $sentAt);
+                            }
+                        };
+
+                        // No phone means no possible dedupe key to lock on
+                        // (the lookup above already returns null unconditionally
+                        // in that case) — run straight through rather than
+                        // locking on a shared placeholder key that would
+                        // needlessly serialize unrelated senders.
+                        if (is_string($senderPhone) && $senderPhone !== '') {
+                            $this->withDedupeLock($source->id, $senderPhone, $handleMessage);
+                        } else {
+                            $handleMessage();
                         }
                     }
                 }
@@ -333,6 +367,26 @@ class LeadWebhookController extends Controller
         event(new LeadReceived($lead));
 
         return $lead;
+    }
+
+    /**
+     * Serializes concurrent webhook deliveries that share the same
+     * source+identifier (a Messenger/Instagram PSID, a WhatsApp phone
+     * number, or a Facebook Lead Ads leadgen_id) — a near-simultaneous
+     * Meta redelivery could otherwise pass a "does a lead already exist
+     * for this identifier" check twice and create two separate Lead rows
+     * for what's really one conversation/submission, since that
+     * check-then-create pattern isn't atomic on its own the way
+     * Lead::nextIdentifier()'s row lock is. Held only for the duration of
+     * the check+create itself, not the whole request. $lockSeconds needs to
+     * outlast whatever $callback actually does — the Facebook Lead Ads path
+     * chains two 10s-timeout Graph API calls before it creates anything, so
+     * it passes a longer TTL than the Messenger/Instagram/WhatsApp paths
+     * (which only do local DB work) need.
+     */
+    private function withDedupeLock(string $sourceId, string $identifier, callable $callback, int $lockSeconds = 10, int $blockSeconds = 5): mixed
+    {
+        return Cache::lock("lead-webhook-dedupe:{$sourceId}:{$identifier}", $lockSeconds)->block($blockSeconds, $callback);
     }
 
     /**
@@ -760,21 +814,6 @@ class LeadWebhookController extends Controller
             return;
         }
 
-        // Meta can redeliver the same leadgen event (retries, duplicate
-        // subscriptions) — a lead ad submission is immutable once made, so
-        // unlike Messenger's self-healing retry-on-follow-up, a duplicate
-        // delivery is just skipped rather than re-fetched.
-        $alreadyProcessed = Lead::query()
-            ->where('source_id', $source->id)
-            ->where('source_data->leadgen_id', $leadgenId)
-            ->exists();
-
-        if ($alreadyProcessed) {
-            Log::info("Facebook lead ad [{$leadgenId}] already processed for tenant [{$tenantCode}]; skipping duplicate webhook delivery.");
-
-            return;
-        }
-
         $accessToken = $source->config['page_access_token'] ?? null;
 
         if (! is_string($accessToken) || $accessToken === '') {
@@ -783,28 +822,48 @@ class LeadWebhookController extends Controller
             return;
         }
 
-        $fetched = $this->fetchFacebookLeadgenData($leadgenId, $accessToken);
-        $mapped = $fetched !== null ? $this->mapLeadgenFieldData($fetched['field_data']) : ['name' => null, 'email' => null, 'phone' => null];
+        // Locked for the whole dedupe-check + Graph API fetches + create:
+        // Meta can redeliver the same leadgen event (retries, duplicate
+        // subscriptions) close enough together that two requests could both
+        // pass the "already processed" check before either finishes
+        // creating the lead — a lead ad submission is immutable once made,
+        // so unlike Messenger's self-healing retry-on-follow-up, a
+        // duplicate delivery should just be skipped, never re-created.
+        $this->withDedupeLock($source->id, $leadgenId, function () use ($source, $tenantCode, $leadgenId, $value, $accessToken): void {
+            $alreadyProcessed = Lead::query()
+                ->where('source_id', $source->id)
+                ->where('source_data->leadgen_id', $leadgenId)
+                ->exists();
 
-        $formId = $value['form_id'] ?? null;
-        $formName = is_string($formId) ? $this->fetchFacebookFormName($formId, $accessToken) : null;
+            if ($alreadyProcessed) {
+                Log::info("Facebook lead ad [{$leadgenId}] already processed for tenant [{$tenantCode}]; skipping duplicate webhook delivery.");
 
-        $lead = $this->createLead($source, [
-            'name' => $mapped['name'] ?? ('Facebook Lead '.substr($leadgenId, -4)),
-            'email' => $mapped['email'],
-            'phone' => $mapped['phone'],
-            'source_data' => [
-                'leadgen_id' => $leadgenId,
-                'page_id' => $value['page_id'] ?? null,
-                'form_id' => $formId,
-                'form_name' => $formName,
-                'ad_id' => $fetched['ad_id'] ?? ($value['ad_id'] ?? null),
-                'field_data' => $fetched['field_data'] ?? null,
-                'fetch_failed' => $fetched === null,
-            ],
-        ]);
+                return;
+            }
 
-        Log::info("Facebook lead ad [{$leadgenId}] created lead [{$lead->id}] for tenant [{$tenantCode}].");
+            $fetched = $this->fetchFacebookLeadgenData($leadgenId, $accessToken);
+            $mapped = $fetched !== null ? $this->mapLeadgenFieldData($fetched['field_data']) : ['name' => null, 'email' => null, 'phone' => null];
+
+            $formId = $value['form_id'] ?? null;
+            $formName = is_string($formId) ? $this->fetchFacebookFormName($formId, $accessToken) : null;
+
+            $lead = $this->createLead($source, [
+                'name' => $mapped['name'] ?? ('Facebook Lead '.substr($leadgenId, -4)),
+                'email' => $mapped['email'],
+                'phone' => $mapped['phone'],
+                'source_data' => [
+                    'leadgen_id' => $leadgenId,
+                    'page_id' => $value['page_id'] ?? null,
+                    'form_id' => $formId,
+                    'form_name' => $formName,
+                    'ad_id' => $fetched['ad_id'] ?? ($value['ad_id'] ?? null),
+                    'field_data' => $fetched['field_data'] ?? null,
+                    'fetch_failed' => $fetched === null,
+                ],
+            ]);
+
+            Log::info("Facebook lead ad [{$leadgenId}] created lead [{$lead->id}] for tenant [{$tenantCode}].");
+        }, lockSeconds: 30, blockSeconds: 15);
     }
 
     /**

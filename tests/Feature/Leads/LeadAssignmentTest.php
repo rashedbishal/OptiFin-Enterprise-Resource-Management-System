@@ -3,9 +3,11 @@
 use App\Enums\AutoDistributionMethod;
 use App\Enums\LeadDistributionMode;
 use App\Events\LeadUpdated;
+use App\Events\UserNotified;
 use App\Livewire\Tenant\Leads\Show;
 use App\Models\Lead;
 use App\Models\LeadAssignment;
+use App\Notifications\LeadAssignedNotification;
 use App\Services\LeadAssignmentService;
 use Illuminate\Support\Facades\Event;
 use Livewire\Livewire;
@@ -74,6 +76,55 @@ test('unassigning a lead also broadcasts a lead update', function () {
         ->call('assign');
 
     Event::assertDispatched(LeadUpdated::class, fn (LeadUpdated $event): bool => $event->lead->is($lead));
+});
+
+test('a client admin assigning a lead sends the assignee an instant (real-time) notification', function () {
+    Event::fake([UserNotified::class]);
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->set('assigneeId', $rep->id)
+        ->call('assign');
+
+    $notification = $rep->notifications()->where('type', LeadAssignedNotification::class)->firstOrFail();
+    expect($notification->data['assigned_by'])->toBe($clientAdmin->name);
+
+    Event::assertDispatched(UserNotified::class, fn (UserNotified $event): bool => $event->tenantUser->is($rep));
+});
+
+test('resubmitting the assignment form with the same assignee does not duplicate history, re-notify, or reset last_assigned_at', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'assigned_to' => $rep->id, 'assigned_at' => now()]);
+    $rep->update(['last_assigned_at' => now()->subWeek()]);
+    $originalLastAssignedAt = $rep->fresh()->last_assigned_at;
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->set('assigneeId', $rep->id)
+        ->call('assign');
+
+    expect(LeadAssignment::where('lead_id', $lead->id)->count())->toBe(0);
+    expect($rep->notifications()->where('type', LeadAssignedNotification::class)->count())->toBe(0);
+    expect($rep->fresh()->last_assigned_at)->toEqual($originalLastAssignedAt);
+});
+
+test('saving the merged status & assignment form without changing the assignee does not re-notify them', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'assigned_to' => $rep->id, 'assigned_at' => now(), 'status_id' => leadStatus('new')->id]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->set('status', leadStatus('contacted')->id)
+        ->set('assigneeId', $rep->id)
+        ->call('updateStatusAndAssignment');
+
+    expect($lead->fresh()->status_id)->toBe(leadStatus('contacted')->id);
+    expect($rep->notifications()->where('type', LeadAssignedNotification::class)->count())->toBe(0);
 });
 
 test('auto-assign does nothing when the tenant uses manual distribution', function () {

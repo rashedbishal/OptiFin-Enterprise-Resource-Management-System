@@ -4,9 +4,38 @@ use App\Enums\LeadPriority;
 use App\Events\LeadUpdated;
 use App\Livewire\Tenant\Leads\Show;
 use App\Models\Lead;
+use App\Models\LeadStatus;
 use App\Models\LeadStatusLog;
 use Illuminate\Support\Facades\Event;
 use Livewire\Livewire;
+
+test('updating status to an id outside this tenant\'s own pipeline is silently rejected', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id]);
+    $foreignStatus = LeadStatus::factory()->create();
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->set('status', $foreignStatus->id)
+        ->call('updateStatus');
+
+    expect($lead->fresh()->status_id)->toBe(leadStatus('new')->id);
+    expect(LeadStatusLog::where('lead_id', $lead->id)->exists())->toBeFalse();
+});
+
+test('an invalid priority value is rejected by validation instead of crashing', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->set('status', leadStatus('contacted')->id)
+        ->set('priority', 'not-a-real-priority')
+        ->call('updateStatus')
+        ->assertHasErrors(['priority']);
+
+    expect($lead->fresh()->status_id)->toBe(leadStatus('new')->id);
+});
 
 test('changing a lead status from new records the first-contacted timestamp and a status log', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();

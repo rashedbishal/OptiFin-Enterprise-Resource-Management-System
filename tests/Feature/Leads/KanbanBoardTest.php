@@ -24,6 +24,24 @@ test('the board groups leads by status', function () {
     expect($board->get(leadStatus('lost')->id, collect()))->toHaveCount(0);
 });
 
+test('a client user\'s board shows their assigned facebook lead ads leads as normal cards, unlike the client admin table', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant);
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
+    $fbLead = Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'source_id' => $source->id,
+        'assigned_to' => $rep->id,
+        'status_id' => leadStatus('new')->id,
+    ]);
+
+    $repBoard = Livewire::actingAs($rep)->test(Index::class)->get('boardLeads');
+    expect($repBoard->get(leadStatus('new')->id, collect())->pluck('id'))->toContain($fbLead->id);
+
+    $adminBoard = Livewire::actingAs($clientAdmin)->test(Index::class)->get('boardLeads');
+    expect($adminBoard->get(leadStatus('new')->id, collect())->pluck('id'))->not->toContain($fbLead->id);
+});
+
 test('a client admin can drag a lead to a new status', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id]);
@@ -122,6 +140,37 @@ test('a client admin can open the lead detail panel', function () {
     expect($component->get('selectedLead')->id)->toBe($lead->id);
 });
 
+test('a ?lead= query param opens that lead\'s panel on load, same as clicking its card', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
+
+    $component = Livewire::actingAs($clientAdmin)->test(Index::class, ['openLeadId' => $lead->id]);
+
+    expect($component->get('selectedLeadId'))->toBe($lead->id);
+    expect($component->get('showLeadPanel'))->toBeTrue();
+});
+
+test('the real ?lead= URL a notification link points to actually opens the panel, end to end', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'assigned_to' => $rep->id]);
+
+    $this->actingAs($rep)
+        ->get(route('tenant-leads.index', ['lead' => $lead->id]))
+        ->assertOk()
+        ->assertSeeLivewire(Index::class);
+});
+
+test('a ?lead= query param for a lead the viewer cannot see is denied the same way viewLead() already is', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant);
+    $otherLead = Lead::factory()->create(['tenant_id' => $tenant->id]);
+
+    $component = Livewire::actingAs($rep)->test(Index::class, ['openLeadId' => $otherLead->id]);
+
+    expect($component->get('showLeadPanel'))->toBeFalse();
+});
+
 test('a client user cannot open a lead panel for a lead assigned to someone else', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
     $rep = clientUserWithLeadPermission($tenant);
@@ -145,6 +194,44 @@ test('closing the lead panel drops the selected lead', function () {
         ->call('viewLead', $lead->id)
         ->set('showLeadPanel', false)
         ->assertSet('selectedLeadId', null);
+});
+
+test('clicking a different card updates the ?lead= query param to match, not the one from a notification link', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $leadA = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $leadB = Lead::factory()->create(['tenant_id' => $tenant->id]);
+
+    // Simulates arriving via a notification link for lead A, then clicking
+    // a different card (lead B) on the board without ever refreshing.
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class, ['openLeadId' => $leadA->id])
+        ->assertSet('openLeadId', $leadA->id)
+        ->call('viewLead', $leadB->id)
+        ->assertSet('selectedLeadId', $leadB->id)
+        ->assertSet('openLeadId', $leadB->id);
+});
+
+test('closing the panel also clears the ?lead= query param, not just the selected lead', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class)
+        ->call('viewLead', $lead->id)
+        ->assertSet('openLeadId', $lead->id)
+        ->set('showLeadPanel', false)
+        ->assertSet('openLeadId', null);
+});
+
+test('deleting the open lead from the panel also clears the ?lead= query param', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class)
+        ->call('viewLead', $lead->id)
+        ->call('delete', $lead->id)
+        ->assertSet('openLeadId', null);
 });
 
 test('kanban board filters leads by priority and source type', function () {

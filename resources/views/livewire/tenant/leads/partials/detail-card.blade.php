@@ -53,6 +53,35 @@
                 @endif
             @endforeach
         </div>
+    @elseif ($lead->isFacebookLeadAd())
+        {{-- No fixed contact-form shape to fall back on (unlike every other
+        source), so the raw Instant Form field_data — the same values the
+        per-source spreadsheet view shows as columns — is the only thing
+        worth showing here, laid out as label/value pairs instead of columns
+        since this card only ever shows one lead at a time. --}}
+        <flux:separator class="mb-4" />
+
+        @if ($lead->source_data['form_name'] ?? null)
+            <flux:text size="sm" variant="subtle" class="mb-3 block">
+                {{ __('Submitted via :form', ['form' => $lead->source_data['form_name']]) }}
+            </flux:text>
+        @endif
+
+        @php $fieldValues = $lead->leadAdFieldValues(); @endphp
+        @if (count($fieldValues) > 0)
+            <dl class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                @foreach ($fieldValues as $field => $value)
+                    <div class="min-w-0">
+                        <dt class="text-[10px] font-medium tracking-wide text-zinc-400 uppercase dark:text-zinc-500">
+                            {{ ucwords(str_replace('_', ' ', $field)) }}
+                        </dt>
+                        <dd class="text-sm break-words text-zinc-700 dark:text-zinc-200">{{ $value }}</dd>
+                    </div>
+                @endforeach
+            </dl>
+        @else
+            <flux:text size="sm" variant="subtle">{{ __('No additional field data was submitted with this lead.') }}</flux:text>
+        @endif
     @elseif ($lead->message || $lead->html_body || $lead->attachments->isNotEmpty())
         <flux:separator class="mb-4" />
 

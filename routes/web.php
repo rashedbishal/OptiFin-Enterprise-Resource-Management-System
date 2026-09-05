@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\LeadAttachmentController;
+use App\Http\Controllers\NotificationRedirectController;
 use App\Livewire\Tenant\Dashboard;
 use App\Livewire\Tenant\Leads\Index as LeadsIndex;
 use App\Livewire\Tenant\Leads\Show as LeadsShow;
@@ -18,6 +19,7 @@ Route::middleware(['auth', 'verified', 'tenant.identify', 'tenant.active'])->gro
     Route::livewire('users', UsersIndex::class)->name('tenant-users.index');
     Route::livewire('roles', RolesIndex::class)->name('tenant-roles.index');
     Route::livewire('modules/{module:slug}', ModulePlaceholder::class)->name('modules.show');
+    Route::get('notifications/{notification}/open', NotificationRedirectController::class)->name('tenant-notifications.open');
 
     Route::middleware('module:lead-management')->group(function () {
         Route::livewire('lead-sources', LeadSourcesIndex::class)->name('tenant-lead-sources.index');

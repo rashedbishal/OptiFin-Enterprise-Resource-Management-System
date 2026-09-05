@@ -90,3 +90,26 @@ test('a tenant user cannot authenticate on another tenant\'s lead channel', func
 
     $response->assertForbidden();
 });
+
+test('a tenant user can authenticate on their own notification channel', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+
+    $response = $this->actingAs($clientAdmin)->post('/broadcasting/auth', [
+        'channel_name' => 'private-tenant-user.'.$clientAdmin->id,
+        'socket_id' => '1234.1234',
+    ]);
+
+    $response->assertOk();
+});
+
+test('a tenant user cannot authenticate on another tenant user\'s notification channel', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant);
+
+    $response = $this->actingAs($clientAdmin)->post('/broadcasting/auth', [
+        'channel_name' => 'private-tenant-user.'.$rep->id,
+        'socket_id' => '1234.1234',
+    ]);
+
+    $response->assertForbidden();
+});

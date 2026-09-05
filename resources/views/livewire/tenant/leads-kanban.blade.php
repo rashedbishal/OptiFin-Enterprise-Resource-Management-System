@@ -1,11 +1,13 @@
-<div class="flex flex-1 flex-col h-full min-h-0 overflow-hidden">
-    {{-- Header: breadcrumbs, heading, actions, and filters stay fixed at top. --}}
-    <div class="shrink-0 z-10 flex flex-col gap-2 bg-white px-4 py-3 lg:gap-3.5 lg:px-8 lg:py-4 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
-        <x-breadcrumbs class="hidden sm:flex" :items="[
-            ['label' => __('Dashboard'), 'href' => route('dashboard')],
-            ['label' => __('Leads')],
-        ]" />
+@push('breadcrumbs')
+    <x-breadcrumbs :items="[
+        ['label' => __('Dashboard'), 'href' => route('dashboard')],
+        ['label' => __('Leads')],
+    ]" />
+@endpush
 
+<div class="flex flex-1 flex-col h-full min-h-0 overflow-hidden">
+    {{-- Header: heading, actions, and filters stay fixed at top. --}}
+    <div class="shrink-0 z-10 flex flex-col gap-2 bg-white px-4 py-3 lg:gap-3.5 lg:px-8 lg:py-4 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
         <div class="flex items-center justify-between gap-2">
             <flux:heading size="lg" class="hidden lg:block lg:text-2xl font-semibold">{{ __('Leads') }}</flux:heading>
             <div class="flex items-center gap-1.5 sm:gap-2">
@@ -23,7 +25,7 @@
             );
             $sourceTypeOptionsFormatted = array_merge(
                 [['value' => '', 'label' => __('All sources')]],
-                collect($this->sourceTypeOptions())->map(fn($opt) => ['value' => $opt, 'label' => ucfirst(str_replace('_', ' ', $opt))])->toArray()
+                collect($this->sourceTypeOptions())->map(fn($opt) => ['value' => $opt, 'label' => \App\Enums\LeadSourceType::from($opt)->label()])->toArray()
             );
             if ($this->isClientAdmin) {
                 $assignedToOptionsFormatted = array_merge(
@@ -49,35 +51,7 @@
     {{-- Main scrollable area (scrollbar touches right edge & bottom edge) --}}
     <div class="flex-1 min-h-0 overflow-auto" wire:loading.class.delay="opacity-70" wire:target="moveLead">
         <div class="p-4 sm:p-6 lg:p-8 flex flex-col gap-6 min-h-full">
-        @if ($this->facebookLeadAdsSources->isNotEmpty())
-            <div class="flex flex-col gap-2">
-                <flux:text variant="strong" size="sm">{{ __('Facebook Lead Ads') }}</flux:text>
-                <div class="flex flex-wrap gap-3">
-                    @foreach ($this->facebookLeadAdsSources as $source)
-                        <div wire:key="fb-source-{{ $source->id }}" class="flex w-full items-center justify-between gap-3 rounded-lg border border-zinc-200 bg-white p-3 sm:w-72 dark:border-zinc-700 dark:bg-zinc-800">
-                            <div class="min-w-0">
-                                <flux:text variant="strong" class="block truncate">{{ $source->name }}</flux:text>
-                                <flux:text size="sm" variant="subtle">
-                                    {{ trans_choice(':count lead|:count leads', $source->leads_count, ['count' => $source->leads_count]) }}
-                                    @if ($source->leads_max_created_at)
-                                        &middot; {{ \Illuminate\Support\Carbon::parse($source->leads_max_created_at)->diffForHumans() }}
-                                    @endif
-                                </flux:text>
-                            </div>
-                            @if ($source->leads_count > 0)
-                                <flux:button size="sm" :href="route('tenant-leads.source', $source)" wire:navigate>{{ __('View All') }}</flux:button>
-                            @elseif ($this->isClientAdmin)
-                                <flux:button size="sm" variant="danger" wire:click="confirmDeleteSource('{{ $source->id }}')">
-                                    {{ __('Delete') }}
-                                </flux:button>
-                            @endif
-                        </div>
-                    @endforeach
-                </div>
-            </div>
-        @endif
-
-        @if ($this->boardLeads->isEmpty() && $this->facebookLeadAdsSources->isEmpty())
+        @if ($this->boardLeads->isEmpty())
             <div class="flex flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-zinc-200 py-16 text-center dark:border-zinc-700">
                 <flux:icon.inbox class="size-8 text-zinc-300 dark:text-zinc-600" />
                 <flux:text variant="strong">{{ __('No leads yet') }}</flux:text>
@@ -365,11 +339,4 @@
             <livewire:tenant.leads.show :lead="$this->selectedLead" :panel="true" :key="'lead-panel-'.$this->selectedLead->id" />
         @endif
     </flux:modal>
-
-    <x-confirm-modal
-        wire:model.self="showDeleteSourceModal"
-        :title="__('Delete this lead source?')"
-        confirm-action="deleteSourceConfirmed"
-        :confirm-label="__('Delete')"
-    />
 </div>

@@ -30,7 +30,7 @@ class CreateManualLead
         return DB::transaction(function () use ($tenant, $data, $createdBy, $assignee) {
             $source = LeadSource::query()->firstOrCreate(
                 ['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual],
-                ['name' => 'Manual Entry', 'is_active' => true],
+                ['name' => 'Custom', 'is_active' => true],
             );
 
             $lead = Lead::create([

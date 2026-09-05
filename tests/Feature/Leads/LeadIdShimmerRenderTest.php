@@ -47,3 +47,22 @@ test('an unassigned shimmering lead shows "Unassigned" rather than a blank name'
         ->assertSee('Assigned to Unassigned')
         ->assertSee('Follow-up scheduled on');
 });
+
+test('the mobile card stack also shimmers a shimmering Lead ID, not just the desktop table', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $tenant->update(['meeting_alert_enabled' => true, 'meeting_alert_days_before' => 3]);
+    Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today()->addDay()]);
+
+    $html = Livewire::actingAs($clientAdmin)->test(Index::class)->html();
+
+    expect(substr_count($html, 'lead-id-shimmer-text'))->toBe(2);
+});
+
+test('the mobile card stack\'s Lead ID is not muted when there is no active alert', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    Lead::factory()->create(['tenant_id' => $tenant->id]);
+
+    $html = Livewire::actingAs($clientAdmin)->test(Index::class)->html();
+
+    expect($html)->not->toContain('font-mono text-[11px] text-zinc-400');
+});

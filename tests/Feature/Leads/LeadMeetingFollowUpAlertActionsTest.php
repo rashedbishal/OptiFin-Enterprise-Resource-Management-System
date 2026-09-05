@@ -4,6 +4,9 @@ use App\Events\LeadUpdated;
 use App\Livewire\Tenant\Leads\Show;
 use App\Models\Lead;
 use App\Models\LeadDetailUpdateLog;
+use App\Models\TenantUser;
+use App\Notifications\FollowUpCancelledNotification;
+use App\Notifications\MeetingCancelledNotification;
 use Illuminate\Support\Facades\Event;
 use Livewire\Livewire;
 
@@ -123,6 +126,58 @@ test('the follow-up cancel/done actions mirror the meeting ones against next_fol
 
     expect($lead->fresh()->next_follow_up_at)->toBeNull();
     expect(LeadDetailUpdateLog::where('lead_id', $lead->id)->where('action', 'followup_done')->exists())->toBeTrue();
+});
+
+test('cancelling a meeting notifies every other client admin, but not the admin who cancelled it', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $otherAdmin = TenantUser::factory()->clientAdmin()->create(['tenant_id' => $tenant->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today()]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->call('cancelMeeting');
+
+    expect($clientAdmin->notifications()->where('type', MeetingCancelledNotification::class)->count())->toBe(0);
+    expect($otherAdmin->notifications()->where('type', MeetingCancelledNotification::class)->count())->toBe(1);
+});
+
+test('the assigned rep cancelling a meeting notifies the client admin (never themselves)', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant, ['view', 'update']);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today(), 'assigned_to' => $rep->id]);
+
+    Livewire::actingAs($rep)
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->call('cancelMeeting');
+
+    expect($clientAdmin->notifications()->where('type', MeetingCancelledNotification::class)->count())->toBe(1);
+    expect($rep->notifications()->where('type', MeetingCancelledNotification::class)->count())->toBe(0);
+});
+
+test('cancelling a follow-up mirrors the meeting notification behavior', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $otherAdmin = TenantUser::factory()->clientAdmin()->create(['tenant_id' => $tenant->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'next_follow_up_at' => today()]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->call('cancelFollowUp');
+
+    expect($clientAdmin->notifications()->where('type', FollowUpCancelledNotification::class)->count())->toBe(0);
+    expect($otherAdmin->notifications()->where('type', FollowUpCancelledNotification::class)->count())->toBe(1);
+});
+
+test('marking a meeting or follow-up done sends no cancellation notification', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $otherAdmin = TenantUser::factory()->clientAdmin()->create(['tenant_id' => $tenant->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today(), 'next_follow_up_at' => today()]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->call('markMeetingDone')
+        ->call('markFollowUpDone');
+
+    expect($otherAdmin->notifications()->count())->toBe(0);
 });
 
 test('a user without update permission cannot cancel or complete a meeting', function () {

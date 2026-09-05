@@ -151,6 +151,31 @@ class LeadStatus extends Model
     }
 
     /**
+     * The expanding, fading ring behind the pipeline stepper's current-stage
+     * circle (paired with Tailwind's animate-ping) — a mid-tone of this
+     * status's color, saturated enough to actually read as a pulse against
+     * cardBackgroundClasses()'s much paler tint the solid circle itself
+     * sits on.
+     */
+    public function pulseRingClasses(): string
+    {
+        return match ($this->color) {
+            'blue' => 'bg-blue-400 dark:bg-blue-500',
+            'sky' => 'bg-sky-400 dark:bg-sky-500',
+            'indigo' => 'bg-indigo-400 dark:bg-indigo-500',
+            'amber' => 'bg-amber-400 dark:bg-amber-500',
+            'orange' => 'bg-orange-400 dark:bg-orange-500',
+            'green' => 'bg-green-400 dark:bg-green-500',
+            'red' => 'bg-red-400 dark:bg-red-500',
+            'emerald' => 'bg-emerald-400 dark:bg-emerald-500',
+            'purple' => 'bg-purple-400 dark:bg-purple-500',
+            'teal' => 'bg-teal-400 dark:bg-teal-500',
+            'pink' => 'bg-pink-400 dark:bg-pink-500',
+            default => 'bg-zinc-400 dark:bg-zinc-500',
+        };
+    }
+
+    /**
      * A darker shade of this status's color for text sitting directly on
      * cardBackgroundClasses()'s light tint (e.g. the card's company name) —
      * dark enough to stay readable on that pale background, in the same hue

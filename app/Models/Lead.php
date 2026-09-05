@@ -172,6 +172,17 @@ class Lead extends Model
     }
 
     /**
+     * Whether this lead came from a Facebook Lead Ads (Instant Forms)
+     * submission — gates the Kanban card detail panel's dynamic field list
+     * (see leadAdFieldValues()) and the Lead Source form field's hidden
+     * state, since these leads carry no fixed contact-form shape.
+     */
+    public function isFacebookLeadAd(): bool
+    {
+        return $this->source->type === LeadSourceType::FacebookLeadAds;
+    }
+
+    /**
      * @return HasMany<LeadAttachment, $this>
      */
     public function attachments(): HasMany

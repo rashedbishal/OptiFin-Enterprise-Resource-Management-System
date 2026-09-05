@@ -7,6 +7,7 @@ use App\Models\Lead;
 use App\Models\LeadStatus;
 use App\Models\TenantUser;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Computed;
 
@@ -101,12 +102,18 @@ trait FiltersLeadsQuery
             }
         }
 
+        // Plain range comparisons rather than whereDate('created_at', ...):
+        // wrapping an indexed timestamp column in DATE() prevents MySQL
+        // from using a plain range index on it, since the index is built
+        // on the raw column value, not the function's result. A >= start-
+        // of-day / < start-of-next-day pair is index-friendly and returns
+        // the identical set of rows.
         if ($this->fromDate !== '') {
-            $query->whereDate('created_at', '>=', $this->fromDate);
+            $query->where('created_at', '>=', Carbon::parse($this->fromDate)->startOfDay());
         }
 
         if ($this->toDate !== '') {
-            $query->whereDate('created_at', '<=', $this->toDate);
+            $query->where('created_at', '<', Carbon::parse($this->toDate)->addDay()->startOfDay());
         }
 
         return $query;

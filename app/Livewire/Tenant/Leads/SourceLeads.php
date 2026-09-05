@@ -70,7 +70,7 @@ class SourceLeads extends Component
     public function leads()
     {
         return $this->applyDropdownFilters($this->baseQuery())
-            ->with('assignedUser')
+            ->with(['assignedUser', 'status'])
             ->latest()
             ->paginate(25);
     }
@@ -110,7 +110,7 @@ class SourceLeads extends Component
     {
         Gate::authorize('viewAny', Lead::class);
 
-        $leads = $this->applyDropdownFilters($this->baseQuery())->latest()->get();
+        $leads = $this->applyDropdownFilters($this->baseQuery())->with('status')->latest()->get();
 
         $filename = Str::slug($this->leadSource->name).'-'.now()->format('Y-m-d_His').'.xlsx';
 

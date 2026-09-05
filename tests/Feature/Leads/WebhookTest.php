@@ -72,6 +72,36 @@ test('a facebook message creates a lead, and a follow-up message is appended ins
     expect($lead->message)->toContain('Hello there')->toContain('Second message');
 });
 
+test('a facebook messenger webhook with no active messenger source still acknowledges with 200', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    $payload = [
+        'entry' => [[
+            'messaging' => [[
+                'sender' => ['id' => 'psid-1'],
+                'message' => ['text' => 'Hello there'],
+            ]],
+        ]],
+    ];
+
+    $this->postJson(route('api.webhook.facebook', $tenant->tenant_code), $payload)->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(0);
+});
+
+test('a facebook messenger webhook for an unknown tenant code still acknowledges with 200', function () {
+    $payload = [
+        'entry' => [[
+            'messaging' => [[
+                'sender' => ['id' => 'psid-1'],
+                'message' => ['text' => 'Hello there'],
+            ]],
+        ]],
+    ];
+
+    $this->postJson(route('api.webhook.facebook', 'no-such-tenant'), $payload)->assertOk();
+});
+
 test('an instagram webhook verify challenge succeeds with the correct token', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
 
@@ -134,6 +164,36 @@ test('an instagram dm creates a lead, and a follow-up message is appended instea
 
     $lead = Lead::where('tenant_id', $tenant->id)->first();
     expect($lead->message)->toContain('Hi, is this available?')->toContain('Still interested');
+});
+
+test('an instagram webhook with no active instagram source still acknowledges with 200', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    $payload = [
+        'entry' => [[
+            'messaging' => [[
+                'sender' => ['id' => 'igsid-1'],
+                'message' => ['text' => 'Hi, is this available?'],
+            ]],
+        ]],
+    ];
+
+    $this->postJson(route('api.webhook.instagram', $tenant->tenant_code), $payload)->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(0);
+});
+
+test('an instagram webhook for an unknown tenant code still acknowledges with 200', function () {
+    $payload = [
+        'entry' => [[
+            'messaging' => [[
+                'sender' => ['id' => 'igsid-1'],
+                'message' => ['text' => 'Hi, is this available?'],
+            ]],
+        ]],
+    ];
+
+    $this->postJson(route('api.webhook.instagram', 'no-such-tenant'), $payload)->assertOk();
 });
 
 test('a whatsapp message creates a lead', function () {

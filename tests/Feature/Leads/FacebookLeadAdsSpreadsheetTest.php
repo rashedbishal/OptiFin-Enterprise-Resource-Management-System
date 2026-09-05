@@ -3,13 +3,76 @@
 use App\Enums\LeadSourceType;
 use App\Exports\FacebookLeadAdsExport;
 use App\Livewire\Tenant\Leads\Index;
+use App\Livewire\Tenant\Leads\Show;
 use App\Livewire\Tenant\Leads\SourceLeads;
 use App\Models\Lead;
 use App\Models\LeadSource;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Livewire\Livewire;
+
+test('the spreadsheet table does not lazy-load each lead\'s status one row at a time', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
+    $leads = Lead::factory()->count(3)->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+
+    Model::preventLazyLoading();
+
+    try {
+        Livewire::actingAs($clientAdmin)
+            ->test(SourceLeads::class, ['leadSource' => $source])
+            ->assertSee($leads->first()->identifier);
+    } finally {
+        Model::preventLazyLoading(false);
+    }
+});
+
+test('the xlsx export does not lazy-load each lead\'s status one row at a time', function () {
+    $this->travelTo(Carbon::create(2026, 8, 30, 14, 32, 10));
+
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds, 'name' => 'Fb Lead Ads']);
+    Lead::factory()->count(3)->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+
+    Model::preventLazyLoading();
+
+    try {
+        Livewire::actingAs($clientAdmin)
+            ->test(SourceLeads::class, ['leadSource' => $source])
+            ->call('downloadXlsx')
+            ->assertFileDownloaded('fb-lead-ads-2026-08-30_143210.xlsx');
+    } finally {
+        Model::preventLazyLoading(false);
+    }
+});
+
+test('a facebook lead ads lead\'s detail panel shows its submitted instant form fields', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
+
+    $lead = Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'source_id' => $source->id,
+        'name' => 'Jane Doe',
+        'source_data' => [
+            'leadgen_id' => 'lg-1',
+            'form_name' => 'Contact Us',
+            'field_data' => [
+                ['name' => 'full_name', 'values' => ['Jane Doe']],
+                ['name' => 'city', 'values' => ['Dhaka']],
+            ],
+        ],
+    ]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->assertSee('Contact Us')
+        ->assertSee('Full Name')
+        ->assertSee('City')
+        ->assertSee('Dhaka');
+});
 
 test('the leads index shows one aggregate row per facebook lead ads source instead of one row per submission', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
@@ -133,6 +196,87 @@ test('a non-admin agent only sees leads assigned to them in the spreadsheet view
     expect($component->get('fieldColumns'))->toBe(['my_field']);
 });
 
+test('the spreadsheet view filters leads by a submitted-at date range, applied instantly with no search button', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
+
+    $oldLead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'name' => 'Old Lead']);
+    $oldLead->forceFill(['created_at' => now()->subDays(10)])->save();
+
+    $recentLead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'name' => 'Recent Lead']);
+    $recentLead->forceFill(['created_at' => now()->subDay()])->save();
+
+    $component = Livewire::actingAs($clientAdmin)
+        ->test(SourceLeads::class, ['leadSource' => $source])
+        ->set('fromDate', now()->subDays(3)->toDateString());
+
+    expect($component->get('leads')->pluck('id'))->toContain($recentLead->id)->not->toContain($oldLead->id);
+
+    $component->set('fromDate', '')
+        ->set('toDate', now()->subDays(5)->toDateString());
+
+    expect($component->get('leads')->pluck('id'))->toContain($oldLead->id)->not->toContain($recentLead->id);
+});
+
+test('the spreadsheet view pushes its breadcrumb into the shared top bar exactly once', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds, 'name' => 'Fb Lead Ads']);
+
+    // A real HTTP request, not Livewire::test() — component-level tests
+    // render only the component's own view, never the surrounding
+    // layouts/app.blade.php that @stack('breadcrumbs') lives in, so this
+    // is the only way to actually exercise the @push -> @stack path here.
+    $response = $this->actingAs($clientAdmin)->get(route('tenant-leads.source', $source));
+
+    $response->assertOk()->assertSeeInOrder(['Dashboard', 'Leads', 'Fb Lead Ads']);
+    expect(substr_count($response->getContent(), 'aria-label="Breadcrumb"'))->toBe(1);
+});
+
+test('the spreadsheet\'s mobile card shows only Lead ID, Status, and Submitted time, and links to the lead', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
+    $lead = Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'source_id' => $source->id,
+        'name' => 'Jane Doe',
+    ]);
+
+    $html = Livewire::actingAs($clientAdmin)->test(SourceLeads::class, ['leadSource' => $source])->html();
+
+    expect($html)->toContain('wire:key="fb-source-lead-card-'.$lead->id.'"');
+    expect($html)->toContain('href="'.route('tenant-leads.show', $lead).'"');
+    expect($html)->toContain($lead->identifier);
+    expect($html)->toContain($lead->status->label());
+});
+
+test('the spreadsheet\'s mobile card shimmers a Lead ID inside an active meeting alert window, and is not muted otherwise', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $tenant->update(['meeting_alert_enabled' => true, 'meeting_alert_days_before' => 3]);
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
+    $alertLead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'meeting_date' => today()->addDay()]);
+    $plainLead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+
+    $html = Livewire::actingAs($clientAdmin)->test(SourceLeads::class, ['leadSource' => $source])->html();
+
+    // Once for the mobile card, once for the desktop table — see the
+    // "shimmering also work in desktop view" requirement this covers.
+    expect(substr_count($html, 'lead-id-shimmer-text'))->toBe(2);
+    expect($html)->not->toContain('font-mono text-[11px] text-zinc-400');
+    expect($html)->toContain($plainLead->identifier);
+});
+
+test('the spreadsheet\'s desktop table also shimmers a Lead ID inside an active alert window (it never did before)', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $tenant->update(['followup_alert_enabled' => true, 'followup_alert_days_before' => 3]);
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
+    Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'next_follow_up_at' => today()]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(SourceLeads::class, ['leadSource' => $source])
+        ->assertSeeHtml('lead-id-shimmer-text')
+        ->assertSee('Follow-up scheduled on');
+});
+
 test('visiting the spreadsheet view for a non-facebook-lead-ads source is rejected', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::WebsiteForm]);
@@ -179,6 +323,63 @@ test('the leads index shows a delete button (not view all) for an empty facebook
         ->test(Index::class)
         ->assertSee('Delete')
         ->assertDontSee('View All');
+});
+
+test('the mobile card for a facebook lead ads source with leads has no View All button — the card links to it instead', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
+    Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+
+    $html = Livewire::actingAs($clientAdmin)->test(Index::class)->html();
+
+    expect($html)->toContain('wire:key="fb-lead-ads-source-card-'.$source->id.'"');
+    expect($html)->toContain('href="'.route('tenant-leads.source', $source).'"');
+
+    // The desktop table (a separate block in the same response) still has
+    // its own View All button for this source — one occurrence means the
+    // mobile card didn't render a second copy of it.
+    expect(substr_count($html, __('View All')))->toBe(1);
+});
+
+test('an empty facebook lead ads source\'s mobile card is not a link — there is nothing to view yet', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
+
+    $html = Livewire::actingAs($clientAdmin)->test(Index::class)->html();
+
+    expect($html)->not->toContain('href="'.route('tenant-leads.source', $source).'"');
+
+    // The desktop table (a separate block in the same response) also shows
+    // a Delete button for an empty source — two occurrences (one per
+    // button, mobile + desktop) confirms the mobile card still keeps its
+    // own Delete action even though its View All is gone.
+    expect(substr_count($html, 'wire:click="confirmDeleteSource(\''.$source->id.'\')"'))->toBe(2);
+});
+
+test('a facebook lead ads lead\'s "Back to Leads" button returns to its own source\'s spreadsheet, not the main table', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+
+    $content = $this->actingAs($clientAdmin)->get(route('tenant-leads.show', $lead))->assertOk()->getContent();
+
+    expect($content)->toContain('href="'.route('tenant-leads.source', $source).'"');
+
+    // The sidebar nav item and the breadcrumb ("Dashboard > Leads > ...")
+    // both always link to tenant-leads.index regardless of source type, so
+    // this only proves the *button* isn't also pointing there: exactly
+    // those two occurrences, not a third for the button.
+    expect(substr_count($content, 'href="'.route('tenant-leads.index').'"'))->toBe(2);
+});
+
+test('every other lead source type\'s "Back to Leads" button still returns to the main table', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
+
+    $content = $this->actingAs($clientAdmin)->get(route('tenant-leads.show', $lead))->assertOk()->getContent();
+
+    // Sidebar nav item + breadcrumb + button, all pointing at the main table.
+    expect(substr_count($content, 'href="'.route('tenant-leads.index').'"'))->toBe(3);
 });
 
 test('a client admin can delete an empty facebook lead ads source', function () {

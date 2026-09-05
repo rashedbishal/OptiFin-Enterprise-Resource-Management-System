@@ -12,3 +12,7 @@ Broadcast::channel('tenant.{tenantId}', function (TenantUser $user, string $tena
 Broadcast::channel('lead.{lead}', function (TenantUser $user, Lead $lead) {
     return Gate::forUser($user)->allows('view', $lead);
 });
+
+Broadcast::channel('tenant-user.{tenantUserId}', function (TenantUser $user, string $tenantUserId) {
+    return (string) $user->id === $tenantUserId;
+});

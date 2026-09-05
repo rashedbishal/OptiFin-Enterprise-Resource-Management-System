@@ -1,9 +1,11 @@
-<div class="flex flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8 overflow-y-auto min-h-0">
-        <x-breadcrumbs :items="[
-            ['label' => __('Dashboard'), 'href' => route('dashboard')],
-            ['label' => __('Roles')],
-        ]" />
+@push('breadcrumbs')
+    <x-breadcrumbs :items="[
+        ['label' => __('Dashboard'), 'href' => route('dashboard')],
+        ['label' => __('Roles')],
+    ]" />
+@endpush
 
+<div class="flex flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8 overflow-y-auto min-h-0">
         <div class="flex items-center justify-between">
             <flux:heading size="xl" class="hidden lg:block">{{ __('Roles') }}</flux:heading>
             <flux:button variant="primary" icon="plus" wire:click="create">{{ __('New Role') }}</flux:button>

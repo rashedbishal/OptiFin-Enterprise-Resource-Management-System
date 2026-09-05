@@ -39,7 +39,7 @@ enum LeadSourceType: string
             self::Email => 'Email',
             self::WebsiteForm => 'Website Form',
             self::LinkedInLeadGen => 'LinkedIn Lead Gen',
-            self::Manual => 'Manual Entry',
+            self::Manual => 'Custom',
         };
     }
 
