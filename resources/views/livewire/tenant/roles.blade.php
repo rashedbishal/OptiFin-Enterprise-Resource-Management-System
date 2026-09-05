@@ -76,12 +76,12 @@
                         @php $granted = $modulePermissions[$module->id] ?? []; @endphp
                         <div
                             wire:key="tenant-module-{{ $module->id }}"
-                            class="rounded-lg border p-4 transition-colors {{ $granted ? 'border-green-300 dark:border-green-800' : 'border-zinc-200 dark:border-zinc-700' }}"
+                            class="rounded-lg border p-4 transition-colors {{ $granted ? 'border-emerald-300 dark:border-emerald-800' : 'border-zinc-200 dark:border-zinc-700' }}"
                         >
                             <div class="mb-3 flex items-center justify-between gap-2">
                                 <flux:heading size="sm">{{ $module->name }}</flux:heading>
 
-                                <flux:badge size="sm" color="green" class="{{ $granted ? '' : 'invisible' }}">{{ __('Added') }}</flux:badge>
+                                <flux:badge size="sm" color="emerald" class="{{ $granted ? '' : 'invisible' }}">{{ __('Added') }}</flux:badge>
                             </div>
 
                             <flux:checkbox.group wire:model.live="modulePermissions.{{ $module->id }}" class="flex flex-wrap items-start gap-4">

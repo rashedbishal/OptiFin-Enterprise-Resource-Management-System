@@ -12,7 +12,7 @@
     <head>
         @include('partials.head')
     </head>
-    <body class="min-h-screen bg-white antialiased dark:bg-linear-to-b dark:from-neutral-950 dark:to-neutral-900">
+    <body class="min-h-screen bg-white antialiased dark:bg-linear-to-b dark:from-zinc-950 dark:to-zinc-900">
         <div class="flex min-h-svh flex-col items-center justify-center gap-6 p-6 text-center md:p-10">
             <div class="flex size-16 items-center justify-center rounded-full bg-red-50 dark:bg-red-500/10">
                 <flux:icon.lock-closed class="size-8 text-red-500" />

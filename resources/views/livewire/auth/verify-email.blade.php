@@ -5,7 +5,10 @@
         </flux:text>
 
         @if (session('status') == 'verification-link-sent')
-            <flux:text class="text-center font-medium !dark:text-green-400 !text-green-600">
+            {{-- emerald-700/-400, not the --color-success token (emerald-600/-400):
+            600 only clears the 3:1 non-text contrast floor, not the 4.5:1 small-text
+            floor this paragraph needs. --}}
+            <flux:text class="text-center font-medium !text-emerald-700 dark:!text-emerald-400">
                 {{ __('A new verification link has been sent to the email address you provided during registration.') }}
             </flux:text>
         @endif

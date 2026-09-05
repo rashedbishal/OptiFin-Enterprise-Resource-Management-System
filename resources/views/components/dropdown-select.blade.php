@@ -101,7 +101,7 @@
         x-transition:leave-end="opacity-0 scale-95 -translate-y-1"
         x-cloak
         :class="dropUp ? 'bottom-full mb-1' : 'mt-1'"
-        class="absolute left-0 z-50 max-h-60 w-full min-w-44 overflow-auto rounded-xl border border-zinc-300/90 bg-white/98 p-1.5 shadow-xl backdrop-blur-md focus:outline-none dark:border-zinc-700/90 dark:bg-zinc-900/95"
+        class="absolute left-0 z-50 max-h-60 w-full min-w-44 overflow-auto rounded-xl border border-zinc-300/90 bg-white/98 p-1.5 shadow-xl backdrop-blur-md focus:outline-none dark:border-zinc-700/90 dark:bg-zinc-700/95"
     >
         <template x-for="option in options" :key="option.value">
             <button
