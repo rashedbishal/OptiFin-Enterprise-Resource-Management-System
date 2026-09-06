@@ -11,13 +11,17 @@
 
     @include('livewire.tenant.leads.partials.pipeline-stepper', ['lead' => $lead])
 
+    {{-- Active tab reads as a raised "file tab" merging into the panel
+    below (card-like surface + -mb-px so its bottom edge overlaps the
+    divider) rather than only a colored underline — plain text on the bare
+    canvas didn't give the tab bar enough presence on its own. --}}
     <div class="flex flex-wrap items-center gap-1 border-b border-zinc-200 dark:border-zinc-700">
         <flux:button
             type="button"
             size="sm"
             variant="ghost"
             wire:click="$set('activeTab', 'overview')"
-            class="rounded-none transition-colors duration-150 {{ $activeTab === 'overview' ? 'border-b-2 border-accent text-accent' : '' }}"
+            class="-mb-px rounded-t-lg rounded-b-none transition-colors duration-150 {{ $activeTab === 'overview' ? 'border border-b-0 border-zinc-200 bg-white text-accent dark:border-zinc-700 dark:bg-white/10' : 'text-zinc-500 dark:text-zinc-400' }}"
         >
             {{ __('Overview & Intel') }}
         </flux:button>
@@ -26,7 +30,7 @@
             size="sm"
             variant="ghost"
             wire:click="$set('activeTab', 'activity')"
-            class="rounded-none transition-colors duration-150 {{ $activeTab === 'activity' ? 'border-b-2 border-accent text-accent' : '' }}"
+            class="-mb-px rounded-t-lg rounded-b-none transition-colors duration-150 {{ $activeTab === 'activity' ? 'border border-b-0 border-zinc-200 bg-white text-accent dark:border-zinc-700 dark:bg-white/10' : 'text-zinc-500 dark:text-zinc-400' }}"
         >
             {{ __('Activity Timeline') }} ({{ count($this->activity) }})
         </flux:button>

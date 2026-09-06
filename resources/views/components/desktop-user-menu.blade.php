@@ -12,17 +12,21 @@
             <flux:avatar :name="auth()->user()->name" :initials="auth()->user()->initials()" size="sm" />
         </div>
 
+        {{-- zinc-700/zinc-600, not the vendor-pattern zinc-500/zinc-400:
+        against this app's warm parchment sidebar background (light theme),
+        those read as muted/washed out. Same fix already applied to
+        flux:sidebar.item/group. Dark mode text was already fine. --}}
         <div class="in-data-flux-sidebar-collapsed-desktop:hidden mx-2 min-w-0 flex-1 text-start leading-tight">
-            <span class="block truncate text-sm font-medium text-zinc-500 dark:text-white/80 group-hover:text-zinc-800 dark:group-hover:text-white">
+            <span class="block truncate text-sm font-medium text-zinc-700 dark:text-white/80 group-hover:text-zinc-800 dark:group-hover:text-white">
                 {{ auth()->user()->name }}
             </span>
-            <span class="block truncate text-xs text-zinc-400 dark:text-white/60 group-hover:text-zinc-600 dark:group-hover:text-white/80">
+            <span class="block truncate text-xs text-zinc-600 dark:text-white/60 group-hover:text-zinc-700 dark:group-hover:text-white/80">
                 {{ $userTypeLabel }}
             </span>
         </div>
 
         <div class="in-data-flux-sidebar-collapsed-desktop:hidden shrink-0 ms-auto size-8 flex justify-center items-center">
-            <flux:icon icon="chevrons-up-down" variant="micro" class="text-zinc-400 dark:text-white/80 group-hover:text-zinc-800 dark:group-hover:text-white" />
+            <flux:icon icon="chevrons-up-down" variant="micro" class="text-zinc-500 dark:text-white/80 group-hover:text-zinc-800 dark:group-hover:text-white" />
         </div>
     </button>
 
