@@ -24,6 +24,56 @@ test('the board groups leads by status', function () {
     expect($board->get(leadStatus('lost')->id, collect()))->toHaveCount(0);
 });
 
+test('a client user\'s board search matches Lead ID, contact name, phone, company, and email, case-insensitively', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant);
+
+    $match = Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'assigned_to' => $rep->id,
+        'status_id' => leadStatus('new')->id,
+        'name' => 'Jane Doe',
+        'company' => 'Acme Rockets',
+    ]);
+    $other = Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'assigned_to' => $rep->id,
+        'status_id' => leadStatus('new')->id,
+        'name' => 'John Smith',
+    ]);
+
+    $component = Livewire::actingAs($rep)->test(Index::class)->set('search', 'JANE doe');
+    expect($component->get('boardLeads')->collapse()->pluck('id'))->toContain($match->id)->not->toContain($other->id);
+
+    $component->set('search', 'acme ROCKETS');
+    expect($component->get('boardLeads')->collapse()->pluck('id'))->toContain($match->id);
+
+    $component->set('search', strtolower($match->identifier));
+    expect($component->get('boardLeads')->collapse()->pluck('id'))->toContain($match->id);
+
+    $component->set('search', '');
+    expect($component->get('boardLeads')->collapse()->pluck('id'))->toContain($match->id)->toContain($other->id);
+});
+
+test('a client user\'s board search does not match location, win probability, or deal value, unlike the client admin table', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant);
+
+    $lead = Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'assigned_to' => $rep->id,
+        'status_id' => leadStatus('new')->id,
+        'location' => 'Dhaka, Bangladesh',
+        'win_probability' => 77,
+    ]);
+
+    $repComponent = Livewire::actingAs($rep)->test(Index::class)->set('search', 'dhaka');
+    expect($repComponent->get('boardLeads')->collapse()->pluck('id'))->not->toContain($lead->id);
+
+    $repComponent->set('search', '77');
+    expect($repComponent->get('boardLeads')->collapse()->pluck('id'))->not->toContain($lead->id);
+});
+
 test('a client user\'s board shows their assigned facebook lead ads leads as normal cards, unlike the client admin table', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $rep = clientUserWithLeadPermission($tenant);

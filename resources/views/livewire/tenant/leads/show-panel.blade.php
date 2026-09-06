@@ -1,6 +1,5 @@
 <div class="flex flex-col gap-5">
     @include('livewire.tenant.leads.partials.header', ['lead' => $lead, 'canDelete' => $this->canDelete, 'compact' => true])
-    @include('livewire.tenant.leads.partials.status-badges', ['lead' => $lead])
 
     {{-- Left column is fixed-width and stacks Details/Activity on their
     own — they're read-only reference material, not part of the edit

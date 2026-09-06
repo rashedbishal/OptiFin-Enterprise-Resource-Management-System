@@ -72,7 +72,7 @@ instead, with a visible heading ($label) and full month grid. --}}
         x-on:click="open = !open; if (open) syncViewToSelected();"
         :aria-expanded="open"
         {{ $attributes->except(['wire:model', 'wire:model.live'])->merge([
-            'class' => 'flex w-full items-center gap-2 rounded-lg border border-zinc-300/80 bg-zinc-100/90 px-3 py-1.5 text-xs sm:text-sm font-medium text-zinc-800 shadow-xs transition hover:border-zinc-400 hover:bg-zinc-200/80 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-zinc-700/80 dark:bg-zinc-900/90 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 cursor-pointer'
+            'class' => 'flex w-full items-center gap-2 rounded-lg border border-zinc-300/80 bg-zinc-100/90 h-10 px-3 py-2 text-sm font-medium text-zinc-800 shadow-xs transition hover:border-zinc-400 hover:bg-zinc-200/80 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-zinc-700/80 dark:bg-zinc-900/90 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 cursor-pointer'
         ]) }}
     >
         <flux:icon :icon="$icon" variant="micro" class="size-4 shrink-0 text-zinc-500 dark:text-zinc-400" />

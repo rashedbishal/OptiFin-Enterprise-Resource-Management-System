@@ -6,7 +6,11 @@
             <img src="{{ $lead->avatarUrl() }}" alt="" class="{{ $compact ? 'size-10' : 'size-12' }} shrink-0 rounded-full object-cover">
         @endif
         <div>
-            <flux:text size="sm" variant="subtle" class="font-mono">{{ $lead->identifier }}</flux:text>
+            <div class="mb-1 flex flex-wrap items-center gap-2">
+                <flux:text size="sm" class="font-mono font-medium">{{ $lead->identifier }}</flux:text>
+                <flux:badge size="sm" :color="$lead->status->color()">{{ $lead->status->label() }}</flux:badge>
+                <flux:badge size="sm" :color="$lead->priority->color()">{{ $lead->priority->label() }}</flux:badge>
+            </div>
             <flux:heading size="{{ $compact ? 'lg' : 'xl' }}">{{ $lead->name }}</flux:heading>
             @if ($lead->company)
                 <flux:text variant="strong">{{ $lead->company }}</flux:text>

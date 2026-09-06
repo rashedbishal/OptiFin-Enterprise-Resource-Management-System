@@ -5,11 +5,19 @@
     <div class="flex flex-col gap-4 overflow-y-auto pe-1 {{ $fillHeight ? 'max-h-96 md:max-h-none md:min-h-0 md:flex-1' : ($compact ? 'max-h-48' : 'max-h-96') }}">
         @forelse ($activity as $event)
             <div class="border-b border-zinc-200 pb-3 last:border-0 dark:border-zinc-700">
-                <flux:text class="text-xs text-zinc-500">{{ $event['created_at']?->diffForHumans() }} · {{ $event['user'] ?? __('System') }}</flux:text>
+                {{-- Actor leads the line (bold, full color) rather than
+                trailing after the timestamp in muted gray — "who did this"
+                is the more important half of this line, not "when". --}}
+                <flux:text class="text-xs">
+                    <span class="font-semibold text-zinc-700 dark:text-zinc-300">{{ $event['user'] ?? __('System') }}</span>
+                    <span class="text-zinc-500">· {{ $event['created_at']?->diffForHumans() }}</span>
+                </flux:text>
                 @if ($event['type'] === 'status_change')
                     <flux:text>{{ __('Status changed to :status', ['status' => ucfirst(str_replace('_', ' ', $event['new_status']))]) }}</flux:text>
                 @elseif ($event['type'] === 'assignment')
                     <flux:text>{{ __('Assigned to :name', ['name' => $event['assigned_to']]) }}</flux:text>
+                @elseif ($event['type'] === 'unassigned')
+                    <flux:text>{{ __('Unassigned') }}</flux:text>
                 @elseif ($event['type'] === 'details_updated')
                     <flux:text>{{ __('Updated: :fields', ['fields' => implode(', ', $event['fields'])]) }}</flux:text>
                 @elseif ($event['type'] === 'meeting_cancelled')

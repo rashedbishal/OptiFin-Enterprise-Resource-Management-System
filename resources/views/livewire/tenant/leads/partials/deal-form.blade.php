@@ -1,19 +1,29 @@
+@php
+    // canEdit defaults false so the Kanban flyout's existing call site
+    // (which never passes it) never renders the Edit/Cancel link — its
+    // form is simply always shown whenever canUpdate is true, with no
+    // read-only state of its own to toggle back to.
+    $canEdit = $canEdit ?? false;
+@endphp
+
 <flux:card>
-    <flux:heading size="lg" class="mb-4">{{ __('Deal') }}</flux:heading>
+    <div class="mb-4 flex items-center justify-between gap-2">
+        <flux:heading size="lg">{{ __('Deal') }}</flux:heading>
+        @if ($canEdit && ! $editable)
+            <flux:link as="button" type="button" variant="subtle" class="text-xs" wire:click="startEditingDeal">{{ __('Edit') }}</flux:link>
+        @endif
+    </div>
     @if ($editable)
         <form wire:submit="updateDeal" class="flex flex-col gap-3">
-            <div class="grid grid-cols-2 gap-3">
-                <flux:input wire:model="leadServiceInterest" :label="__('Service Interested')" class="{{ $isManual ? '' : 'col-span-2' }}" />
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <flux:input wire:model="leadServiceInterest" :label="__('Service Interested')" class="{{ $isManual ? '' : 'sm:col-span-2' }}" />
 
                 @if ($isManual)
                     <flux:input wire:model="leadSource" :label="__('Lead Source')" placeholder="{{ __('e.g. Referral, Facebook Ad, Trade Show') }}" />
                 @endif
             </div>
 
-            {{-- Paired two-per-row instead of one long stack: cuts this
-            card's height roughly in half so it stops being the tallest card
-            in the panel by a wide margin. --}}
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <flux:input.group :label="__('Est. Budget')">
                     <flux:input.group.prefix class="!px-2">
                         <select wire:model.live="leadEstimatedBudgetCurrencyId" class="cursor-pointer border-0 bg-transparent p-0 pe-5 text-sm font-medium focus:ring-0">
@@ -41,41 +51,50 @@
                     <flux:input.group.suffix>%</flux:input.group.suffix>
                 </flux:input.group>
 
-                <div class="flex items-center gap-1">
-                    <div class="min-w-0 flex-1">
-                        <x-date-picker wire:model="leadNextFollowUpAt" :label="__('Next Follow-up Date')" :placeholder="__('Next Follow-up Date')" :min="now()->toDateString()" />
-                    </div>
-                    @if ($lead->next_follow_up_at)
-                        <flux:tooltip content="{{ __('Cancel follow-up') }}">
-                            <flux:button size="sm" variant="ghost" icon="x-mark" aria-label="{{ __('Cancel follow-up') }}" wire:click="confirmCancelFollowUp" />
-                        </flux:tooltip>
-                        @if (! today()->lt($lead->next_follow_up_at))
-                            <flux:tooltip content="{{ __('Mark follow-up as done') }}">
-                                <flux:button size="sm" variant="primary" icon="check" aria-label="{{ __('Mark follow-up as done') }}" wire:click="markFollowUpDone" />
+                <flux:field>
+                    <flux:label>{{ __('Next Follow-up Date') }}</flux:label>
+                    <div class="flex items-center gap-1">
+                        <div class="min-w-0 flex-1">
+                            <x-date-picker wire:model="leadNextFollowUpAt" :placeholder="__('Next Follow-up Date')" :min="now()->toDateString()" />
+                        </div>
+                        @if ($lead->next_follow_up_at)
+                            <flux:tooltip content="{{ __('Cancel follow-up') }}">
+                                <flux:button size="sm" variant="ghost" icon="x-mark" aria-label="{{ __('Cancel follow-up') }}" wire:click="confirmCancelFollowUp" />
                             </flux:tooltip>
+                            @if (! today()->lt($lead->next_follow_up_at))
+                                <flux:tooltip content="{{ __('Mark follow-up as done') }}">
+                                    <flux:button size="sm" variant="primary" icon="check" aria-label="{{ __('Mark follow-up as done') }}" wire:click="markFollowUpDone" />
+                                </flux:tooltip>
+                            @endif
                         @endif
-                    @endif
-                </div>
+                    </div>
+                </flux:field>
 
-                <div class="flex items-center gap-1">
-                    <div class="min-w-0 flex-1">
-                        <x-datetime-picker wire:model="leadMeetingDate" :label="__('Meeting Date')" :placeholder="__('Meeting Date')" :min="now()->toDateString()" />
-                    </div>
-                    @if ($lead->meeting_date)
-                        <flux:tooltip content="{{ __('Cancel meeting') }}">
-                            <flux:button size="sm" variant="ghost" icon="x-mark" aria-label="{{ __('Cancel meeting') }}" wire:click="confirmCancelMeeting" />
-                        </flux:tooltip>
-                        @if (! today()->lt($lead->meeting_date))
-                            <flux:tooltip content="{{ __('Mark meeting as done') }}">
-                                <flux:button size="sm" variant="primary" icon="check" aria-label="{{ __('Mark meeting as done') }}" wire:click="markMeetingDone" />
+                <flux:field>
+                    <flux:label>{{ __('Meeting Date') }}</flux:label>
+                    <div class="flex items-center gap-1">
+                        <div class="min-w-0 flex-1">
+                            <x-datetime-picker wire:model="leadMeetingDate" :placeholder="__('Meeting Date')" :min="now()->toDateString()" />
+                        </div>
+                        @if ($lead->meeting_date)
+                            <flux:tooltip content="{{ __('Cancel meeting') }}">
+                                <flux:button size="sm" variant="ghost" icon="x-mark" aria-label="{{ __('Cancel meeting') }}" wire:click="confirmCancelMeeting" />
                             </flux:tooltip>
+                            @if (! today()->lt($lead->meeting_date))
+                                <flux:tooltip content="{{ __('Mark meeting as done') }}">
+                                    <flux:button size="sm" variant="primary" icon="check" aria-label="{{ __('Mark meeting as done') }}" wire:click="markMeetingDone" />
+                                </flux:tooltip>
+                            @endif
                         @endif
-                    @endif
-                </div>
+                    </div>
+                </flux:field>
             </div>
 
-            <div>
+            <div class="flex gap-2">
                 <flux:button type="submit" variant="primary" size="sm">{{ __('Save') }}</flux:button>
+                @if ($canEdit)
+                    <flux:button type="button" size="sm" wire:click="cancelEditingDeal">{{ __('Cancel') }}</flux:button>
+                @endif
             </div>
         </form>
     @else
@@ -115,15 +134,44 @@
                 @if ($lead->next_follow_up_at)
                     <div>
                         <flux:text size="sm" variant="subtle">{{ __('Next Follow-up') }}</flux:text>
-                        <flux:text class="block">{{ $lead->next_follow_up_at->format('M j, Y') }}</flux:text>
+                        <div class="flex items-center gap-1">
+                            <flux:text class="block">{{ $lead->next_follow_up_at->format('M j, Y') }}</flux:text>
+                            {{-- Previously only reachable after clicking Edit
+                            (this whole block only renders when !$editable),
+                            unlike pipeline-attributes-card.blade.php's
+                            equivalent for non-manual leads, which always
+                            offered these — restores that parity. --}}
+                            @if ($canEdit)
+                                <flux:tooltip content="{{ __('Cancel follow-up') }}">
+                                    <flux:button size="sm" variant="ghost" icon="x-mark" aria-label="{{ __('Cancel follow-up') }}" wire:click="confirmCancelFollowUp" />
+                                </flux:tooltip>
+                                @if (! today()->lt($lead->next_follow_up_at))
+                                    <flux:tooltip content="{{ __('Mark follow-up as done') }}">
+                                        <flux:button size="sm" variant="primary" icon="check" aria-label="{{ __('Mark follow-up as done') }}" wire:click="markFollowUpDone" />
+                                    </flux:tooltip>
+                                @endif
+                            @endif
+                        </div>
                     </div>
                 @endif
                 @if ($lead->meeting_date)
                     <div>
                         <flux:text size="sm" variant="subtle">{{ __('Meeting Date') }}</flux:text>
-                        <flux:text class="block">
-                            {{ $lead->meeting_date->format('M j, Y') }}{{ $lead->meetingTimeFormatted() ? ' at '.$lead->meetingTimeFormatted() : '' }}
-                        </flux:text>
+                        <div class="flex items-center gap-1">
+                            <flux:text class="block">
+                                {{ $lead->meeting_date->format('M j, Y') }}{{ $lead->meetingTimeFormatted() ? ' at '.$lead->meetingTimeFormatted() : '' }}
+                            </flux:text>
+                            @if ($canEdit)
+                                <flux:tooltip content="{{ __('Cancel meeting') }}">
+                                    <flux:button size="sm" variant="ghost" icon="x-mark" aria-label="{{ __('Cancel meeting') }}" wire:click="confirmCancelMeeting" />
+                                </flux:tooltip>
+                                @if (! today()->lt($lead->meeting_date))
+                                    <flux:tooltip content="{{ __('Mark meeting as done') }}">
+                                        <flux:button size="sm" variant="primary" icon="check" aria-label="{{ __('Mark meeting as done') }}" wire:click="markMeetingDone" />
+                                    </flux:tooltip>
+                                @endif
+                            @endif
+                        </div>
                     </div>
                 @endif
             </div>

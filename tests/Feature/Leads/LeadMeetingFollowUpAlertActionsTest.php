@@ -1,9 +1,11 @@
 <?php
 
+use App\Enums\LeadSourceType;
 use App\Events\LeadUpdated;
 use App\Livewire\Tenant\Leads\Show;
 use App\Models\Lead;
 use App\Models\LeadDetailUpdateLog;
+use App\Models\LeadSource;
 use App\Models\TenantUser;
 use App\Notifications\FollowUpCancelledNotification;
 use App\Notifications\MeetingCancelledNotification;
@@ -178,6 +180,88 @@ test('marking a meeting or follow-up done sends no cancellation notification', f
         ->call('markFollowUpDone');
 
     expect($otherAdmin->notifications()->count())->toBe(0);
+});
+
+test('the full page (not just the flyout) can cancel a meeting for a non-manual lead, confirm modal included', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today()->addDays(3), 'meeting_time' => '14:30']);
+    expect($lead->source->type->value)->not->toBe('manual');
+
+    $component = Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->assertSeeHtml('wire:click="confirmCancelMeeting"')
+        ->call('confirmCancelMeeting')
+        ->assertSet('showCancelMeetingModal', true)
+        ->call('cancelMeetingConfirmed')
+        ->assertSet('showCancelMeetingModal', false);
+
+    expect($lead->fresh()->meeting_date)->toBeNull();
+
+    $component->set('activeTab', 'activity');
+    $component->assertSee('Meeting scheduled for')->assertSee('was cancelled');
+});
+
+test('the full page can mark a meeting done for a non-manual lead', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today()]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->assertSeeHtml('wire:click="markMeetingDone"')
+        ->call('markMeetingDone');
+
+    expect($lead->fresh()->meeting_date)->toBeNull();
+});
+
+test('the full page can cancel a follow-up for a non-manual lead, confirm modal included', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'next_follow_up_at' => today()->addDays(3)]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->assertSeeHtml('wire:click="confirmCancelFollowUp"')
+        ->call('confirmCancelFollowUp')
+        ->assertSet('showCancelFollowUpModal', true)
+        ->call('cancelFollowUpConfirmed')
+        ->assertSet('showCancelFollowUpModal', false);
+
+    expect($lead->fresh()->next_follow_up_at)->toBeNull();
+});
+
+test('the full page hides Cancel/Mark done meeting controls from a viewer without update permission', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant, ['view']);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today(), 'assigned_to' => $rep->id]);
+
+    Livewire::actingAs($rep)
+        ->test(Show::class, ['lead' => $lead])
+        ->assertDontSeeHtml('wire:click="confirmCancelMeeting"')
+        ->assertDontSeeHtml('wire:click="markMeetingDone"');
+});
+
+test('a manual lead\'s Deal card offers Cancel meeting/follow-up without needing to click Edit first', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $manualSource = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual]);
+    $lead = Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'source_id' => $manualSource->id,
+        'meeting_date' => today()->addDays(3),
+        'next_follow_up_at' => today()->addDays(3),
+    ]);
+
+    $component = Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead]);
+
+    // Read-only by default (never clicked Edit) — the buttons must already
+    // be there, not gated behind entering edit mode.
+    $component->assertDontSeeHtml('wire:submit="updateDeal"')
+        ->assertSeeHtml('wire:click="confirmCancelMeeting"')
+        ->assertSeeHtml('wire:click="confirmCancelFollowUp"');
+
+    $component->call('confirmCancelMeeting')->call('cancelMeetingConfirmed');
+    expect($lead->fresh()->meeting_date)->toBeNull();
+
+    $component->call('confirmCancelFollowUp')->call('cancelFollowUpConfirmed');
+    expect($lead->fresh()->next_follow_up_at)->toBeNull();
 });
 
 test('a user without update permission cannot cancel or complete a meeting', function () {

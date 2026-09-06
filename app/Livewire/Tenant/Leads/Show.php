@@ -63,6 +63,7 @@ class Show extends Component
         'next_follow_up_at' => 'Next Follow-up',
         'meeting_date' => 'Meeting Date',
         'meeting_time' => 'Meeting Time',
+        'priority' => 'Priority',
     ];
 
     public Lead $lead;
@@ -131,6 +132,21 @@ class Show extends Component
      */
     public bool $panel = false;
 
+    /**
+     * Per-card "is this card currently showing its edit form" state for the
+     * full-page view's Contact/Company/Deal cards on a manual lead — each
+     * card starts read-only and only switches to its form when its own
+     * "Edit" link is clicked, independently of the other two. Meaningless
+     * (never read) on the Kanban flyout (show-panel.blade.php), which has
+     * no per-card toggle of its own — its forms are simply always shown
+     * whenever canUpdate is true.
+     */
+    public bool $editingContact = false;
+
+    public bool $editingCompany = false;
+
+    public bool $editingDeal = false;
+
     public bool $showDeleteModal = false;
 
     public bool $showCancelMeetingModal = false;
@@ -151,20 +167,39 @@ class Show extends Component
     }
 
     /**
-     * Populates the Contact/Company/Deal form fields from the lead's
-     * current column values — shared by mount() and refreshLead() so a
-     * live update from another viewer doesn't leave a stale draft sitting
-     * in these fields.
+     * Populates every Contact/Company/Deal form field from the lead's
+     * current column values — shared by mount() and refreshLead() so a live
+     * update from another viewer doesn't leave a stale draft sitting in
+     * these fields. Cancelling a single card's edit must NOT call this: it
+     * would also wipe any still-unsaved draft sitting in either of the
+     * *other* two cards, which may be independently open for editing at the
+     * same time. Use the three scoped fillXxxFieldsFromLead() methods below
+     * for that instead.
      */
     private function fillDetailFieldsFromLead(): void
+    {
+        $this->fillContactFieldsFromLead();
+        $this->fillCompanyFieldsFromLead();
+        $this->fillDealFieldsFromLead();
+    }
+
+    private function fillContactFieldsFromLead(): void
     {
         $this->leadName = $this->lead->name;
         $this->leadPhone = (string) $this->lead->phone;
         $this->leadEmail = (string) $this->lead->email;
+    }
+
+    private function fillCompanyFieldsFromLead(): void
+    {
         $this->leadCompany = (string) $this->lead->company;
         $this->leadWebsite = (string) $this->lead->website;
         $this->leadIndustry = (string) $this->lead->industry;
         $this->leadLocation = (string) $this->lead->location;
+    }
+
+    private function fillDealFieldsFromLead(): void
+    {
         $this->leadServiceInterest = (string) $this->lead->service_interest;
         $this->leadSource = (string) $this->lead->lead_source;
         $this->leadEstimatedBudget = $this->lead->estimated_budget !== null ? (string) $this->lead->estimated_budget : '';
@@ -401,31 +436,61 @@ class Show extends Component
         }
 
         $oldStatus = $this->lead->status;
+        $statusChanged = $oldStatus->id !== $newStatus->id;
 
-        if ($oldStatus->id === $newStatus->id) {
+        // Bundled with Status in one form (status-form.blade.php /
+        // status-assignment-form.blade.php), but previously only ever
+        // saved — and only ever logged — as a side effect of *also*
+        // changing Status: a priority-only submission hit the old
+        // "$oldStatus->id === $newStatus->id, return" guard before ever
+        // reaching $this->lead->update() below, silently discarding it.
+        // Building $updates unconditionally and deciding what happened from
+        // Eloquent's own dirty-tracking (same pattern applyDetailChanges()
+        // already uses) fixes both: the save and the activity log.
+        $updates = ['priority' => LeadPriority::from($validated['priority'])];
+
+        if ($statusChanged) {
+            $updates['status_id'] = $newStatus->id;
+
+            if ($oldStatus->id === $this->lead->tenant->initialLeadStatus()?->id) {
+                $updates['first_contacted_at'] = $this->lead->first_contacted_at ?? now();
+            }
+
+            if ($newStatus->is_closed) {
+                $updates['closed_at'] = now();
+            }
+        }
+
+        $this->lead->fill($updates);
+        $changed = array_keys($this->lead->getDirty());
+
+        if ($changed === []) {
             return;
         }
 
-        LeadStatusLog::create([
-            'lead_id' => $this->lead->id,
-            'changed_by' => Auth::id(),
-            'old_status_id' => $oldStatus->id,
-            'new_status_id' => $newStatus->id,
-        ]);
+        $priorityChanged = in_array('priority', $changed, true);
 
-        $updates = ['status_id' => $newStatus->id, 'priority' => LeadPriority::from($validated['priority'])];
+        $this->lead->save();
 
-        if ($oldStatus->id === $this->lead->tenant->initialLeadStatus()?->id) {
-            $updates['first_contacted_at'] = $this->lead->first_contacted_at ?? now();
+        if ($statusChanged) {
+            LeadStatusLog::create([
+                'lead_id' => $this->lead->id,
+                'changed_by' => Auth::id(),
+                'old_status_id' => $oldStatus->id,
+                'new_status_id' => $newStatus->id,
+            ]);
+
+            event(new LeadStatusChanged($this->lead, $oldStatus, $newStatus, Auth::user()));
         }
 
-        if ($newStatus->is_closed) {
-            $updates['closed_at'] = now();
+        if ($priorityChanged) {
+            LeadDetailUpdateLog::create([
+                'lead_id' => $this->lead->id,
+                'changed_by' => Auth::id(),
+                'changed_fields' => ['priority'],
+            ]);
         }
 
-        $this->lead->update($updates);
-
-        event(new LeadStatusChanged($this->lead, $oldStatus, $newStatus, Auth::user()));
         event(new LeadUpdated($this->lead));
 
         unset($this->activity);
@@ -435,6 +500,46 @@ class Show extends Component
         }
 
         Flux::toast(variant: 'success', text: __('Lead updated.'));
+    }
+
+    public function startEditingContact(): void
+    {
+        $this->editingContact = true;
+    }
+
+    /**
+     * Reverts any unsaved draft in the Contact fields back to the lead's
+     * actual stored values — without this, abandoning an edit and reopening
+     * the card later would show the abandoned draft rather than what's
+     * really saved, since Livewire keeps these public properties around for
+     * the life of the component.
+     */
+    public function cancelEditingContact(): void
+    {
+        $this->editingContact = false;
+        $this->fillContactFieldsFromLead();
+    }
+
+    public function startEditingCompany(): void
+    {
+        $this->editingCompany = true;
+    }
+
+    public function cancelEditingCompany(): void
+    {
+        $this->editingCompany = false;
+        $this->fillCompanyFieldsFromLead();
+    }
+
+    public function startEditingDeal(): void
+    {
+        $this->editingDeal = true;
+    }
+
+    public function cancelEditingDeal(): void
+    {
+        $this->editingDeal = false;
+        $this->fillDealFieldsFromLead();
     }
 
     public function updateContact(): void
@@ -463,6 +568,11 @@ class Show extends Component
             'phone' => $validated['leadPhone'] ?: null,
             'email' => $validated['leadEmail'] ?: null,
         ]);
+
+        // Collapses the card back to its read-only display now that the
+        // save succeeded — meaningless (never read) on the flyout, which
+        // has no read-only state to collapse back to.
+        $this->editingContact = false;
     }
 
     public function updateCompany(): void
@@ -491,6 +601,8 @@ class Show extends Component
             'industry' => $validated['leadIndustry'] ?: null,
             'location' => $validated['leadLocation'] ?: null,
         ]);
+
+        $this->editingCompany = false;
     }
 
     public function updateDeal(LeadAdminNotifier $notifier): void
@@ -562,6 +674,8 @@ class Show extends Component
         $oldFollowUpAt = $this->lead->next_follow_up_at?->toDateString();
 
         $this->applyDetailChanges($columns);
+
+        $this->editingDeal = false;
 
         $this->notifyIfDateScheduled('meeting_date', $oldMeetingDate, MeetingUpdatedNotification::class, $notifier);
         $this->notifyIfDateScheduled('next_follow_up_at', $oldFollowUpAt, FollowUpUpdatedNotification::class, $notifier);
@@ -657,6 +771,18 @@ class Show extends Component
 
         if (! $newAssigneeId) {
             $assignmentService->unassign($this->lead);
+
+            // unassign() deliberately writes no LeadAssignment row of its
+            // own (see its docblock) — without this, the activity feed
+            // would show every assignment ever made but nothing marking
+            // the point a lead went back to unassigned, silently losing
+            // that half of the history.
+            LeadDetailUpdateLog::create([
+                'lead_id' => $this->lead->id,
+                'changed_by' => Auth::id(),
+                'changed_fields' => ['assigned_to'],
+                'action' => 'unassigned',
+            ]);
 
             $this->lead->refresh();
             unset($this->activity);

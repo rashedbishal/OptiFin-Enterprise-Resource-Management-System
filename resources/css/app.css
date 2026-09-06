@@ -295,6 +295,10 @@ Provides smooth, professional, lightweight scrollbars in light & dark modes.
 
 input:focus[data-flux-control],
 textarea:focus[data-flux-control],
+select:focus[data-flux-control] {
+    @apply outline-hidden ring-2 ring-accent ring-offset-2 ring-offset-accent-foreground;
+}
+
 /*
 Custom Horizontal Cell Padding for Tables across the entire application.
 Ensures first & last columns have comfortable breathing space and do not touch edges.

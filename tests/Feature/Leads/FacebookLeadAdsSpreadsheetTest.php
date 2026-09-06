@@ -218,6 +218,27 @@ test('the spreadsheet view filters leads by a submitted-at date range, applied i
     expect($component->get('leads')->pluck('id'))->toContain($oldLead->id)->not->toContain($recentLead->id);
 });
 
+test('the spreadsheet view has a case-insensitive search box that matches Lead ID only', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
+
+    $match = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'name' => 'Jane Doe']);
+    $other = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'name' => 'John Smith']);
+
+    $component = Livewire::actingAs($clientAdmin)
+        ->test(SourceLeads::class, ['leadSource' => $source])
+        ->set('search', strtolower($match->identifier));
+
+    expect($component->get('leads')->pluck('id'))->toContain($match->id)->not->toContain($other->id);
+
+    // Unlike the main Leads table, name is not searched here.
+    $component->set('search', 'Jane Doe');
+    expect($component->get('leads')->pluck('id'))->not->toContain($match->id);
+
+    $component->set('search', '');
+    expect($component->get('leads')->pluck('id'))->toContain($match->id)->toContain($other->id);
+});
+
 test('the spreadsheet view pushes its breadcrumb into the shared top bar exactly once', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds, 'name' => 'Fb Lead Ads']);

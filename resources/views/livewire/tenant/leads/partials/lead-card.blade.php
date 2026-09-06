@@ -66,8 +66,8 @@
 >
     <div class="flex items-start justify-between gap-2">
         <div class="flex min-w-0 flex-nowrap items-center gap-1.5">
-            <flux:badge size="sm" variant="pill" class="shrink-0 px-1.5 py-0.5 font-mono text-[8px] leading-none">{{ $lead->identifier }}</flux:badge>
-            <flux:badge size="sm" variant="pill" :color="$lead->priority->color()" class="shrink-0 px-1.5 py-0.5 text-[8px] leading-none">{{ $lead->priority->label() }}</flux:badge>
+            <flux:badge size="sm" variant="pill" class="shrink-0 !px-1.5 py-0.5 font-mono font-bold text-[9px] leading-none">{{ $lead->identifier }}</flux:badge>
+            <flux:badge size="sm" variant="pill" :color="$lead->priority->color()" class="shrink-0 !px-1.5 py-0.5 text-[9px] leading-none">{{ $lead->priority->label() }}</flux:badge>
         </div>
 
         @if ($canMove)

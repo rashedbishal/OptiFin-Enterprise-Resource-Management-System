@@ -4,6 +4,7 @@ use App\Enums\LeadPriority;
 use App\Events\LeadUpdated;
 use App\Livewire\Tenant\Leads\Show;
 use App\Models\Lead;
+use App\Models\LeadDetailUpdateLog;
 use App\Models\LeadStatus;
 use App\Models\LeadStatusLog;
 use Illuminate\Support\Facades\Event;
@@ -50,6 +51,60 @@ test('changing a lead status from new records the first-contacted timestamp and 
     expect($lead->status_id)->toBe(leadStatus('contacted')->id);
     expect($lead->first_contacted_at)->not->toBeNull();
     expect(LeadStatusLog::where('lead_id', $lead->id)->where('new_status_id', leadStatus('contacted')->id)->exists())->toBeTrue();
+});
+
+test('changing only priority (status unchanged) actually saves it and records an activity entry', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id, 'priority' => LeadPriority::Low]);
+
+    $component = Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->set('status', leadStatus('new')->id)
+        ->set('priority', LeadPriority::High->value)
+        ->call('updateStatus')
+        ->assertHasNoErrors();
+
+    expect($lead->fresh()->priority)->toBe(LeadPriority::High);
+    expect(LeadStatusLog::where('lead_id', $lead->id)->exists())->toBeFalse();
+
+    $log = LeadDetailUpdateLog::where('lead_id', $lead->id)->firstOrFail();
+    expect($log->changed_fields)->toBe(['priority']);
+
+    $activity = $component->instance()->activity();
+    expect($activity[0]['type'])->toBe('details_updated');
+    expect($activity[0]['fields'])->toBe(['Priority']);
+});
+
+test('changing status and priority together records both a status log and a priority activity entry', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id, 'priority' => LeadPriority::Low]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->set('status', leadStatus('contacted')->id)
+        ->set('priority', LeadPriority::High->value)
+        ->call('updateStatus');
+
+    $lead->refresh();
+    expect($lead->status_id)->toBe(leadStatus('contacted')->id);
+    expect($lead->priority)->toBe(LeadPriority::High);
+
+    expect(LeadStatusLog::where('lead_id', $lead->id)->exists())->toBeTrue();
+    expect(LeadDetailUpdateLog::where('lead_id', $lead->id)->where('changed_fields', json_encode(['priority']))->exists())->toBeTrue();
+});
+
+test('resubmitting the status form with no actual change to status or priority is a no-op', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id, 'priority' => LeadPriority::Low]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->set('status', leadStatus('new')->id)
+        ->set('priority', LeadPriority::Low->value)
+        ->call('updateStatus');
+
+    expect(LeadStatusLog::where('lead_id', $lead->id)->exists())->toBeFalse();
+    expect(LeadDetailUpdateLog::where('lead_id', $lead->id)->exists())->toBeFalse();
 });
 
 test('moving a lead to won sets the closed-at timestamp', function () {

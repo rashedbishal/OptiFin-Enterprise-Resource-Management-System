@@ -67,11 +67,14 @@
             no span at all from lg up, where the grid grows to 7 columns
             (one more than the 6 dropdown/date fields) specifically so the
             search box sits as a normal 7th cell in that same row instead
-            of on its own line. --}}
+            of on its own line. size="sm" matches Flux's own input height
+            (h-10 by default) to x-dropdown-select/x-date-picker's button
+            height (py-1.5, no fixed h-*). --}}
             <flux:input
                 wire:model.live.debounce.400ms="search"
                 icon="magnifying-glass"
                 clearable
+                size="sm"
                 :placeholder="__('Search by Lead ID, name, phone, email, company, location, win %, or deal value')"
                 class="col-span-2 md:col-span-3 lg:col-span-1"
             />

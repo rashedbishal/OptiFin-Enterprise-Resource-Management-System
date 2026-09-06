@@ -69,7 +69,7 @@ class SourceLeads extends Component
     #[Computed]
     public function leads()
     {
-        return $this->applyDropdownFilters($this->baseQuery())
+        return $this->applyLeadIdSearch($this->applyDropdownFilters($this->baseQuery()))
             ->with(['assignedUser', 'status'])
             ->latest()
             ->paginate(25);
@@ -110,7 +110,7 @@ class SourceLeads extends Component
     {
         Gate::authorize('viewAny', Lead::class);
 
-        $leads = $this->applyDropdownFilters($this->baseQuery())->with('status')->latest()->get();
+        $leads = $this->applyLeadIdSearch($this->applyDropdownFilters($this->baseQuery()))->with('status')->latest()->get();
 
         $filename = Str::slug($this->leadSource->name).'-'.now()->format('Y-m-d_His').'.xlsx';
 
@@ -125,5 +125,29 @@ class SourceLeads extends Component
         return $this->applyAssignmentScope(
             Lead::query()->where('source_id', $this->leadSource->id)
         );
+    }
+
+    /**
+     * Unlike the main Leads list's applySearchFilter() (matches name, phone,
+     * email, company, location, win probability, and deal value too), this
+     * matches Lead ID only — Facebook Lead Ads submissions carry no fixed
+     * contact-form shape, so those other columns aren't reliably populated,
+     * and the dynamic Instant Form fields shown as this page's columns have
+     * no consistent set of names to search across either. LOWER() rather
+     * than relying on driver/collation defaults for case-insensitivity, same
+     * reasoning as applySearchFilter().
+     *
+     * @param  Builder<Lead>  $query
+     * @return Builder<Lead>
+     */
+    private function applyLeadIdSearch(Builder $query): Builder
+    {
+        if ($this->search === '') {
+            return $query;
+        }
+
+        $term = '%'.self::escapeLikeValue(mb_strtolower($this->search)).'%';
+
+        return $query->whereRaw("LOWER(identifier) LIKE ? ESCAPE '\\'", [$term]);
     }
 }

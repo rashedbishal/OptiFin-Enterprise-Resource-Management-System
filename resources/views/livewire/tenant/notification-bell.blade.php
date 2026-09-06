@@ -26,7 +26,7 @@
                 <flux:heading size="sm">{{ __('Notifications') }}</flux:heading>
                 <div class="flex items-center gap-3">
                     @if ($this->unreadCount > 0)
-                        <button type="button" wire:click.renderless="markAllAsRead" class="cursor-pointer text-xs font-medium text-accent hover:underline">
+                        <button type="button" wire:click="markAllAsRead" class="cursor-pointer text-xs font-medium text-accent hover:underline">
                             {{ __('Mark all as read') }}
                         </button>
                     @endif

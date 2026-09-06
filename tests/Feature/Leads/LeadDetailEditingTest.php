@@ -239,6 +239,128 @@ test('lead source is not shown or editable on a non-manual lead', function () {
     expect(LeadDetailUpdateLog::where('lead_id', $lead->id)->exists())->toBeFalse();
 });
 
+test('a client admin sees a manual lead\'s contact/company/deal cards read-only by default on the full page, each with its own Edit link', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $manualSource = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $manualSource->id]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->assertDontSeeHtml('wire:submit="updateContact"')
+        ->assertDontSeeHtml('wire:submit="updateCompany"')
+        ->assertDontSeeHtml('wire:submit="updateDeal"')
+        ->assertSeeHtml('wire:click="startEditingContact"')
+        ->assertSeeHtml('wire:click="startEditingCompany"')
+        ->assertSeeHtml('wire:click="startEditingDeal"');
+});
+
+test('clicking a manual lead\'s Edit link switches only that card into its form, and Save collapses it back', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $manualSource = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $manualSource->id, 'company' => 'Old Co']);
+
+    $component = Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->call('startEditingCompany');
+
+    $component->assertSeeHtml('wire:submit="updateCompany"')
+        ->assertDontSeeHtml('wire:submit="updateContact"')
+        ->assertDontSeeHtml('wire:submit="updateDeal"');
+
+    $component->set('leadCompany', 'New Co')
+        ->call('updateCompany')
+        ->assertHasNoErrors()
+        ->assertSet('editingCompany', false)
+        ->assertDontSeeHtml('wire:submit="updateCompany"');
+
+    expect($lead->fresh()->company)->toBe('New Co');
+});
+
+test('cancelling a manual lead\'s edit reverts any unsaved draft and collapses back to read-only', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $manualSource = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $manualSource->id, 'company' => 'Original Co']);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->call('startEditingCompany')
+        ->set('leadCompany', 'Abandoned Draft')
+        ->call('cancelEditingCompany')
+        ->assertSet('editingCompany', false)
+        ->assertSet('leadCompany', 'Original Co')
+        ->assertDontSeeHtml('wire:submit="updateCompany"');
+
+    expect($lead->fresh()->company)->toBe('Original Co');
+});
+
+test('cancelling one card\'s edit does not wipe an unsaved draft still open in another card', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $manualSource = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $manualSource->id, 'company' => 'Original Co', 'service_interest' => 'Original Interest']);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->call('startEditingCompany')
+        ->set('leadCompany', 'Unsaved Company Draft')
+        ->call('startEditingDeal')
+        ->set('leadServiceInterest', 'Unsaved Deal Draft')
+        // Cancelling Deal must only revert Deal's own fields.
+        ->call('cancelEditingDeal')
+        ->assertSet('leadServiceInterest', 'Original Interest')
+        ->assertSet('leadCompany', 'Unsaved Company Draft')
+        ->assertSet('editingCompany', true);
+});
+
+test('a manual lead\'s assignee stays visible on the Overview tab even to a view-only viewer', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant, ['view']);
+    $manualSource = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $manualSource->id, 'assigned_to' => $rep->id]);
+
+    Livewire::actingAs($rep)
+        ->test(Show::class, ['lead' => $lead])
+        ->assertSee('Assigned to: '.$rep->name);
+});
+
+test('a client admin still sees only read-only contact/company cards for a non-manual lead on the full page', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    expect($lead->source->type)->not->toBe(LeadSourceType::Manual);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->assertDontSeeHtml('wire:submit="updateContact"')
+        ->assertDontSeeHtml('wire:submit="updateCompany"')
+        ->assertDontSeeHtml('wire:submit="updateDeal"')
+        ->assertDontSeeHtml('wire:click="startEditingContact"');
+});
+
+test('a manual lead shows no Edit links or forms on the full page to a viewer without update permission', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant, ['view']);
+    $manualSource = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $manualSource->id, 'assigned_to' => $rep->id]);
+
+    Livewire::actingAs($rep)
+        ->test(Show::class, ['lead' => $lead])
+        ->assertDontSeeHtml('wire:submit="updateContact"')
+        ->assertDontSeeHtml('wire:submit="updateCompany"')
+        ->assertDontSeeHtml('wire:submit="updateDeal"')
+        ->assertDontSeeHtml('wire:click="startEditingContact"');
+});
+
+test('a tampered editingCompany property cannot force a manual lead\'s form open for a viewer without update permission', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant, ['view']);
+    $manualSource = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $manualSource->id, 'assigned_to' => $rep->id, 'company' => 'Original Co']);
+
+    Livewire::actingAs($rep)
+        ->test(Show::class, ['lead' => $lead])
+        ->set('editingCompany', true)
+        ->assertDontSeeHtml('wire:submit="updateCompany"');
+});
+
 test('saving with no actual changes does not create an activity log entry', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'company' => 'Existing Co']);

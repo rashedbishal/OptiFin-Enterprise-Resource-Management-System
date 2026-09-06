@@ -7,6 +7,7 @@ use App\Events\UserNotified;
 use App\Livewire\Tenant\Leads\Show;
 use App\Models\Lead;
 use App\Models\LeadAssignment;
+use App\Models\LeadDetailUpdateLog;
 use App\Notifications\LeadAssignedNotification;
 use App\Services\LeadAssignmentService;
 use Illuminate\Support\Facades\Event;
@@ -48,6 +49,24 @@ test('picking "Unassigned" on the lead detail page actually clears the assignmen
         ->assertHasNoErrors();
 
     expect($lead->fresh()->assigned_to)->toBeNull();
+});
+
+test('picking "Unassigned" on the lead detail page records an activity entry, unlike unassign() called directly', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'assigned_to' => $rep->id, 'assigned_at' => now()]);
+
+    $component = Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->set('assigneeId', '')
+        ->call('assign')
+        ->assertHasNoErrors();
+
+    $log = LeadDetailUpdateLog::where('lead_id', $lead->id)->where('action', 'unassigned')->firstOrFail();
+    expect($log->changed_by)->toBe($clientAdmin->id);
+
+    $activity = $component->instance()->activity();
+    expect($activity[0]['type'])->toBe('unassigned');
 });
 
 test('assigning a lead broadcasts a lead update so the assignee\'s board refreshes live', function () {

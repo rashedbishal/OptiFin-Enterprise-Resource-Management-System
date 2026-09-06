@@ -35,7 +35,7 @@
         }
     @endphp
 
-    <div class="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+    <div class="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
         <x-dropdown-select wire:model.live="status" :placeholder="__('All statuses')" :options="$statusOpts" icon="squares-2x2" />
         <x-dropdown-select wire:model.live="priority" :placeholder="__('All priorities')" :options="$priorityOpts" icon="funnel" />
 
@@ -45,6 +45,22 @@
 
         <x-date-picker wire:model.live="fromDate" :label="__('From Date')" :placeholder="__('From Date')" :max="$toDate ?: now()->toDateString()" />
         <x-date-picker wire:model.live="toDate" :label="__('To Date')" :placeholder="__('To Date')" :min="$fromDate" :max="now()->toDateString()" />
+
+        {{-- Same col-span pattern as the main Leads page's search box: full
+        width on its own row on mobile/tablet (col-span-2/3), a normal cell
+        alongside the dropdowns/dates at lg. size="sm" matches Flux's own
+        input height (h-10 by default) to x-dropdown-select/x-date-picker's
+        button height (py-1.5, no fixed h-*) — without it the search box
+        stands noticeably taller than the fields beside it. Only matches
+        Lead ID, unlike the main page's search (see SourceLeads::applyLeadIdSearch()). --}}
+        <flux:input
+            wire:model.live.debounce.400ms="search"
+            icon="magnifying-glass"
+            clearable
+            size="sm"
+            :placeholder="__('Search by Lead ID')"
+            class="col-span-2 md:col-span-3 lg:col-span-1"
+        />
     </div>
 
     {{-- Mobile Card Stack (sm:hidden) — deliberately minimal compared to the

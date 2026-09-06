@@ -37,13 +37,6 @@ class Index extends Component
 
     public string $sourceType = '';
 
-    /**
-     * Free-text search across Lead ID, contact name, phone, email, company,
-     * location, win probability, and deal value — see filteredQuery() for
-     * the actual matching.
-     */
-    public string $search = '';
-
     public bool $showCreateLeadModal = false;
 
     public string $leadName = '';
@@ -957,29 +950,7 @@ class Index extends Component
             $query->whereHas('source', fn (Builder $q) => $q->where('type', $sourceType));
         }
 
-        if ($this->search !== '') {
-            $term = '%'.$this->search.'%';
-
-            // Grouped in its own closure so the OR chain doesn't escape into
-            // the surrounding AND conditions above (tenant scope, source
-            // type, ...) — an ungrouped orWhere() here would silently widen
-            // the query to "this tenant's leads OR any lead anywhere whose
-            // deal value matches", same class of precedence bug fixed
-            // elsewhere in this module (see SendLeadAlertNotifications).
-            // deal_value/win_probability are numeric columns — Postgres
-            // (unlike MySQL/SQLite) refuses to LIKE-compare those directly,
-            // so they're cast to text first.
-            $query->where(function (Builder $q) use ($term): void {
-                $q->where('identifier', 'like', $term)
-                    ->orWhere('name', 'like', $term)
-                    ->orWhere('phone', 'like', $term)
-                    ->orWhere('email', 'like', $term)
-                    ->orWhere('company', 'like', $term)
-                    ->orWhere('location', 'like', $term)
-                    ->orWhereRaw('CAST(win_probability AS TEXT) LIKE ?', [$term])
-                    ->orWhereRaw('CAST(deal_value AS TEXT) LIKE ?', [$term]);
-            });
-        }
+        $query = $this->applySearchFilter($query);
 
         return $query;
     }

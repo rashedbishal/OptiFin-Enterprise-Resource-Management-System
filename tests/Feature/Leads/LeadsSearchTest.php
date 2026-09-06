@@ -16,6 +16,21 @@ test('searching by name narrows the table to matching leads only', function () {
     expect($ids)->not->toContain($other->id);
 });
 
+test('a literal underscore in the search term is not treated as a SQL LIKE single-character wildcard', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    // Without escaping, "_" is a LIKE wildcard matching any one character —
+    // "batch_42" would then also match "batchX42", which is exactly what
+    // this test must rule out.
+    $match = Lead::factory()->create(['tenant_id' => $tenant->id, 'company' => 'Batch_42 Ltd']);
+    $other = Lead::factory()->create(['tenant_id' => $tenant->id, 'company' => 'BatchX42 Ltd']);
+
+    $component = Livewire::actingAs($clientAdmin)->test(Index::class)->set('search', 'batch_42');
+
+    $ids = collect($component->get('leads')->items())->pluck('id');
+    expect($ids)->toContain($match->id);
+    expect($ids)->not->toContain($other->id);
+});
+
 test('search matches Lead ID, phone, email, company, and location', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $byIdentifier = Lead::factory()->create(['tenant_id' => $tenant->id]);
@@ -51,6 +66,17 @@ test('an empty search shows every lead again', function () {
 
     $component->set('search', '');
     expect($component->get('leads')->total())->toBe(3);
+});
+
+test('search is case-insensitive', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $match = Lead::factory()->create(['tenant_id' => $tenant->id, 'name' => 'Jane Doe', 'company' => 'Acme Rockets']);
+
+    $component = Livewire::actingAs($clientAdmin)->test(Index::class)->set('search', 'JANE doe');
+    expect($component->get('leads')->pluck('id'))->toContain($match->id);
+
+    $component->set('search', 'acme ROCKETS');
+    expect($component->get('leads')->pluck('id'))->toContain($match->id);
 });
 
 test('search cannot leak another tenant\'s leads', function () {

@@ -42,6 +42,23 @@
             <x-dropdown-select wire:model.live="priority" :placeholder="__('All priorities')" :options="$priorityOptionsFormatted" icon="funnel" />
             <x-dropdown-select wire:model.live="sourceType" :placeholder="__('All sources')" :options="$sourceTypeOptionsFormatted" icon="tag" />
 
+            {{-- size="sm" matches Flux's own input height (h-10 by default)
+            to x-dropdown-select's button height (py-1.5, no fixed h-*).
+            col-span-2 so it takes the full row by itself on the 2-column
+            mobile grid instead of sitting half-width next to empty space;
+            md/lg drop back to a normal 1-col cell since priority + sourceType
+            + search is exactly 3 items, filling the 3-column grid evenly.
+            Case-insensitive; matches Lead ID, contact name, phone, company,
+            and email only — see FiltersLeadsQuery::applySearchFilter(). --}}
+            <flux:input
+                wire:model.live.debounce.400ms="search"
+                icon="magnifying-glass"
+                clearable
+                size="sm"
+                class="col-span-2 md:col-span-1"
+                :placeholder="__('Search by Lead ID, contact, phone, company, or email')"
+            />
+
             @if ($this->isClientAdmin)
                 <x-dropdown-select wire:model.live="assignedTo" :placeholder="__('All users')" :options="$assignedToOptionsFormatted" icon="user" />
             @endif
