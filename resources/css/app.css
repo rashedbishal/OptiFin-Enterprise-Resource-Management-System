@@ -99,9 +99,19 @@ body::before {
     inset: 0;
     z-index: -1;
     pointer-events: none;
+    /*
+    Cream atmosphere — wider ellipses (100%/85% vs the old 70%/60%) so the
+    tint spreads across most of the canvas instead of staying pinned to
+    two corners, plus a third, very faint full-bleed linear wash so the
+    center of the page isn't left untinted between the two radials.
+    Alpha stays low (0.10-0.35) precisely because coverage is now much
+    larger — a small tight ellipse can afford more opacity without
+    reading as "yellow"; a wide one can't.
+    */
     background-image:
-        radial-gradient(ellipse 70% 60% at 15% 0%, rgb(255 247 214 / 0.55), transparent 60%),
-        radial-gradient(ellipse 70% 60% at 100% 100%, rgb(255 250 235 / 0.35), transparent 65%);
+        radial-gradient(ellipse 100% 85% at 20% 0%, rgb(253 251 212 / 0.65), transparent 70%),
+        radial-gradient(ellipse 100% 85% at 100% 100%, rgb(253 251 212 / 0.45), transparent 75%),
+        linear-gradient(135deg, rgb(253 251 212 / 0.12), transparent 55%);
 }
 
 /*
