@@ -91,11 +91,12 @@
 <?php elseif ($heading): ?>
     <div {{ $attributes->class('flex flex-col in-data-flux-sidebar-collapsed-desktop:hidden') }} data-flux-sidebar-group>
         <div class="px-3 py-2">
-            {{-- zinc-600, not the vendor default zinc-400: against this
+            {{-- zinc-700, not the vendor default zinc-400: against this
             app's warm parchment sidebar background (light theme), zinc-400
-            fell to under 2:1 contrast. Dark mode keeps the original
-            zinc-400 (already fine against the near-black dark sidebar). --}}
-            <div class="text-sm text-zinc-600 dark:text-zinc-400 font-medium leading-none">{{ $heading }}</div>
+            fell to under 2:1 contrast and zinc-600 still read as muted.
+            Dark mode keeps the original zinc-400 (already fine against the
+            near-black dark sidebar). --}}
+            <div class="text-sm text-zinc-700 dark:text-zinc-400 font-medium leading-none">{{ $heading }}</div>
         </div>
 
         <div class="flex flex-col">

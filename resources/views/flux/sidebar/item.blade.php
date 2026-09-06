@@ -36,11 +36,11 @@ $classes = Flux::classes()
     ->add('h-8 in-data-flux-sidebar-on-mobile:h-10 relative flex items-center gap-3 rounded-lg')
     ->add('in-data-flux-sidebar-collapsed-desktop:w-10 in-data-flux-sidebar-collapsed-desktop:justify-center')
     ->add('py-0 text-start w-full px-3 has-data-flux-navlist-badge:not-in-data-flux-sidebar-collapsed-desktop:pe-1.5 my-px')
-    // zinc-600, not the vendor default zinc-500: against this app's warm
+    // zinc-700, not the vendor default zinc-500: against this app's warm
     // parchment sidebar background (light theme), zinc-500 fell to ~3.6:1
-    // contrast — below the 4.5:1 AA floor for this size text. zinc-600
-    // clears 6:1. Dark mode's text-white/80 was already fine as-is.
-    ->add('text-zinc-600 dark:text-white/80')
+    // contrast and even zinc-600 (~6:1) still read as muted. zinc-700
+    // clears ~8:1. Dark mode's text-white/80 was already fine as-is.
+    ->add('text-zinc-700 dark:text-white/80')
     ->add(match ($accent) {
         true => [
             'data-current:text-(--color-accent-content) hover:data-current:text-(--color-accent-content)',
