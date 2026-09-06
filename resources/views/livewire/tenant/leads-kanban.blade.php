@@ -60,8 +60,16 @@
         @else
             <div>
                 {{-- Desktop / tablet: Kanban board, one column per pipeline status --}}
+                {{-- pe-4/6/8 here, not just on the p-4/6/8 ancestor further up:
+                this row is wider than its ancestor (min-w-max, horizontally
+                scrolled inside the .overflow-auto container above), so it
+                overflows past that ancestor's own padding box — the
+                ancestor's right padding never actually renders after the
+                last column once scrolled all the way right. Padding has to
+                live on the element that actually overflows for the
+                trailing edge to show up. --}}
                 <div
-                    class="hidden lg:flex lg:items-start lg:gap-4 min-w-max align-top"
+                    class="hidden lg:flex lg:items-start lg:gap-4 min-w-max align-top pe-4 sm:pe-6 lg:pe-8"
                     x-data="{
                         scrollEl: null,
                         edge: 220,
