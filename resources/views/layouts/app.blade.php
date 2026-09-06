@@ -22,7 +22,15 @@
         for a single item — not the right, which is the bug this fixes.
         flex-1 always reserves the leading space for the breadcrumb (empty
         or not), so the bell is pushed to the end unconditionally. --}}
-        <div class="flex shrink-0 items-center gap-2 border-b border-zinc-200 bg-white px-4 py-2 dark:border-zinc-700 dark:bg-zinc-800">
+        {{-- relative z-30: backdrop-blur below creates a new stacking
+        context, which would otherwise trap the notification panel's
+        z-50 inside it — a later sibling with a lower z-index (e.g. the
+        Kanban filter bar's z-10) could then paint above this whole bar,
+        panel included, since the two z-indexes are no longer compared
+        in the same context. z-30 keeps this bar (and everything inside
+        it) above any in-page z-10/z-20 content while staying below true
+        overlays like modals/toasts. --}}
+        <div class="relative z-30 flex shrink-0 items-center gap-2 border-b border-zinc-200/70 bg-white/90 px-4 py-2 backdrop-blur-sm dark:border-zinc-700/70 dark:bg-zinc-800/90">
             <div class="min-w-0 flex-1">
                 @stack('breadcrumbs')
             </div>

@@ -20,7 +20,7 @@
             x-transition:enter="transition ease-out duration-150"
             x-transition:enter-start="opacity-0 scale-95 -translate-y-1"
             x-transition:enter-end="opacity-100 scale-100 translate-y-0"
-            class="absolute right-0 z-50 mt-2 w-80 origin-top-right rounded-xl border border-zinc-200 bg-white shadow-xl sm:w-96 dark:border-zinc-700 dark:bg-zinc-900"
+            class="absolute right-0 z-50 mt-2 w-80 origin-top-right rounded-xl border border-zinc-200/70 bg-white/95 shadow-xl backdrop-blur-sm sm:w-96 dark:border-zinc-700/70 dark:bg-zinc-900/95"
         >
             <div class="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-700">
                 <flux:heading size="sm">{{ __('Notifications') }}</flux:heading>

@@ -67,7 +67,7 @@
             @if ($lead->deal_value !== null || $lead->win_probability !== null)
                 <div class="flex gap-3">
                     @if ($lead->deal_value !== null)
-                        <div class="min-w-28 rounded-lg border border-zinc-200 bg-white/70 px-4 py-2 text-center dark:border-zinc-700 dark:bg-zinc-900/40">
+                        <div class="min-w-28 rounded-lg border card-surface-nested px-4 py-2 text-center">
                             <flux:text size="xs" variant="subtle" class="uppercase tracking-wide">{{ __('Deal Value') }}</flux:text>
                             <flux:text class="block text-lg font-semibold text-emerald-600 dark:text-emerald-400">
                                 {{ $lead->dealValueCurrency?->code }} {{ number_format((float) $lead->deal_value, 0) }}
@@ -75,7 +75,7 @@
                         </div>
                     @endif
                     @if ($lead->win_probability !== null)
-                        <div class="min-w-28 rounded-lg border border-zinc-200 bg-white/70 px-4 py-2 text-center dark:border-zinc-700 dark:bg-zinc-900/40">
+                        <div class="min-w-28 rounded-lg border card-surface-nested px-4 py-2 text-center">
                             <flux:text size="xs" variant="subtle" class="uppercase tracking-wide">{{ __('Lead Score') }}</flux:text>
                             <flux:text class="block text-lg font-semibold text-purple-600 dark:text-purple-400">
                                 {{ $lead->win_probability }}%

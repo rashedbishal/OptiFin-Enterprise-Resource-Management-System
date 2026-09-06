@@ -104,10 +104,57 @@ body::before {
         radial-gradient(ellipse 70% 60% at 100% 100%, rgb(255 250 235 / 0.35), transparent 65%);
 }
 
+/*
+Dark mode intentionally has no radial atmosphere tint (unlike light mode
+above) — the sidebar/canvas gradients already carry the depth here, and a
+blue-tinted glow on top of them read as a color cast rather than ambiance.
+*/
 .dark body::before {
-    background-image:
-        radial-gradient(ellipse 70% 60% at 15% 0%, rgb(59 130 246 / 0.07), transparent 60%),
-        radial-gradient(ellipse 70% 60% at 100% 100%, rgb(56 118 224 / 0.05), transparent 65%);
+    background-image: none;
+}
+
+/*
+Card material system — the translucent "glass" surface every flux:card
+(and a small number of dedicated nested-stat surfaces, e.g. the Deal
+Value/Lead Score boxes in lead-hero.blade.php) is built from. Colour-only
+glass, deliberately no backdrop-filter here: the see-through look comes
+from layering translucent color + a bright top-edge highlight
+(inset-ring-white, applied alongside these classes at each call site,
+same utility already used on the Kanban lead-card) + a soft two-layer
+shadow for lift, not from blurring what's behind it — keeps the
+"selective glass" scope (menus/mobile header/dropdowns only) intact
+for backdrop-filter while still giving cards a layered, glassy read.
+
+.card-surface = the outer/raised surface (a card floating on the canvas).
+.card-surface-nested = an inner surface *within* a card — deliberately
+flatter and darker/more muted with no shadow, so it reads as recessed
+relative to the card around it rather than as another floating panel.
+*/
+@layer utilities {
+    /* :where() zeroes specificity, same trick Flux's own card stub uses
+    ([:where(&)]:bg-white etc.) so a consumer's own bg-*/border-* utility
+    on a specific <flux:card> still wins over this default. */
+    :where(.card-surface) {
+        background-color: rgb(255 255 255 / 0.8);
+        border-color: rgb(228 228 231 / 0.7);
+        box-shadow: 0 1px 2px rgb(0 0 0 / 0.04), 0 12px 24px -14px rgb(0 0 0 / 0.1);
+    }
+
+    :where(.dark .card-surface) {
+        background-color: rgb(255 255 255 / 0.07);
+        border-color: rgb(255 255 255 / 0.1);
+        box-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 16px 32px -16px rgb(0 0 0 / 0.5);
+    }
+
+    :where(.card-surface-nested) {
+        background-color: rgb(244 244 245 / 0.7);
+        border-color: rgb(228 228 231 / 0.5);
+    }
+
+    :where(.dark .card-surface-nested) {
+        background-color: rgb(0 0 0 / 0.2);
+        border-color: rgb(255 255 255 / 0.05);
+    }
 }
 
 /*

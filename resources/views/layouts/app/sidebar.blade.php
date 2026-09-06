@@ -8,8 +8,8 @@
     row for `main` is a real, capped size rather than growing with page
     content — that's what lets `main` become its own scroll region below
     instead of the whole document (sidebar included) scrolling. --}}
-    <body class="h-dvh overflow-hidden bg-zinc-50 dark:bg-zinc-800">
-        <flux:sidebar sticky collapsible="mobile" class="border-e border-zinc-200 bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900">
+    <body class="h-dvh overflow-hidden bg-zinc-50 dark:bg-gradient-to-b dark:from-[#262626] dark:to-[#1f1f1f]">
+        <flux:sidebar sticky collapsible="mobile" class="border-e border-zinc-200 bg-zinc-100 dark:border-zinc-700 dark:bg-gradient-to-b dark:from-[#141414] dark:to-[#0a0a0a]">
             <flux:sidebar.header>
                 <x-app-logo :sidebar="true" href="{{ route('dashboard') }}" wire:navigate />
                 <flux:sidebar.collapse class="lg:hidden" />
@@ -71,7 +71,7 @@
         </flux:sidebar>
 
         <!-- Mobile User Header -->
-        <flux:header class="lg:hidden border-b border-zinc-200/70 bg-zinc-100/90 backdrop-blur-sm dark:border-zinc-700/70 dark:bg-zinc-900/90">
+        <flux:header class="lg:hidden border-b border-zinc-200/70 bg-zinc-100/90 backdrop-blur-sm dark:border-zinc-700/70 dark:bg-[#0a0a0a]/90">
             <flux:sidebar.toggle class="lg:hidden" icon="bars-2" inset="left" />
 
             <div class="flex-1 px-2 min-w-0">
