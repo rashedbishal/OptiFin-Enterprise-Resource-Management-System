@@ -17,7 +17,7 @@
             size="sm"
             variant="ghost"
             wire:click="$set('activeTab', 'overview')"
-            class="rounded-none {{ $activeTab === 'overview' ? 'border-b-2 border-accent text-accent' : '' }}"
+            class="rounded-none transition-colors duration-150 {{ $activeTab === 'overview' ? 'border-b-2 border-accent text-accent' : '' }}"
         >
             {{ __('Overview & Intel') }}
         </flux:button>
@@ -26,7 +26,7 @@
             size="sm"
             variant="ghost"
             wire:click="$set('activeTab', 'activity')"
-            class="rounded-none {{ $activeTab === 'activity' ? 'border-b-2 border-accent text-accent' : '' }}"
+            class="rounded-none transition-colors duration-150 {{ $activeTab === 'activity' ? 'border-b-2 border-accent text-accent' : '' }}"
         >
             {{ __('Activity Timeline') }} ({{ count($this->activity) }})
         </flux:button>

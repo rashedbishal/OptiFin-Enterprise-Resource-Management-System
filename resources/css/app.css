@@ -72,6 +72,45 @@
 }
 
 /*
+Atmospheric tint — a single static gradient layer sitting behind every
+opaque surface (sidebar/cards/modals/etc. all paint their own solid
+background over it), so it only ever shows through the bare body canvas.
+Deliberately one fixed pseudo-element rather than per-component gradients:
+zero cost per page/layout, nothing to keep in sync if a new page is added,
+and no risk of it bleeding into a card/table's own background.
+
+Fixed positioning (not absolute) so it stays a single full-viewport layer
+regardless of which element scrolls; pointer-events: none so it never
+intercepts clicks; z-index -1 relies on `body` being the nearest
+positioned/stacking ancestor, which it always is here (this is a direct
+child of body, and nothing above it in the layouts establishes its own
+stacking context that would trap this behind the wrong siblings).
+
+No prefers-reduced-motion guard needed — this is a static gradient, not
+an animation.
+*/
+body {
+    position: relative;
+}
+
+body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+        radial-gradient(ellipse 70% 60% at 15% 0%, rgb(255 247 214 / 0.55), transparent 60%),
+        radial-gradient(ellipse 70% 60% at 100% 100%, rgb(255 250 235 / 0.35), transparent 65%);
+}
+
+.dark body::before {
+    background-image:
+        radial-gradient(ellipse 70% 60% at 15% 0%, rgb(59 130 246 / 0.07), transparent 60%),
+        radial-gradient(ellipse 70% 60% at 100% 100%, rgb(56 118 224 / 0.05), transparent 65%);
+}
+
+/*
 Flux's own flyout transition (flux.css) is only 0.15s opening / 0.075s
 closing — real, but too quick to read as a "slide" rather than a snap.
 Slow it down and add easing, scoped to [data-flux-flyout] only (one

@@ -71,7 +71,7 @@
         </flux:sidebar>
 
         <!-- Mobile User Header -->
-        <flux:header class="lg:hidden border-b border-zinc-200 bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-900">
+        <flux:header class="lg:hidden border-b border-zinc-200/70 bg-zinc-100/90 backdrop-blur-sm dark:border-zinc-700/70 dark:bg-zinc-900/90">
             <flux:sidebar.toggle class="lg:hidden" icon="bars-2" inset="left" />
 
             <div class="flex-1 px-2 min-w-0">
