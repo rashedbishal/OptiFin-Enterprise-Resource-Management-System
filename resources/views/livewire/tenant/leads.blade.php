@@ -413,15 +413,16 @@
                     </a>
                 @empty
                     @if ($hasActiveFilters)
-                        <div class="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-200 p-8 text-center dark:border-zinc-700">
-                            <flux:icon.magnifying-glass class="size-6 text-zinc-400" />
+                        <div class="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-zinc-200 py-16 text-center dark:border-zinc-700">
+                            <flux:icon.magnifying-glass class="size-8 text-zinc-300 dark:text-zinc-600" />
                             <flux:text variant="strong">{{ __('No leads match your search or filters.') }}</flux:text>
-                            <flux:text variant="subtle" size="sm">{{ __('Try adjusting or clearing them.') }}</flux:text>
+                            <flux:text size="sm" variant="subtle">{{ __('Try adjusting or clearing them.') }}</flux:text>
                         </div>
                     @elseif ($this->facebookLeadAdsSources->isEmpty())
-                        <div class="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-200 p-8 text-center dark:border-zinc-700">
-                            <flux:icon.inbox class="size-6 text-zinc-400" />
-                            <flux:text variant="subtle">{{ __('No leads yet.') }}</flux:text>
+                        <div class="flex flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-zinc-200 py-16 text-center dark:border-zinc-700">
+                            <flux:icon.inbox class="size-8 text-zinc-300 dark:text-zinc-600" />
+                            <flux:text variant="strong">{{ __('No leads yet') }}</flux:text>
+                            <flux:text size="sm" variant="subtle">{{ __('New leads from your connected channels will show up here.') }}</flux:text>
                         </div>
                     @endif
                 @endforelse
@@ -646,19 +647,20 @@
                             @if ($hasActiveFilters)
                                 <flux:table.row wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" @class(['!hidden' => $showSkeletonByDefault])>
                                     <flux:table.cell colspan="7">
-                                        <div class="flex flex-col items-center justify-center gap-2 py-8 text-center">
-                                            <flux:icon.magnifying-glass class="size-6 text-zinc-400" />
+                                        <div class="flex flex-col items-center justify-center gap-3 py-16 text-center">
+                                            <flux:icon.magnifying-glass class="size-8 text-zinc-300 dark:text-zinc-600" />
                                             <flux:text variant="strong">{{ __('No leads match your search or filters.') }}</flux:text>
-                                            <flux:text variant="subtle" size="sm">{{ __('Try adjusting or clearing them.') }}</flux:text>
+                                            <flux:text size="sm" variant="subtle">{{ __('Try adjusting or clearing them.') }}</flux:text>
                                         </div>
                                     </flux:table.cell>
                                 </flux:table.row>
                             @elseif ($this->facebookLeadAdsSources->isEmpty())
                                 <flux:table.row wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" @class(['!hidden' => $showSkeletonByDefault])>
                                     <flux:table.cell colspan="7">
-                                        <div class="flex flex-col items-center justify-center gap-2 py-8 text-center">
-                                            <flux:icon.inbox class="size-6 text-zinc-400" />
-                                            <flux:text variant="subtle">{{ __('No leads yet.') }}</flux:text>
+                                        <div class="flex flex-col items-center justify-center gap-3 py-16 text-center">
+                                            <flux:icon.inbox class="size-8 text-zinc-300 dark:text-zinc-600" />
+                                            <flux:text variant="strong">{{ __('No leads yet') }}</flux:text>
+                                            <flux:text size="sm" variant="subtle">{{ __('New leads from your connected channels will show up here.') }}</flux:text>
                                         </div>
                                     </flux:table.cell>
                                 </flux:table.row>
