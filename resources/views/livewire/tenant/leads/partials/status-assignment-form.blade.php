@@ -4,9 +4,11 @@ own buttons) on the Kanban flyout — this combines both into one form with
 one submit button, wired to Show::updateStatusAndAssignment(). --}}
 @php
     // See lead-hero.blade.php's identical pair for why this is purely a
-    // visual reveal-together toggle.
-    $listLoadingTargets = 'completeInitialLoad';
-    $showSkeletonByDefault = ! $initialLoadComplete;
+    // visual reveal-together toggle. Full-page-only (per the comment
+    // above), so this re-shimmers on every tab switch too, not just the
+    // very first page load — see Show::$tabContentReady's docblock.
+    $listLoadingTargets = 'switchTab,markTabContentReady';
+    $showSkeletonByDefault = ! $tabContentReady;
 @endphp
 
 <flux:card class="flex flex-col gap-4">

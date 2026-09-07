@@ -3,9 +3,11 @@
 
     // Self-contained (like activity-card.blade.php) since this partial is
     // shared by two callers (show.blade.php, show-panel.blade.php) that
-    // both need the identical pair. This is purely a visual
-    // reveal-together toggle, not a real query defer — see
-    // lead-hero.blade.php's identical pair for why: $lead's fields
+    // need DIFFERENT pairs, not the identical one — see
+    // activity-card.blade.php's identical $panel branching for why (the
+    // flyout has no tabs, so $tabContentReady never gets set there). This
+    // is purely a visual reveal-together toggle, not a real query defer —
+    // see lead-hero.blade.php's identical pair for why: $lead's fields
     // (including messageTimeline()/attachments below) are already
     // resolved by the time this renders, nothing here is deferred.
     // Deliberately does NOT gate $this->timeline itself (see
@@ -15,8 +17,8 @@
     // evaluating true while iterating an empty array — a blank box, not a
     // skeleton) — only this card's overall visibility is toggled, all of
     // its existing branching is untouched.
-    $listLoadingTargets = 'completeInitialLoad';
-    $showSkeletonByDefault = ! $initialLoadComplete;
+    $listLoadingTargets = $panel ? 'completeInitialLoad' : 'switchTab,markTabContentReady';
+    $showSkeletonByDefault = $panel ? ! $initialLoadComplete : ! $tabContentReady;
 @endphp
 
 <flux:card>

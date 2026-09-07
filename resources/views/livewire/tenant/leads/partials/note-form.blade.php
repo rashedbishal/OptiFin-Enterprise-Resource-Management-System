@@ -4,9 +4,14 @@
     // See lead-hero.blade.php's identical pair for why this is purely a
     // visual reveal-together toggle — this card is a form, nothing here is
     // ever actually fetched async, it just shimmers alongside the rest of
-    // the page's cards on first paint.
-    $listLoadingTargets = 'completeInitialLoad';
-    $showSkeletonByDefault = ! $initialLoadComplete;
+    // whichever cards it's currently grouped with. Shared by show.blade.php
+    // (inside the Activity tab — needs to re-shimmer on every switch to
+    // that tab, see Show::$tabContentReady's docblock) and
+    // show-panel.blade.php's flyout (no tabs at all, $tabContentReady
+    // never gets set there) — see activity-card.blade.php's identical
+    // $panel branching for the full reasoning.
+    $listLoadingTargets = $panel ? 'completeInitialLoad' : 'switchTab,markTabContentReady';
+    $showSkeletonByDefault = $panel ? ! $initialLoadComplete : ! $tabContentReady;
 @endphp
 
 <flux:card>

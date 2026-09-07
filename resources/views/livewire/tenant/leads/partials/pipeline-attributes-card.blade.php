@@ -2,9 +2,12 @@
     $canUpdate ??= false;
 
     // See lead-hero.blade.php's identical pair for why this is purely a
-    // visual reveal-together toggle, not a real query defer.
-    $listLoadingTargets = 'completeInitialLoad';
-    $showSkeletonByDefault = ! $initialLoadComplete;
+    // visual reveal-together toggle, not a real query defer. Only ever
+    // used inside show.blade.php's Overview tab (never the panel/flyout),
+    // so this re-shimmers on every tab switch too, not just the very
+    // first page load — see Show::$tabContentReady's docblock.
+    $listLoadingTargets = 'switchTab,markTabContentReady';
+    $showSkeletonByDefault = ! $tabContentReady;
 @endphp
 
 <flux:card class="flex flex-col gap-4">

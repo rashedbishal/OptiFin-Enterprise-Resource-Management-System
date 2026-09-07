@@ -85,6 +85,38 @@ class Show extends Component
      */
     public string $activeTab = 'overview';
 
+    /**
+     * Whether the CURRENTLY active tab's cards are ready to show real
+     * content — resets to false every time switchTab() runs, flips back
+     * to true via markTabContentReady() (wire:init on that tab's own root
+     * element in show.blade.php). That root ALSO needs an explicit
+     * wire:key (e.g. wire:key="activity-tab-content") distinct per tab —
+     * without one, Livewire's morph reuses the SAME DOM node for both the
+     * Overview and Activity branches' roots (confirmed empirically: tagged
+     * the node with a JS marker, switched tabs, the marker survived), since
+     * a Blade if/else alone doesn't guarantee removal — the two branches
+     * just happen to occupy the same tree position, so morphdom patches in
+     * place rather than treating them as distinct elements. wire:init only
+     * fires on a genuine connect-to-DOM event, so without the key it
+     * silently never refires past the very first tab shown. Drives the
+     * SAME skeleton-toggle pattern used everywhere else in this app
+     * (contact-info-card.blade.php,
+     * pipeline-attributes-card.blade.php, status-assignment-form.blade.php
+     * unconditionally; detail-card.blade.php/activity-card.blade.php/
+     * note-form.blade.php conditionally on `! $panel`, since those three
+     * are ALSO used by show-panel.blade.php's flyout, which has no tabs at
+     * all and keeps using $initialLoadComplete/completeInitialLoad()
+     * instead — see those partials for the exact branching).
+     *
+     * Purely a visual reveal-together toggle, like the rest of this page's
+     * cards — does NOT gate activity()'s actual query (that stays behind
+     * $initialLoadComplete, a real one-time perf-motivated defer); by the
+     * time this flips true on a tab switch, $this->activity has already
+     * recomputed fresh anyway, since Computed properties aren't cached
+     * across separate Livewire requests.
+     */
+    public bool $tabContentReady = false;
+
     public string $leadName = '';
 
     public string $leadPhone = '';
@@ -175,6 +207,17 @@ class Show extends Component
     public function completeInitialLoad(): void
     {
         $this->initialLoadComplete = true;
+    }
+
+    public function switchTab(string $tab): void
+    {
+        $this->activeTab = $tab;
+        $this->tabContentReady = false;
+    }
+
+    public function markTabContentReady(): void
+    {
+        $this->tabContentReady = true;
     }
 
     public function mount(Lead $lead): void

@@ -20,7 +20,7 @@
             type="button"
             size="sm"
             variant="ghost"
-            wire:click="$set('activeTab', 'overview')"
+            wire:click="switchTab('overview')"
             class="-mb-px rounded-t-lg rounded-b-none transition-colors duration-150 {{ $activeTab === 'overview' ? 'border border-b-0 border-zinc-200 bg-white text-accent dark:border-zinc-700 dark:bg-white/10' : 'text-zinc-500 dark:text-zinc-400' }}"
         >
             {{ __('Overview & Intel') }}
@@ -29,7 +29,7 @@
             type="button"
             size="sm"
             variant="ghost"
-            wire:click="$set('activeTab', 'activity')"
+            wire:click="switchTab('activity')"
             class="-mb-px rounded-t-lg rounded-b-none transition-colors duration-150 {{ $activeTab === 'activity' ? 'border border-b-0 border-zinc-200 bg-white text-accent dark:border-zinc-700 dark:bg-white/10' : 'text-zinc-500 dark:text-zinc-400' }}"
         >
             {{-- Blank instead of "(0)" before initialLoadComplete — activity()
@@ -70,7 +70,21 @@
             // detail-card.blade.php below regardless.
             $canEditManualDetails = $this->isManualLead() && $this->canUpdate;
         @endphp
-        <div class="flex flex-col gap-6">
+        {{-- wire:init here (not just on the page's own root) fires
+        markTabContentReady() every time this branch mounts — including
+        every time you switch BACK to this tab, not just the very first
+        page load. The wire:key is load-bearing, not decorative: without
+        it, Livewire's morph reuses this SAME div for the Activity
+        branch's root too (confirmed empirically — tagged the node with a
+        JS marker, switched tabs, the marker survived), since @if/@else
+        alone doesn't guarantee removal — the two branches' roots just
+        happen to occupy the same position in the tree, so morphdom treats
+        them as "the same slot" to patch in place rather than two distinct
+        elements. wire:init only fires on a genuine connect-to-DOM event,
+        so a reused node means it silently never refires on subsequent
+        switches — this was the whole feature's actual failure mode until
+        this key was added. See Show::$tabContentReady's docblock. --}}
+        <div class="flex flex-col gap-6" wire:key="overview-tab-content" wire:init="markTabContentReady">
             @if ($this->isManualLead())
                 {{-- Restores pipeline-attributes-card's unconditional
                 "Assigned Sales Executive" line, dropped when manual leads
@@ -144,7 +158,11 @@
         re-forming the exact original two-column box (both children's
         `md:order-none` drops back to plain DOM order — Note, then Status —
         inside it), so the desktop layout is byte-for-byte unchanged. --}}
-        <div class="grid gap-6 md:grid-cols-2">
+        {{-- wire:init + wire:key here (matching the Overview branch's root
+        above) fires markTabContentReady() every time this branch mounts —
+        the wire:key is load-bearing, see the long comment on that other
+        root for why. --}}
+        <div class="grid gap-6 md:grid-cols-2" wire:key="activity-tab-content" wire:init="markTabContentReady">
             <div class="order-3 md:order-none md:relative {{ ($this->canUpdate || $this->canAssign) ? '' : 'md:col-span-2' }}">
                 <div class="md:absolute md:inset-0">
                     @include('livewire.tenant.leads.partials.activity-card', ['activity' => $this->activity, 'fillHeight' => true])

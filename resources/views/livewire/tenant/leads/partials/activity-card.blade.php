@@ -3,15 +3,23 @@
     $fillHeight ??= false;
 
     // Self-contained (not passed in like $activity) since both callers
-    // (show.blade.php, show-panel.blade.php) need the identical pair —
-    // see Show::$initialLoadComplete's docblock. $initialLoadComplete
-    // itself is a public Livewire property, always in scope here via
-    // Blade's @include variable inheritance, no explicit pass-through
-    // needed. See leads.blade.php's identical $showSkeletonByDefault for
-    // why the skeleton's/real content's STATIC class (not just their
-    // wire:loading toggle) has to be conditional on server-known state.
-    $listLoadingTargets = 'completeInitialLoad';
-    $showSkeletonByDefault = ! $initialLoadComplete;
+    // (show.blade.php, show-panel.blade.php) need a pair here, but NOT
+    // the identical one any more: show.blade.php's Activity tab needs to
+    // re-shimmer every time it's switched to (see
+    // Show::$tabContentReady's docblock), but show-panel.blade.php's
+    // flyout has no tabs at all — $tabContentReady never gets set there
+    // (switchTab()/markTabContentReady() are never called), so gating on
+    // it unconditionally would leave the flyout's Activity card stuck on
+    // its skeleton forever. $panel (true only for the flyout) picks the
+    // right pair for whichever context this renders in. Both
+    // $panel/$initialLoadComplete/$tabContentReady are public Livewire
+    // properties, always in scope here via Blade's @include variable
+    // inheritance, no explicit pass-through needed. See leads.blade.php's
+    // identical $showSkeletonByDefault for why the skeleton's/real
+    // content's STATIC class (not just their wire:loading toggle) has to
+    // be conditional on server-known state.
+    $listLoadingTargets = $panel ? 'completeInitialLoad' : 'switchTab,markTabContentReady';
+    $showSkeletonByDefault = $panel ? ! $initialLoadComplete : ! $tabContentReady;
 @endphp
 
 <flux:card class="{{ $fillHeight ? 'flex flex-col md:h-full' : '' }}">

@@ -24,6 +24,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Livewire/Tenant/Leads/**, app/Livewire/Tenant/Leads/Index.php, app/Livewire/Tenant/Leads/Show.php, app/Livewire/Tenant/Leads/SourceLeads.php | .ai/rules/leads.md |
 | app/Livewire/Tenant/Leads/{Index,SourceLeads}.php,resources/views/livewire/tenant/{leads,leads-kanban,leads/source-leads}.blade.php | .ai/rules/leadsleads-kanbanleads.md |
 | resources/views/livewire/**,app/Livewire/** | .ai/rules/livewire-livewire.md |
+| app/Livewire/Tenant/Leads/Show.php,resources/views/livewire/tenant/leads/show.blade.php,resources/views/livewire/tenant/leads/partials/{contact-info-card,pipeline-attributes-card,detail-card,activity-card,note-form,status-assignment-form}.blade.php | .ai/rules/livewire-tenant-leads-partials.md |
 | resources/views/components/confirm-*.blade.php,app/Livewire/**/Index.php,app/Livewire/Tenant/Leads/{Index,Show}.php | .ai/rules/livewire-tenant-leads.md |
 | app/Notifications/MeetingUpdatedNotification.php,app/Livewire/Tenant/NotificationBell.php | .ai/rules/livewire-tenant.md |
 | app/Livewire/** | .ai/rules/livewire.md |
