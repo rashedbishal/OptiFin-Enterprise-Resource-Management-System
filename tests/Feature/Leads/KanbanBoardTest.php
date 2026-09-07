@@ -15,7 +15,7 @@ test('the board groups leads by status', function () {
     Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id]);
     Lead::factory()->count(2)->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('won')->id]);
 
-    $component = Livewire::actingAs($clientAdmin)->test(Index::class);
+    $component = Livewire::actingAs($clientAdmin)->test(Index::class)->call('completeInitialLoad');
 
     $board = $component->get('boardLeads');
 
@@ -42,7 +42,7 @@ test('a client user\'s board search matches Lead ID, contact name, phone, compan
         'name' => 'John Smith',
     ]);
 
-    $component = Livewire::actingAs($rep)->test(Index::class)->set('search', 'JANE doe');
+    $component = Livewire::actingAs($rep)->test(Index::class)->call('completeInitialLoad')->set('search', 'JANE doe');
     expect($component->get('boardLeads')->collapse()->pluck('id'))->toContain($match->id)->not->toContain($other->id);
 
     $component->set('search', 'acme ROCKETS');
@@ -67,7 +67,7 @@ test('a client user\'s board search does not match location, win probability, or
         'win_probability' => 77,
     ]);
 
-    $repComponent = Livewire::actingAs($rep)->test(Index::class)->set('search', 'dhaka');
+    $repComponent = Livewire::actingAs($rep)->test(Index::class)->call('completeInitialLoad')->set('search', 'dhaka');
     expect($repComponent->get('boardLeads')->collapse()->pluck('id'))->not->toContain($lead->id);
 
     $repComponent->set('search', '77');
@@ -85,10 +85,10 @@ test('a client user\'s board shows their assigned facebook lead ads leads as nor
         'status_id' => leadStatus('new')->id,
     ]);
 
-    $repBoard = Livewire::actingAs($rep)->test(Index::class)->get('boardLeads');
+    $repBoard = Livewire::actingAs($rep)->test(Index::class)->call('completeInitialLoad')->get('boardLeads');
     expect($repBoard->get(leadStatus('new')->id, collect())->pluck('id'))->toContain($fbLead->id);
 
-    $adminBoard = Livewire::actingAs($clientAdmin)->test(Index::class)->get('boardLeads');
+    $adminBoard = Livewire::actingAs($clientAdmin)->test(Index::class)->call('completeInitialLoad')->get('boardLeads');
     expect($adminBoard->get(leadStatus('new')->id, collect())->pluck('id'))->not->toContain($fbLead->id);
 });
 
@@ -97,7 +97,7 @@ test('a client admin can drag a lead to a new status', function () {
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('moveLead', $lead->id, leadStatus('contacted')->id)
         ->assertDispatched('toast-show');
 
@@ -113,7 +113,7 @@ test('dragging a lead to a new status broadcasts a lead update so other viewers 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('moveLead', $lead->id, leadStatus('contacted')->id);
 
     Event::assertDispatched(LeadUpdated::class, fn (LeadUpdated $event): bool => $event->lead->is($lead));
@@ -124,7 +124,7 @@ test('moving a lead to won sets the closed-at timestamp', function () {
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('negotiation')->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('moveLead', $lead->id, leadStatus('won')->id);
 
     expect($lead->fresh()->closed_at)->not->toBeNull();
@@ -135,7 +135,7 @@ test('dropping a lead on the column it is already in does not log a status chang
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('contacted')->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('moveLead', $lead->id, leadStatus('contacted')->id);
 
     expect(LeadStatusLog::where('lead_id', $lead->id)->exists())->toBeFalse();
@@ -146,7 +146,7 @@ test('an invalid status value is ignored', function () {
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('moveLead', $lead->id, 'not-a-real-status');
 
     expect($lead->fresh()->status_id)->toBe(leadStatus('new')->id);
@@ -158,7 +158,7 @@ test('a client user without update permission cannot move a lead they are assign
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id, 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('moveLead', $lead->id, leadStatus('contacted')->id)
         ->assertDispatched('toast-show');
 
@@ -171,7 +171,7 @@ test('a client admin cannot move another tenant\'s lead', function () {
     $leadB = Lead::factory()->create(['tenant_id' => $tenantB->id, 'status_id' => leadStatus('new')->id]);
 
     Livewire::actingAs($clientAdminA)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('moveLead', $leadB->id, leadStatus('contacted')->id);
 
     expect($leadB->fresh()->status_id)->toBe(leadStatus('new')->id);
@@ -182,7 +182,7 @@ test('a client admin can open the lead detail panel', function () {
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
 
     $component = Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('viewLead', $lead->id);
 
     expect($component->get('selectedLeadId'))->toBe($lead->id);
@@ -227,7 +227,7 @@ test('a client user cannot open a lead panel for a lead assigned to someone else
     $otherLead = Lead::factory()->create(['tenant_id' => $tenant->id]);
 
     $component = Livewire::actingAs($rep)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('viewLead', $otherLead->id)
         ->assertDispatched('toast-show');
 
@@ -240,7 +240,7 @@ test('closing the lead panel drops the selected lead', function () {
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('viewLead', $lead->id)
         ->set('showLeadPanel', false)
         ->assertSet('selectedLeadId', null);
@@ -266,7 +266,7 @@ test('closing the panel also clears the ?lead= query param, not just the selecte
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('viewLead', $lead->id)
         ->assertSet('openLeadId', $lead->id)
         ->set('showLeadPanel', false)
@@ -278,7 +278,7 @@ test('deleting the open lead from the panel also clears the ?lead= query param',
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('viewLead', $lead->id)
         ->call('delete', $lead->id)
         ->assertSet('openLeadId', null);
@@ -307,7 +307,7 @@ test('kanban board filters leads by priority and source type', function () {
     ]);
 
     $component = Livewire::actingAs($rep)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->set('priority', 'high');
 
     $board = $component->get('boardLeads');
@@ -333,7 +333,7 @@ test('the board filters leads by a created-at date range, applied instantly with
     $recentLead->forceFill(['created_at' => now()->subDay()])->save();
 
     $component = Livewire::actingAs($rep)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->set('fromDate', now()->subDays(3)->toDateString());
 
     $board = $component->get('boardLeads');

@@ -19,7 +19,7 @@ test('a lead inside its tenant\'s meeting alert window shows the shimmer class o
     Lead::factory()->create(['tenant_id' => $tenant->id, 'assigned_to' => $rep->id, 'meeting_date' => today()->addDay()]);
 
     Livewire::actingAs($rep)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->assertSeeHtml('lead-alert-shimmer');
 });
 
@@ -30,7 +30,7 @@ test('a lead outside the alert window shows no shimmer', function () {
     Lead::factory()->create(['tenant_id' => $tenant->id, 'assigned_to' => $rep->id, 'meeting_date' => today()->addDays(10)]);
 
     Livewire::actingAs($rep)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->assertDontSeeHtml('lead-alert-shimmer');
 });
 
@@ -40,7 +40,7 @@ test('a lead in the window shows no shimmer while the tenant setting is disabled
     Lead::factory()->create(['tenant_id' => $tenant->id, 'assigned_to' => $rep->id, 'meeting_date' => today()]);
 
     Livewire::actingAs($rep)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->assertDontSeeHtml('lead-alert-shimmer');
 });
 
@@ -66,14 +66,14 @@ test('a lead with both meeting and follow-up alerts active still gets only one s
         'next_follow_up_at' => today(),
     ]);
 
-    $bothActiveHtml = Livewire::actingAs($rep)->test(Index::class)->html();
+    $bothActiveHtml = Livewire::actingAs($rep)->test(Index::class)->call('completeInitialLoad')->html();
 
     $tenantSingle = tenantWithLeadManagement()['tenant'];
     $tenantSingle->update(['meeting_alert_enabled' => true, 'meeting_alert_days_before' => 3]);
     $repSingle = clientUserWithLeadPermission($tenantSingle);
     Lead::factory()->create(['tenant_id' => $tenantSingle->id, 'assigned_to' => $repSingle->id, 'meeting_date' => today()]);
 
-    $singleActiveHtml = Livewire::actingAs($repSingle)->test(Index::class)->html();
+    $singleActiveHtml = Livewire::actingAs($repSingle)->test(Index::class)->call('completeInitialLoad')->html();
 
     expect(substr_count($bothActiveHtml, 'lead-alert-shimmer'))
         ->toBe(substr_count($singleActiveHtml, 'lead-alert-shimmer'));

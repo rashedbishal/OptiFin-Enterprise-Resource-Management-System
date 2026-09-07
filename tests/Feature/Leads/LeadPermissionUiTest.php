@@ -71,13 +71,13 @@ test('the Kanban board "…" move menu is hidden without update permission but s
     Lead::factory()->create(['tenant_id' => $tenant->id, 'assigned_to' => $viewer->id]);
 
     Livewire::actingAs($viewer)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->assertDontSeeHtml('aria-label="Move to…"');
 
     $mover = clientUserWithLeadPermission($tenant, ['view', 'update']);
     Lead::factory()->create(['tenant_id' => $tenant->id, 'assigned_to' => $mover->id]);
 
     Livewire::actingAs($mover)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->assertSeeHtml('aria-label="Move to…"');
 });

@@ -11,7 +11,7 @@ test('a client admin sees the classic filterable table, not the Kanban board', f
     Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->assertSeeHtml('data-flux-table')
         ->assertDontSeeHtml('draggable="true"');
 });
@@ -20,7 +20,7 @@ test('the mobile card stack has no View/Delete buttons — the whole card links 
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id]);
 
-    $html = Livewire::actingAs($clientAdmin)->test(Index::class)->html();
+    $html = Livewire::actingAs($clientAdmin)->test(Index::class)->call('completeInitialLoad')->html();
 
     expect($html)->toContain('wire:key="lead-card-'.$lead->id.'"');
     expect($html)->toContain('href="'.route('tenant-leads.show', $lead).'"');
@@ -39,7 +39,7 @@ test('a client user (sales rep) sees the Kanban board, not the table', function 
     Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id, 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->assertDontSeeHtml('data-flux-table')
         ->assertSeeHtml('draggable="true"');
 });
@@ -48,7 +48,7 @@ test('the source filter only offers types the tenant actually has a lead source 
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Whatsapp]);
 
-    $options = Livewire::actingAs($clientAdmin)->test(Index::class)->instance()->sourceTypeOptions();
+    $options = Livewire::actingAs($clientAdmin)->test(Index::class)->call('completeInitialLoad')->instance()->sourceTypeOptions();
 
     expect($options)->toContain(LeadSourceType::Whatsapp->value);
     expect($options)->toContain(LeadSourceType::Manual->value);
@@ -62,9 +62,9 @@ test('a client user\'s source filter offers facebook lead ads when the tenant ha
     $rep = clientUserWithLeadPermission($tenant, ['view', 'update']);
     LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
 
-    $repOptions = Livewire::actingAs($rep)->test(Index::class)->instance()->sourceTypeOptions();
+    $repOptions = Livewire::actingAs($rep)->test(Index::class)->call('completeInitialLoad')->instance()->sourceTypeOptions();
     expect($repOptions)->toContain(LeadSourceType::FacebookLeadAds->value);
 
-    $adminOptions = Livewire::actingAs($clientAdmin)->test(Index::class)->instance()->sourceTypeOptions();
+    $adminOptions = Livewire::actingAs($clientAdmin)->test(Index::class)->call('completeInitialLoad')->instance()->sourceTypeOptions();
     expect($adminOptions)->not->toContain(LeadSourceType::FacebookLeadAds->value);
 });

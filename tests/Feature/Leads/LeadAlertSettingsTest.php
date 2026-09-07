@@ -7,7 +7,7 @@ test('turning a meeting alert on opens the days editor without enabling it yet',
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('toggleMeetingAlert')
         ->assertSet('showMeetingAlertModal', true);
 
@@ -18,7 +18,7 @@ test('saving the days editor enables the alert with the given days', function ()
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('toggleMeetingAlert')
         ->set('meetingAlertDaysInput', '5')
         ->call('saveMeetingAlertDays')
@@ -34,7 +34,7 @@ test('a negative days-before value is rejected', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('toggleMeetingAlert')
         ->set('meetingAlertDaysInput', '-1')
         ->call('saveMeetingAlertDays')
@@ -47,7 +47,7 @@ test('a zero days-before value is allowed — alerts only on the exact day', fun
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('toggleMeetingAlert')
         ->set('meetingAlertDaysInput', '0')
         ->call('saveMeetingAlertDays')
@@ -61,7 +61,7 @@ test('toggling an already-enabled alert off is immediate, no prompt', function (
     $tenant->update(['meeting_alert_enabled' => true, 'meeting_alert_days_before' => 3]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('toggleMeetingAlert')
         ->assertSet('showMeetingAlertModal', false);
 
@@ -73,7 +73,7 @@ test('the days editor can be reopened without touching whether the alert is enab
     $tenant->update(['meeting_alert_enabled' => true, 'meeting_alert_days_before' => 7]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('openMeetingAlertDaysEditor')
         ->assertSet('showMeetingAlertModal', true)
         ->assertSet('meetingAlertDaysInput', '7');
@@ -86,7 +86,7 @@ test('a client user (non-admin) cannot toggle tenant alert settings', function (
     $rep = clientUserWithLeadPermission($tenant);
 
     Livewire::actingAs($rep)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('toggleMeetingAlert')
         ->assertSet('showMeetingAlertModal', false);
 
@@ -97,7 +97,7 @@ test('follow-up alert settings behave identically to meeting alert settings', fu
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('toggleFollowUpAlert')
         ->set('followUpAlertDaysInput', '2')
         ->call('saveFollowUpAlertDays')

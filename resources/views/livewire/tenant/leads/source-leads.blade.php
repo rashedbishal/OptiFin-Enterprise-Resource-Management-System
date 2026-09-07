@@ -6,7 +6,7 @@
     ]" />
 @endpush
 
-<div class="flex flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8 overflow-y-auto min-h-0">
+<div class="flex flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8 overflow-y-auto min-h-0" wire:init="completeInitialLoad">
     <div class="flex items-center justify-between">
         <flux:heading size="xl" class="hidden lg:block">{{ $this->leadSource->name }}</flux:heading>
         <div class="flex gap-2">
@@ -33,6 +33,36 @@
                 collect($this->assignableUsers)->map(fn($u) => ['value' => (string) $u->id, 'label' => $u->name])->toArray()
             );
         }
+
+        // Every action that re-queries $this->leads: SourceLeads::updating()/
+        // updated() reset the page and refetch on ANY property change (no
+        // property-name allowlist like the main Leads page has), so this is
+        // simply every FiltersLeadsQuery property this page exposes a filter
+        // for (no sourceType here — the page is already scoped to one
+        // source) plus the pagination-trait methods the published
+        // pagination view can call, plus completeInitialLoad() (fired once
+        // via wire:init on the root element, right after mount — see
+        // SourceLeads::$initialLoadComplete's docblock for why the very
+        // first paint needs the skeleton too). See leads.blade.php's
+        // identical $listLoadingTargets for why this exact list matters —
+        // wire:loading must never fire on unrelated requests (Download
+        // XLSX, ...).
+        $listLoadingTargets = 'status,priority,assignedTo,fromDate,toDate,search,gotoPage,previousPage,nextPage,setPage,completeInitialLoad';
+
+        // paginate(25) is fixed here (no per-viewport setPerPage() like the
+        // main Leads page), so the skeleton row/card count is simply this
+        // constant — kept in one place so it can't drift out of sync with
+        // the real ->paginate(25) call in SourceLeads::leads().
+        $sourceLeadsPerPage = 25;
+
+        // See the identical $showSkeletonByDefault in leads.blade.php for
+        // the full explanation: wire:loading's class toggle only takes
+        // effect once Livewire's JS actually dispatches a request, and
+        // there's a real gap between this raw HTML painting and the
+        // wire:init below firing. Without this, the real (but genuinely
+        // empty pre-initialLoadComplete) content would flash "No leads yet"
+        // before the skeleton ever appears.
+        $showSkeletonByDefault = ! $initialLoadComplete;
     @endphp
 
     <div class="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
@@ -43,8 +73,12 @@
             <x-dropdown-select wire:model.live="assignedTo" :placeholder="__('All users')" :options="$assignedToOpts" icon="user" />
         @endif
 
-        <x-date-picker wire:model.live="fromDate" :label="__('From Date')" :placeholder="__('From Date')" :max="$toDate ?: now()->toDateString()" />
-        <x-date-picker wire:model.live="toDate" :label="__('To Date')" :placeholder="__('To Date')" :min="$fromDate" :max="now()->toDateString()" />
+        {{-- !h-auto !py-1.5 !text-xs sm:!text-sm overrides x-date-picker's own
+        default (h-10 px-3 py-2 text-sm) down to x-dropdown-select's natural
+        button height — see the matching comment on the main Leads page's
+        filter bar (leads.blade.php) for why plain class="" wouldn't do it. --}}
+        <x-date-picker wire:model.live="fromDate" :label="__('From Date')" :placeholder="__('From Date')" :max="$toDate ?: now()->toDateString()" class="!h-auto !py-1.5 !text-xs sm:!text-sm" />
+        <x-date-picker wire:model.live="toDate" :label="__('To Date')" :placeholder="__('To Date')" :min="$fromDate" :max="now()->toDateString()" class="!h-auto !py-1.5 !text-xs sm:!text-sm" />
 
         {{-- Same col-span pattern as the main Leads page's search box: full
         width on its own row on mobile/tablet (col-span-2/3), a normal cell
@@ -71,6 +105,17 @@
     per-form fields in a compact card. The whole card is the click target
     (no separate View button), same pattern as the main Leads page's cards. --}}
     <div class="flex flex-col gap-2.5 sm:hidden">
+        {{-- display:contents wrapper + skeleton sibling below, same pattern
+        as the main Leads page's mobile card stack (leads.blade.php) —
+        including the SAME wire:loading.class="!hidden" technique (never a
+        bare wire:loading/.remove on this or on the desktop <tbody>/<tr>
+        below: Livewire's non-class display toggling only knows a handful of
+        display values and falls back to `display: inline-block` for
+        anything else, including "contents" and a <tbody>'s
+        "table-row-group" — which breaks table column alignment and, worse,
+        permanently corrupts a `.remove` element to inline-block after the
+        first completed loading cycle, not just during it). --}}
+        <div wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" class="{{ $showSkeletonByDefault ? '!hidden' : '' }} contents">
         @forelse ($this->leads as $lead)
             @php
                 $cardTenant = auth()->user()->tenant;
@@ -117,6 +162,19 @@
                 <flux:text variant="subtle">{{ __('No leads yet.') }}</flux:text>
             </div>
         @endforelse
+        </div>
+
+        <div class="{{ $showSkeletonByDefault ? '' : '!hidden' }} flex flex-col gap-2.5" wire:loading.remove.class="!hidden" wire:target="{{ $listLoadingTargets }}">
+            @for ($i = 0; $i < $sourceLeadsPerPage; $i++)
+                <div wire:key="fb-source-lead-card-skeleton-{{ $i }}" class="flex items-center justify-between gap-3 rounded-lg border border-zinc-200/80 bg-zinc-50 p-3 dark:border-zinc-700/80 dark:bg-zinc-900/90">
+                    <div class="flex flex-col gap-1.5">
+                        <div class="h-2.5 w-14 skeleton-shimmer rounded"></div>
+                        <div class="h-2.5 w-20 skeleton-shimmer rounded"></div>
+                    </div>
+                    <div class="h-5 w-16 shrink-0 skeleton-shimmer rounded-full"></div>
+                </div>
+            @endfor
+        </div>
     </div>
 
     {{-- Desktop / Tablet Table View (hidden sm:block) --}}
@@ -141,7 +199,7 @@
                         $rowFollowUpAlertActive = $lead->followUpAlertActive($rowTenant->followup_alert_enabled, $rowTenant->followup_alert_days_before);
                         $rowHasActiveAlert = $rowMeetingAlertActive || $rowFollowUpAlertActive;
                     @endphp
-                    <flux:table.row wire:key="lead-{{ $lead->id }}">
+                    <flux:table.row wire:key="lead-{{ $lead->id }}" wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" @class(['!hidden' => $showSkeletonByDefault])>
                         <flux:table.cell>
                             @if ($rowHasActiveAlert)
                                 {{-- Same per-character shimmer as the main Leads table's Lead
@@ -183,10 +241,37 @@
                         </flux:table.cell>
                     </flux:table.row>
                 @empty
-                    <flux:table.row>
+                    <flux:table.row wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" @class(['!hidden' => $showSkeletonByDefault])>
                         <flux:table.cell colspan="{{ count($this->fieldColumns) + 6 }}">{{ __('No leads yet.') }}</flux:table.cell>
                     </flux:table.row>
                 @endforelse
+            </flux:table.rows>
+
+            {{-- Skeleton: a second <tbody> (valid HTML), hidden by default
+            (class="!hidden" baked in, removed while loading — same
+            .remove.class technique as the mobile stack above and the main
+            Leads table). Cell count per row is 2 (Lead ID, Name) + one per
+            dynamic Instant Form field column + 4 (Form, Status, Submitted,
+            Actions) — matching the real header's column count exactly, same
+            as the @empty row's colspan above. --}}
+            <flux:table.rows @class(['!hidden' => ! $showSkeletonByDefault]) wire:loading.remove.class="!hidden" wire:target="{{ $listLoadingTargets }}">
+                @for ($i = 0; $i < $sourceLeadsPerPage; $i++)
+                    <flux:table.row wire:key="fb-source-lead-row-skeleton-{{ $i }}">
+                        <flux:table.cell><div class="h-3 w-16 skeleton-shimmer rounded"></div></flux:table.cell>
+                        <flux:table.cell><div class="h-3 w-28 skeleton-shimmer rounded"></div></flux:table.cell>
+                        @for ($f = 0; $f < count($this->fieldColumns); $f++)
+                            <flux:table.cell><div class="h-3 w-20 skeleton-shimmer rounded"></div></flux:table.cell>
+                        @endfor
+                        <flux:table.cell><div class="h-3 w-16 skeleton-shimmer rounded"></div></flux:table.cell>
+                        <flux:table.cell><div class="h-5 w-16 skeleton-shimmer rounded-full"></div></flux:table.cell>
+                        <flux:table.cell><div class="h-3 w-14 skeleton-shimmer rounded"></div></flux:table.cell>
+                        <flux:table.cell>
+                            <div class="flex justify-end">
+                                <div class="h-6 w-14 skeleton-shimmer rounded"></div>
+                            </div>
+                        </flux:table.cell>
+                    </flux:table.row>
+                @endfor
             </flux:table.rows>
         </flux:table>
     </div>

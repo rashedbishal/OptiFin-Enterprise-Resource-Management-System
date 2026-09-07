@@ -17,7 +17,7 @@ test('changing the estimated budget currency mirrors it onto deal value', functi
     $tenant->currencies()->attach($bdt->id);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('createLead')
         ->set('leadEstimatedBudgetCurrencyId', $bdt->id)
         ->assertSet('leadDealValueCurrencyId', $bdt->id);
@@ -29,7 +29,7 @@ test('changing the deal value currency mirrors it onto estimated budget', functi
     $tenant->currencies()->attach($bdt->id);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('createLead')
         ->set('leadDealValueCurrencyId', $bdt->id)
         ->assertSet('leadEstimatedBudgetCurrencyId', $bdt->id);

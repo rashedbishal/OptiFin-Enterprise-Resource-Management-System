@@ -17,7 +17,7 @@ test('a client admin can delete a website form lead', function () {
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('delete', $lead->id)
         ->assertDispatched('toast-show');
 
@@ -30,7 +30,7 @@ test('a client admin can delete an email lead', function () {
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('delete', $lead->id);
 
     expect(Lead::find($lead->id))->toBeNull();
@@ -53,7 +53,7 @@ test('deleting a lead also removes all of its attachments from disk', function (
     }
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('delete', $lead->id);
 
     foreach ($paths as $path) {
@@ -67,7 +67,7 @@ test('deleting a lead with no attachment does not error', function () {
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('delete', $lead->id)
         ->assertDispatched('toast-show');
 
@@ -87,7 +87,7 @@ test('deleting a lead with a failed (pathless) attachment does not error', funct
     ]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('delete', $lead->id)
         ->assertDispatched('toast-show');
 
@@ -101,7 +101,7 @@ test('a client user without delete permission cannot delete a lead', function ()
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('delete', $lead->id)
         ->assertDispatched('toast-show');
 
@@ -114,7 +114,7 @@ test('a client admin cannot delete another tenant\'s lead', function () {
     $sourceB = LeadSource::factory()->create(['tenant_id' => $tenantB->id, 'type' => LeadSourceType::WebsiteForm]);
     $leadB = Lead::factory()->create(['tenant_id' => $tenantB->id, 'source_id' => $sourceB->id]);
 
-    expect(fn () => Livewire::actingAs($clientAdminA)->test(Index::class)->call('delete', $leadB->id))
+    expect(fn () => Livewire::actingAs($clientAdminA)->test(Index::class)->call('completeInitialLoad')->call('delete', $leadB->id))
         ->toThrow(ModelNotFoundException::class);
 
     expect(Lead::find($leadB->id))->not->toBeNull();
@@ -126,7 +126,7 @@ test('deleting a lead from the index requires opening the password modal, then t
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('confirmDeleteLead', $lead->id)
         ->assertSet('showDeleteLeadModal', true)
         ->assertSet('confirmingDeleteLeadId', $lead->id)
@@ -144,7 +144,7 @@ test('an incorrect password does not delete the lead from the index and shows an
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('confirmDeleteLead', $lead->id)
         ->set('deletePassword', 'wrong-password')
         ->call('deleteLeadConfirmed')
@@ -160,7 +160,7 @@ test('an empty password is rejected before checking against the stored password'
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('confirmDeleteLead', $lead->id)
         ->set('deletePassword', '')
         ->call('deleteLeadConfirmed')
@@ -176,7 +176,7 @@ test('a user without delete permission cannot even open the delete password moda
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('confirmDeleteLead', $lead->id)
         ->assertSet('showDeleteLeadModal', false)
         ->assertDispatched('toast-show');

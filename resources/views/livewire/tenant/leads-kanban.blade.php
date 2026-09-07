@@ -5,7 +5,7 @@
     ]" />
 @endpush
 
-<div class="flex flex-1 flex-col h-full min-h-0 overflow-hidden">
+<div class="flex flex-1 flex-col h-full min-h-0 overflow-hidden" wire:init="completeInitialLoad">
     {{-- Header: heading, actions, and filters stay fixed at top. --}}
     <div class="shrink-0 z-10 flex flex-col gap-2 bg-white px-4 py-3 lg:gap-3.5 lg:px-8 lg:py-4 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
         <div class="flex items-center justify-between gap-2">
@@ -36,6 +36,34 @@
                     collect($this->assignableUsers)->map(fn($u) => ['value' => (string) $u->id, 'label' => $u->name])->toArray()
                 );
             }
+
+            // Every action that re-queries $this->boardLeads/$this->boardLeadCounts:
+            // this board's three filter properties (priority, sourceType,
+            // search — no status/fromDate/toDate, this view has no controls
+            // for those, and no pagination — boardLeads() is a plain
+            // ->limit()->get(), not paginated) plus assignedTo for a Client
+            // Admin, plus completeInitialLoad() (fired once via wire:init
+            // below, right after mount — see $initialLoadComplete's
+            // docblock on Index for why the very first paint needs the
+            // skeleton too). Same technique as leads.blade.php's identical
+            // $listLoadingTargets: every real/skeleton toggle below is
+            // wire:loading.class="!hidden" or wire:loading.remove.class,
+            // never a bare wire:loading/.remove — see that file's long
+            // comment for why (Livewire's non-class display toggling
+            // forces `display: inline-block` on anything outside a small
+            // supported list, and permanently corrupts a .remove element
+            // after its first completed loading cycle).
+            $listLoadingTargets = 'priority,sourceType,assignedTo,search,completeInitialLoad';
+
+            // See the identical $showSkeletonByDefault in leads.blade.php
+            // for the full explanation: wire:loading's class toggle only
+            // takes effect once Livewire's JS actually dispatches a
+            // request, and there's a real gap between this raw HTML
+            // painting and the wire:init below firing. Without this, each
+            // column's real (but genuinely empty pre-initialLoadComplete)
+            // content would flash its own "No leads"/empty state before the
+            // skeleton ever appears.
+            $showSkeletonByDefault = ! $initialLoadComplete;
         @endphp
 
         <div class="grid grid-cols-2 gap-2 md:grid-cols-3 lg:gap-3">
@@ -68,7 +96,14 @@
     {{-- Main scrollable area (scrollbar touches right edge & bottom edge) --}}
     <div class="flex-1 min-h-0 overflow-auto" wire:loading.class.delay="opacity-70" wire:target="moveLead">
         <div class="p-4 sm:p-6 lg:p-8 flex flex-col gap-6 min-h-full">
-        @if ($this->boardLeads->isEmpty())
+        {{-- $initialLoadComplete guards this: before the first real fetch
+        finishes, boardLeads is guaranteed empty (see filteredQuery()'s
+        `1 = 0` guard on Index), which would otherwise show this "No leads
+        yet" empty state instead of the skeleton board below on every fresh
+        page load. Once initialLoadComplete flips true (permanently, for
+        the rest of this component's lifetime), this collapses back to the
+        original plain isEmpty() check. --}}
+        @if ($initialLoadComplete && $this->boardLeads->isEmpty())
             <div class="flex flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-zinc-200 py-16 text-center dark:border-zinc-700">
                 <flux:icon.inbox class="size-8 text-zinc-300 dark:text-zinc-600" />
                 <flux:text variant="strong">{{ __('No leads yet') }}</flux:text>
@@ -188,25 +223,64 @@
                             :class="dragDepth > 0 ? '{{ $statusCase->columnDropTargetClasses() }}' : '{{ $statusCase->columnBackgroundClasses() }}'"
                             class="flex w-72 min-h-32 shrink-0 flex-col rounded-lg transition-colors"
                         >
-                            <div class="flex items-center justify-between gap-2 px-3 py-2.5">
-                                <flux:text variant="strong" size="sm">{{ $statusCase->label() }}</flux:text>
-                                <flux:badge size="sm" :color="$statusCase->color()">{{ $totalCount }}</flux:badge>
+                            {{-- Real content: the status label itself is always
+                            shown (it's from tenantLeadStatuses, cheap tenant
+                            metadata, never gated behind $initialLoadComplete)
+                            — only the count and card list, which come from
+                            boardLeads()/boardLeadCounts() and are genuinely
+                            empty until the first (or a refetching) query
+                            completes, toggle against the skeleton below. --}}
+                            <div wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" class="{{ $showSkeletonByDefault ? '!hidden' : '' }} contents">
+                                <div class="flex items-center justify-between gap-2 px-3 py-2.5">
+                                    <flux:text variant="strong" size="sm">{{ $statusCase->label() }}</flux:text>
+                                    <flux:badge size="sm" :color="$statusCase->color()">{{ $totalCount }}</flux:badge>
+                                </div>
+
+                                <div class="flex flex-1 flex-col gap-2 px-3 pb-3">
+                                    @forelse ($columnLeads as $lead)
+                                        @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'draggable' => true, 'canMove' => $this->canUpdateLeads, 'tenantStatuses' => $this->tenantLeadStatuses, 'tenant' => auth()->user()->tenant])
+                                    @empty
+                                        <div class="rounded-md border border-dashed border-zinc-200 py-6 text-center dark:border-zinc-700">
+                                            <flux:text size="sm" variant="subtle">{{ __('No leads') }}</flux:text>
+                                        </div>
+                                    @endforelse
+
+                                    @if ($columnLeads->count() < $totalCount)
+                                        <flux:text size="sm" variant="subtle" class="px-1 pt-1">
+                                            {{ __('Showing :shown of :total — refine filters to see the rest.', ['shown' => $columnLeads->count(), 'total' => $totalCount]) }}
+                                        </flux:text>
+                                    @endif
+                                </div>
                             </div>
 
-                            <div class="flex flex-1 flex-col gap-2 px-3 pb-3">
-                                @forelse ($columnLeads as $lead)
-                                    @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'draggable' => true, 'canMove' => $this->canUpdateLeads, 'tenantStatuses' => $this->tenantLeadStatuses, 'tenant' => auth()->user()->tenant])
-                                @empty
-                                    <div class="rounded-md border border-dashed border-zinc-200 py-6 text-center dark:border-zinc-700">
-                                        <flux:text size="sm" variant="subtle">{{ __('No leads') }}</flux:text>
-                                    </div>
-                                @endforelse
+                            {{-- Skeleton: same header (real label/color, skeleton
+                            count pill) + a handful of card-shaped placeholders,
+                            shown only while boardLeads/boardLeadCounts are
+                            being (re)fetched — see $listLoadingTargets above.
+                            Card count is arbitrary (3), not tied to any real
+                            count — unlike the main Leads table, this board has
+                            no fixed page size to match. --}}
+                            <div class="{{ $showSkeletonByDefault ? '' : '!hidden' }} contents" wire:loading.remove.class="!hidden" wire:target="{{ $listLoadingTargets }}">
+                                <div class="flex items-center justify-between gap-2 px-3 py-2.5">
+                                    <flux:text variant="strong" size="sm">{{ $statusCase->label() }}</flux:text>
+                                    <div class="h-5 w-6 skeleton-shimmer rounded-full"></div>
+                                </div>
 
-                                @if ($columnLeads->count() < $totalCount)
-                                    <flux:text size="sm" variant="subtle" class="px-1 pt-1">
-                                        {{ __('Showing :shown of :total — refine filters to see the rest.', ['shown' => $columnLeads->count(), 'total' => $totalCount]) }}
-                                    </flux:text>
-                                @endif
+                                <div class="flex flex-1 flex-col gap-2 px-3 pb-3">
+                                    @for ($i = 0; $i < 3; $i++)
+                                        <div wire:key="column-skeleton-{{ $statusCase->id }}-{{ $i }}" class="flex flex-col gap-2 rounded-lg border border-zinc-950/10 bg-white/70 p-3 dark:border-white/10 dark:bg-zinc-800/70">
+                                            <div class="flex items-center gap-1.5">
+                                                <div class="h-3.5 w-10 skeleton-shimmer rounded-full"></div>
+                                                <div class="h-3.5 w-12 skeleton-shimmer rounded-full"></div>
+                                            </div>
+                                            <div class="flex flex-col gap-1">
+                                                <div class="h-3 w-24 skeleton-shimmer rounded"></div>
+                                                <div class="h-2.5 w-32 skeleton-shimmer rounded"></div>
+                                            </div>
+                                            <div class="h-4 w-16 skeleton-shimmer rounded-full"></div>
+                                        </div>
+                                    @endfor
+                                </div>
                             </div>
                         </div>
                     @endforeach
@@ -214,22 +288,63 @@
 
                 {{-- Mobile: status-grouped vertical list --}}
                 <div class="flex flex-col gap-6 lg:hidden">
-                    @foreach ($this->tenantLeadStatuses as $statusCase)
-                        @php $columnLeads = $this->boardLeads->get($statusCase->id, collect()); @endphp
-                        @if ($columnLeads->isNotEmpty())
-                            <div wire:key="mobile-group-{{ $statusCase->id }}" class="flex flex-col gap-2">
+                    {{-- Real content: unlike the desktop columns above, an
+                    empty status is skipped entirely here (isNotEmpty()) —
+                    that's existing, deliberate behavior for the steady
+                    state (a long pipeline with several never-used stages
+                    doesn't need an empty group per stage on a phone
+                    screen), left untouched. Wrapped as one block so the
+                    whole real list toggles against the skeleton below in a
+                    single wire:loading pair instead of repeating it per
+                    status. --}}
+                    <div wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" class="{{ $showSkeletonByDefault ? '!hidden' : '' }} contents">
+                        @foreach ($this->tenantLeadStatuses as $statusCase)
+                            @php $columnLeads = $this->boardLeads->get($statusCase->id, collect()); @endphp
+                            @if ($columnLeads->isNotEmpty())
+                                <div wire:key="mobile-group-{{ $statusCase->id }}" class="flex flex-col gap-2">
+                                    <div class="flex items-center gap-2 px-1">
+                                        <flux:text variant="strong" size="sm">{{ $statusCase->label() }}</flux:text>
+                                        <flux:badge size="sm" :color="$statusCase->color()">{{ $columnLeads->count() }}</flux:badge>
+                                    </div>
+                                    <div class="flex flex-col gap-2">
+                                        @foreach ($columnLeads as $lead)
+                                            @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'draggable' => false, 'canMove' => $this->canUpdateLeads, 'tenantStatuses' => $this->tenantLeadStatuses, 'tenant' => auth()->user()->tenant])
+                                        @endforeach
+                                    </div>
+                                </div>
+                            @endif
+                        @endforeach
+                    </div>
+
+                    {{-- Skeleton: every status shown unconditionally (the
+                    real list's isNotEmpty() skip doesn't apply here — there's
+                    no way to know yet which statuses will actually have
+                    leads), 2 placeholder cards each. --}}
+                    <div class="{{ $showSkeletonByDefault ? '' : '!hidden' }} contents" wire:loading.remove.class="!hidden" wire:target="{{ $listLoadingTargets }}">
+                        @foreach ($this->tenantLeadStatuses as $statusCase)
+                            <div wire:key="mobile-group-skeleton-{{ $statusCase->id }}" class="flex flex-col gap-2">
                                 <div class="flex items-center gap-2 px-1">
                                     <flux:text variant="strong" size="sm">{{ $statusCase->label() }}</flux:text>
-                                    <flux:badge size="sm" :color="$statusCase->color()">{{ $columnLeads->count() }}</flux:badge>
+                                    <div class="h-5 w-6 skeleton-shimmer rounded-full"></div>
                                 </div>
                                 <div class="flex flex-col gap-2">
-                                    @foreach ($columnLeads as $lead)
-                                        @include('livewire.tenant.leads.partials.lead-card', ['lead' => $lead, 'draggable' => false, 'canMove' => $this->canUpdateLeads, 'tenantStatuses' => $this->tenantLeadStatuses, 'tenant' => auth()->user()->tenant])
-                                    @endforeach
+                                    @for ($i = 0; $i < 2; $i++)
+                                        <div wire:key="mobile-card-skeleton-{{ $statusCase->id }}-{{ $i }}" class="flex flex-col gap-2 rounded-lg border border-zinc-950/10 bg-white/70 p-3 dark:border-white/10 dark:bg-zinc-800/70">
+                                            <div class="flex items-center gap-1.5">
+                                                <div class="h-3.5 w-10 skeleton-shimmer rounded-full"></div>
+                                                <div class="h-3.5 w-12 skeleton-shimmer rounded-full"></div>
+                                            </div>
+                                            <div class="flex flex-col gap-1">
+                                                <div class="h-3 w-24 skeleton-shimmer rounded"></div>
+                                                <div class="h-2.5 w-32 skeleton-shimmer rounded"></div>
+                                            </div>
+                                            <div class="h-4 w-16 skeleton-shimmer rounded-full"></div>
+                                        </div>
+                                    @endfor
                                 </div>
                             </div>
-                        @endif
-                    @endforeach
+                        @endforeach
+                    </div>
             </div>
         @endif
         </div>

@@ -34,6 +34,18 @@ class SourceLeads extends Component
 
     public LeadSource $leadSource;
 
+    /**
+     * Starts false on every fresh mount so the very first paint can skip
+     * leads()'s actual row query and show the skeleton immediately — same
+     * reasoning and wire:init trigger as Index::$initialLoadComplete.
+     * Deliberately does NOT also gate fieldColumns() (used to build both
+     * the real header's dynamic Instant Form columns and the skeleton's
+     * matching cell count): fieldColumns() needs to return the true field
+     * set from the start so the header's column count is stable before and
+     * after loading, rather than growing once real data arrives.
+     */
+    public bool $initialLoadComplete = false;
+
     public function mount(LeadSource $leadSource): void
     {
         Gate::authorize('viewAny', Lead::class);
@@ -41,6 +53,11 @@ class SourceLeads extends Component
         abort_unless($leadSource->type === LeadSourceType::FacebookLeadAds, 404);
 
         $this->leadSource = $leadSource;
+    }
+
+    public function completeInitialLoad(): void
+    {
+        $this->initialLoadComplete = true;
     }
 
     /**
@@ -69,6 +86,10 @@ class SourceLeads extends Component
     #[Computed]
     public function leads()
     {
+        if (! $this->initialLoadComplete) {
+            return Lead::query()->whereRaw('1 = 0')->paginate(25);
+        }
+
         return $this->applyLeadIdSearch($this->applyDropdownFilters($this->baseQuery()))
             ->with(['assignedUser', 'status'])
             ->latest()
@@ -148,6 +169,6 @@ class SourceLeads extends Component
 
         $term = '%'.self::escapeLikeValue(mb_strtolower($this->search)).'%';
 
-        return $query->whereRaw("LOWER(identifier) LIKE ? ESCAPE '\\'", [$term]);
+        return $query->whereRaw('LOWER(identifier) LIKE ? ESCAPE '.self::LIKE_ESCAPE_LITERAL, [$term]);
     }
 }

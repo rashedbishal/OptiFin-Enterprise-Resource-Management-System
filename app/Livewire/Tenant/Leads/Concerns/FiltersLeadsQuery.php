@@ -41,6 +41,23 @@ trait FiltersLeadsQuery
      */
     public string $search = '';
 
+    /**
+     * `ESCAPE '!'` rather than the SQL-conventional `ESCAPE '\'`: PDO's
+     * pgsql driver rewrites `?` into native `$1, $2, ...` placeholders by
+     * scanning the raw query text itself, and that scanner treats a `\`
+     * immediately before a closing `'` as escaping the quote (pre-9.1
+     * Postgres string style) even though this app's Postgres has
+     * standard_conforming_strings on, where `\` is just a literal
+     * character — so it reads `'\'` as an unterminated string, keeps
+     * scanning past the `?` that follows, and every LIKE clause after the
+     * first loses a placeholder. Net effect: an "Invalid parameter number:
+     * parameter was not defined" QueryException on every search, not a bad
+     * result — this is a client-side parsing bug in PDO, not anything
+     * about the query being wrong. `!` sidesteps it by not being special to
+     * either parser.
+     */
+    private const LIKE_ESCAPE_LITERAL = "'!'";
+
     #[Computed]
     public function isClientAdmin(): bool
     {
@@ -161,33 +178,33 @@ trait FiltersLeadsQuery
         // LIKE is case-sensitive, unlike MySQL/SQLite's usual collations,
         // and this app runs on Postgres.
         return $query->where(function (Builder $q) use ($term): void {
-            $q->whereRaw("LOWER(identifier) LIKE ? ESCAPE '\\'", [$term])
-                ->orWhereRaw("LOWER(name) LIKE ? ESCAPE '\\'", [$term])
-                ->orWhereRaw("LOWER(phone) LIKE ? ESCAPE '\\'", [$term])
-                ->orWhereRaw("LOWER(email) LIKE ? ESCAPE '\\'", [$term])
-                ->orWhereRaw("LOWER(company) LIKE ? ESCAPE '\\'", [$term]);
+            $q->whereRaw('LOWER(identifier) LIKE ? ESCAPE '.self::LIKE_ESCAPE_LITERAL, [$term])
+                ->orWhereRaw('LOWER(name) LIKE ? ESCAPE '.self::LIKE_ESCAPE_LITERAL, [$term])
+                ->orWhereRaw('LOWER(phone) LIKE ? ESCAPE '.self::LIKE_ESCAPE_LITERAL, [$term])
+                ->orWhereRaw('LOWER(email) LIKE ? ESCAPE '.self::LIKE_ESCAPE_LITERAL, [$term])
+                ->orWhereRaw('LOWER(company) LIKE ? ESCAPE '.self::LIKE_ESCAPE_LITERAL, [$term]);
 
             if ($this->isClientAdmin) {
-                $q->orWhereRaw("LOWER(location) LIKE ? ESCAPE '\\'", [$term])
-                    ->orWhereRaw("LOWER(CAST(win_probability AS TEXT)) LIKE ? ESCAPE '\\'", [$term])
-                    ->orWhereRaw("LOWER(CAST(deal_value AS TEXT)) LIKE ? ESCAPE '\\'", [$term]);
+                $q->orWhereRaw('LOWER(location) LIKE ? ESCAPE '.self::LIKE_ESCAPE_LITERAL, [$term])
+                    ->orWhereRaw('LOWER(CAST(win_probability AS TEXT)) LIKE ? ESCAPE '.self::LIKE_ESCAPE_LITERAL, [$term])
+                    ->orWhereRaw('LOWER(CAST(deal_value AS TEXT)) LIKE ? ESCAPE '.self::LIKE_ESCAPE_LITERAL, [$term]);
             }
         });
     }
 
     /**
-     * Escapes literal `%`/`_`/`\` characters in a value about to be
+     * Escapes literal `%`/`_`/`!` characters in a value about to be
      * interpolated into a `LIKE` pattern, paired with an explicit
-     * `ESCAPE '\'` clause on every `LIKE` above — without this, a user
+     * `ESCAPE '!'` clause on every `LIKE` above — without this, a user
      * searching for a literal `%` or `_` (e.g. "50%" for a deal value, or a
      * phone number with an underscore) gets it silently treated as a
-     * wildcard instead of the literal character, over-matching. `\` itself
-     * must be escaped first, or a `\` already in the search term would be
+     * wildcard instead of the literal character, over-matching. `!` itself
+     * must be escaped first, or a `!` already in the search term would be
      * misread as the start of an (unintended) escape sequence once `%`/`_`
      * are escaped after it.
      */
     private static function escapeLikeValue(string $value): string
     {
-        return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
+        return str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $value);
     }
 }

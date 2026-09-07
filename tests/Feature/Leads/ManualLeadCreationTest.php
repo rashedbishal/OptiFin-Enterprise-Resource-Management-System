@@ -13,7 +13,7 @@ test('a client admin can create a manual lead with full CRM details', function (
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('createLead')
         ->set('leadName', 'Rafiqul Islam')
         ->set('leadCompany', 'Apex Global Logistics Ltd.')
@@ -60,7 +60,7 @@ test('the CRM detail fields on a manual lead are all optional', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('createLead')
         ->set('leadName', 'Bare Minimum Lead')
         ->set('leadPhone', '+8801700000099')
@@ -81,7 +81,7 @@ test('creating a lead with a meeting and follow-up already set notifies other ad
     $otherAdmin = TenantUser::factory()->clientAdmin()->create(['tenant_id' => $tenant->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('createLead')
         ->set('leadName', 'Rafiqul Islam')
         ->set('leadPhone', '+8801712345678')
@@ -104,7 +104,7 @@ test('creating a lead with no meeting or follow-up sends neither notification', 
     $otherAdmin = TenantUser::factory()->clientAdmin()->create(['tenant_id' => $tenant->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('createLead')
         ->set('leadName', 'Bare Minimum Lead')
         ->set('leadPhone', '+8801700000099')
@@ -118,7 +118,7 @@ test('win probability must be between 0 and 100', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('createLead')
         ->set('leadName', 'Invalid Probability Lead')
         ->set('leadPhone', '+8801700000098')
@@ -134,7 +134,7 @@ test('creating multiple manual leads reuses the same tenant Custom source', func
 
     foreach (['Lead One', 'Lead Two'] as $name) {
         Livewire::actingAs($clientAdmin)
-            ->test(Index::class)
+            ->test(Index::class)->call('completeInitialLoad')
             ->call('createLead')
             ->set('leadName', $name)
             ->set('leadPhone', '+8801700000000')
@@ -150,7 +150,7 @@ test('a client admin can assign a manual lead to a team member on creation', fun
     $rep = clientUserWithLeadPermission($tenant);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('createLead')
         ->set('leadName', 'Assigned Lead')
         ->set('leadPhone', '+8801700000001')
@@ -169,7 +169,7 @@ test('a non-admin with create permission is auto-assigned the manual lead they c
     $rep = clientUserWithLeadPermission($tenant, ['view', 'create']);
 
     Livewire::actingAs($rep)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('createLead')
         ->set('leadName', 'Self Assigned Lead')
         ->set('leadPhone', '+8801700000002')
@@ -185,7 +185,7 @@ test('a user without lead-management create permission cannot create a manual le
     ['tenant' => $tenant] = tenantWithLeadManagement();
     $rep = clientUserWithLeadPermission($tenant, ['view']);
 
-    $component = Livewire::actingAs($rep)->test(Index::class);
+    $component = Livewire::actingAs($rep)->test(Index::class)->call('completeInitialLoad');
 
     expect($component->instance()->canCreateLead)->toBeFalse();
 
@@ -198,7 +198,7 @@ test('name and phone are required to create a manual lead', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('createLead')
         ->call('saveLead')
         ->assertHasErrors(['leadName' => 'required', 'leadPhone' => 'required']);
@@ -210,7 +210,7 @@ test('a contact name with digits or stray symbols is rejected', function (string
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('createLead')
         ->set('leadName', $invalidName)
         ->set('leadPhone', '+8801700000097')
@@ -228,7 +228,7 @@ test('a phone number that is too short or has invalid characters is rejected', f
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('createLead')
         ->set('leadName', 'Valid Name')
         ->set('leadPhone', $invalidPhone)
@@ -246,7 +246,7 @@ test('a website url without http or https is rejected', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('createLead')
         ->set('leadName', 'Valid Name')
         ->set('leadPhone', '+8801700000096')
@@ -261,7 +261,7 @@ test('a budget in scientific notation or with thousands separators is rejected',
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('createLead')
         ->set('leadName', 'Valid Name')
         ->set('leadPhone', '+8801700000095')
@@ -280,7 +280,7 @@ test('a next follow-up date in the past is rejected', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('createLead')
         ->set('leadName', 'Valid Name')
         ->set('leadPhone', '+8801700000094')
@@ -295,7 +295,7 @@ test('a meeting date in the past is rejected', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('createLead')
         ->set('leadName', 'Valid Name')
         ->set('leadPhone', '+8801700000094')

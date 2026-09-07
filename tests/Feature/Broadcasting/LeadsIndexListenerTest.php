@@ -7,7 +7,7 @@ test('the leads index listens for lead.received on its own tenant channel', func
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
     $listeners = Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->instance()
         ->getListeners();
 
@@ -18,7 +18,7 @@ test('the leads index listens for lead.updated on its own tenant channel', funct
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
     $listeners = Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->instance()
         ->getListeners();
 

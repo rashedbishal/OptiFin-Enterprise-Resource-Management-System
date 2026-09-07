@@ -22,7 +22,7 @@ test('the spreadsheet table does not lazy-load each lead\'s status one row at a 
 
     try {
         Livewire::actingAs($clientAdmin)
-            ->test(SourceLeads::class, ['leadSource' => $source])
+            ->test(SourceLeads::class, ['leadSource' => $source])->call('completeInitialLoad')
             ->assertSee($leads->first()->identifier);
     } finally {
         Model::preventLazyLoading(false);
@@ -40,7 +40,7 @@ test('the xlsx export does not lazy-load each lead\'s status one row at a time',
 
     try {
         Livewire::actingAs($clientAdmin)
-            ->test(SourceLeads::class, ['leadSource' => $source])
+            ->test(SourceLeads::class, ['leadSource' => $source])->call('completeInitialLoad')
             ->call('downloadXlsx')
             ->assertFileDownloaded('fb-lead-ads-2026-08-30_143210.xlsx');
     } finally {
@@ -82,7 +82,7 @@ test('the leads index shows one aggregate row per facebook lead ads source inste
     $websiteSource = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::WebsiteForm]);
     Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $websiteSource->id]);
 
-    $component = Livewire::actingAs($clientAdmin)->test(Index::class);
+    $component = Livewire::actingAs($clientAdmin)->test(Index::class)->call('completeInitialLoad');
 
     expect($component->get('facebookLeadAdsSources'))->toHaveCount(1);
     expect($component->get('facebookLeadAdsSources')->first()->leads_count)->toBe(3);
@@ -97,7 +97,7 @@ test('a second facebook lead ads source gets its own aggregate row', function ()
     Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $sourceB->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->assertSee('Fb Lead Ads')
         ->assertSee('Fb Lead Ads (Campaign 2)');
 });
@@ -108,13 +108,13 @@ test('a non-admin agent only sees a facebook lead ads aggregate row for sources 
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
     Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
 
-    $component = Livewire::actingAs($rep)->test(Index::class);
+    $component = Livewire::actingAs($rep)->test(Index::class)->call('completeInitialLoad');
 
     expect($component->get('facebookLeadAdsSources'))->toHaveCount(0);
 
     $assignedLead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'assigned_to' => $rep->id]);
 
-    $component = Livewire::actingAs($rep)->test(Index::class);
+    $component = Livewire::actingAs($rep)->test(Index::class)->call('completeInitialLoad');
 
     expect($component->get('facebookLeadAdsSources'))->toHaveCount(1);
     expect($component->get('facebookLeadAdsSources')->first()->leads_count)->toBe(1);
@@ -139,7 +139,7 @@ test('the spreadsheet view lists a facebook lead ads source\'s submissions with 
     ]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(SourceLeads::class, ['leadSource' => $source])
+        ->test(SourceLeads::class, ['leadSource' => $source])->call('completeInitialLoad')
         ->assertSee('Full Name')
         ->assertSee('City')
         ->assertSee('Jane Doe')
@@ -164,7 +164,7 @@ test('the spreadsheet view unions field_data columns across leads from different
         'source_data' => ['field_data' => [['name' => 'budget', 'values' => ['$500']]]],
     ]);
 
-    $component = Livewire::actingAs($clientAdmin)->test(SourceLeads::class, ['leadSource' => $source]);
+    $component = Livewire::actingAs($clientAdmin)->test(SourceLeads::class, ['leadSource' => $source])->call('completeInitialLoad');
 
     expect($component->get('fieldColumns'))->toBe(['full_name', 'budget']);
 });
@@ -189,7 +189,7 @@ test('a non-admin agent only sees leads assigned to them in the spreadsheet view
     ]);
 
     $component = Livewire::actingAs($rep)
-        ->test(SourceLeads::class, ['leadSource' => $source])
+        ->test(SourceLeads::class, ['leadSource' => $source])->call('completeInitialLoad')
         ->assertSee('Mine')
         ->assertDontSee('NotMine');
 
@@ -207,7 +207,7 @@ test('the spreadsheet view filters leads by a submitted-at date range, applied i
     $recentLead->forceFill(['created_at' => now()->subDay()])->save();
 
     $component = Livewire::actingAs($clientAdmin)
-        ->test(SourceLeads::class, ['leadSource' => $source])
+        ->test(SourceLeads::class, ['leadSource' => $source])->call('completeInitialLoad')
         ->set('fromDate', now()->subDays(3)->toDateString());
 
     expect($component->get('leads')->pluck('id'))->toContain($recentLead->id)->not->toContain($oldLead->id);
@@ -226,7 +226,7 @@ test('the spreadsheet view has a case-insensitive search box that matches Lead I
     $other = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'name' => 'John Smith']);
 
     $component = Livewire::actingAs($clientAdmin)
-        ->test(SourceLeads::class, ['leadSource' => $source])
+        ->test(SourceLeads::class, ['leadSource' => $source])->call('completeInitialLoad')
         ->set('search', strtolower($match->identifier));
 
     expect($component->get('leads')->pluck('id'))->toContain($match->id)->not->toContain($other->id);
@@ -262,7 +262,7 @@ test('the spreadsheet\'s mobile card shows only Lead ID, Status, and Submitted t
         'name' => 'Jane Doe',
     ]);
 
-    $html = Livewire::actingAs($clientAdmin)->test(SourceLeads::class, ['leadSource' => $source])->html();
+    $html = Livewire::actingAs($clientAdmin)->test(SourceLeads::class, ['leadSource' => $source])->call('completeInitialLoad')->html();
 
     expect($html)->toContain('wire:key="fb-source-lead-card-'.$lead->id.'"');
     expect($html)->toContain('href="'.route('tenant-leads.show', $lead).'"');
@@ -277,7 +277,7 @@ test('the spreadsheet\'s mobile card shimmers a Lead ID inside an active meeting
     $alertLead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'meeting_date' => today()->addDay()]);
     $plainLead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
 
-    $html = Livewire::actingAs($clientAdmin)->test(SourceLeads::class, ['leadSource' => $source])->html();
+    $html = Livewire::actingAs($clientAdmin)->test(SourceLeads::class, ['leadSource' => $source])->call('completeInitialLoad')->html();
 
     // Once for the mobile card, once for the desktop table — see the
     // "shimmering also work in desktop view" requirement this covers.
@@ -293,7 +293,7 @@ test('the spreadsheet\'s desktop table also shimmers a Lead ID inside an active 
     Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'next_follow_up_at' => today()]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(SourceLeads::class, ['leadSource' => $source])
+        ->test(SourceLeads::class, ['leadSource' => $source])->call('completeInitialLoad')
         ->assertSeeHtml('lead-id-shimmer-text')
         ->assertSee('Follow-up scheduled on');
 });
@@ -320,7 +320,7 @@ test('a client user without lead view permission cannot open the spreadsheet vie
 test('the leads index source type filter no longer offers facebook lead ads', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
-    $component = Livewire::actingAs($clientAdmin)->test(Index::class);
+    $component = Livewire::actingAs($clientAdmin)->test(Index::class)->call('completeInitialLoad');
 
     expect($component->instance()->sourceTypeOptions())->not->toContain(LeadSourceType::FacebookLeadAds->value);
 });
@@ -331,7 +331,7 @@ test('the leads index shows a view all button (not delete) for a facebook lead a
     Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->assertSee('View All')
         ->assertDontSeeHtml('wire:click="confirmDeleteSource(\''.$source->id.'\')"');
 });
@@ -341,7 +341,7 @@ test('the leads index shows a delete button (not view all) for an empty facebook
     LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->assertSee('Delete')
         ->assertDontSee('View All');
 });
@@ -351,7 +351,7 @@ test('the mobile card for a facebook lead ads source with leads has no View All 
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
     Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
 
-    $html = Livewire::actingAs($clientAdmin)->test(Index::class)->html();
+    $html = Livewire::actingAs($clientAdmin)->test(Index::class)->call('completeInitialLoad')->html();
 
     expect($html)->toContain('wire:key="fb-lead-ads-source-card-'.$source->id.'"');
     expect($html)->toContain('href="'.route('tenant-leads.source', $source).'"');
@@ -366,7 +366,7 @@ test('an empty facebook lead ads source\'s mobile card is not a link — there i
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
 
-    $html = Livewire::actingAs($clientAdmin)->test(Index::class)->html();
+    $html = Livewire::actingAs($clientAdmin)->test(Index::class)->call('completeInitialLoad')->html();
 
     expect($html)->not->toContain('href="'.route('tenant-leads.source', $source).'"');
 
@@ -408,7 +408,7 @@ test('a client admin can delete an empty facebook lead ads source', function () 
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('deleteSource', $source->id)
         ->assertDispatched('toast-show');
 
@@ -420,7 +420,7 @@ test('deleting an empty facebook lead ads source goes through the confirm modal'
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('confirmDeleteSource', $source->id)
         ->assertSet('showDeleteSourceModal', true)
         ->assertSet('confirmingDeleteSourceId', $source->id)
@@ -436,7 +436,7 @@ test('deleting a facebook lead ads source that has leads is refused', function (
     Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('deleteSource', $source->id);
 
     expect(LeadSource::find($source->id))->not->toBeNull();
@@ -448,7 +448,7 @@ test('a client user without delete permission cannot delete a facebook lead ads 
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
 
     Livewire::actingAs($rep)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('deleteSource', $source->id)
         ->assertDispatched('toast-show');
 
@@ -460,7 +460,7 @@ test('a client admin cannot delete another tenant\'s facebook lead ads source', 
     ['tenant' => $tenantB] = tenantWithLeadManagement();
     $sourceB = LeadSource::factory()->create(['tenant_id' => $tenantB->id, 'type' => LeadSourceType::FacebookLeadAds]);
 
-    expect(fn () => Livewire::actingAs($clientAdminA)->test(Index::class)->call('deleteSource', $sourceB->id))
+    expect(fn () => Livewire::actingAs($clientAdminA)->test(Index::class)->call('completeInitialLoad')->call('deleteSource', $sourceB->id))
         ->toThrow(ModelNotFoundException::class);
 
     expect(LeadSource::find($sourceB->id))->not->toBeNull();
@@ -478,7 +478,7 @@ test('the spreadsheet view downloads an xlsx file named after the source and the
     ]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(SourceLeads::class, ['leadSource' => $source])
+        ->test(SourceLeads::class, ['leadSource' => $source])->call('completeInitialLoad')
         ->call('downloadXlsx')
         ->assertFileDownloaded('fb-lead-ads-2026-08-30_143210.xlsx');
 });

@@ -30,7 +30,7 @@ test('the advance button moves a lead to the next status', function () {
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('qualified')->id, 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->call('moveLead', $lead->id, $lead->nextPipelineStatus()->id);
 
     expect($lead->fresh()->status_id)->toBe(leadStatus('proposal_sent')->id);
@@ -42,7 +42,7 @@ test('the advance button is not shown on a Won lead', function () {
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('won')->id, 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->assertDontSee(__('Advance'))
         ->assertDontSeeHtml("wire:click.stop=\"moveLead('{$lead->id}'");
 });
@@ -53,7 +53,7 @@ test('the advance button is shown on a lead still in the core pipeline', functio
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('negotiation')->id, 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->assertSee(__('Advance'))
         ->assertSeeHtml("wire:click.stop=\"moveLead('{$lead->id}', '".leadStatus('won')->id."')\"");
 });
@@ -64,7 +64,7 @@ test('the advance button is hidden without update permission', function () {
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id, 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->assertDontSee(__('Advance'))
         ->assertDontSeeHtml("wire:click.stop=\"moveLead('{$lead->id}'");
 });

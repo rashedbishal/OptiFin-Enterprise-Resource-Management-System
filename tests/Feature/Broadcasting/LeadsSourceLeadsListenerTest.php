@@ -10,7 +10,7 @@ test('the leads source page listens for lead.received on its own tenant channel'
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
 
     $listeners = Livewire::actingAs($clientAdmin)
-        ->test(SourceLeads::class, ['leadSource' => $source])
+        ->test(SourceLeads::class, ['leadSource' => $source])->call('completeInitialLoad')
         ->instance()
         ->getListeners();
 
@@ -22,7 +22,7 @@ test('the leads source page listens for lead.updated on its own tenant channel',
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
 
     $listeners = Livewire::actingAs($clientAdmin)
-        ->test(SourceLeads::class, ['leadSource' => $source])
+        ->test(SourceLeads::class, ['leadSource' => $source])->call('completeInitialLoad')
         ->instance()
         ->getListeners();
 

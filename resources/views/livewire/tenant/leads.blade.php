@@ -13,6 +13,7 @@
         $wire.setPerPage(mobile.matches ? 10 : 15);
         mobile.addEventListener('change', (e) => $wire.setPerPage(e.matches ? 10 : 15));
     "
+    wire:init="completeInitialLoad"
 >
     {{-- Header: heading, actions, and filters stay fixed at top. --}}
     <div class="shrink-0 z-10 flex flex-col gap-2 bg-white px-4 py-3 lg:gap-3.5 lg:px-8 lg:py-4 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
@@ -48,6 +49,53 @@
                     collect($this->assignableUsers)->map(fn($u) => ['value' => (string) $u->id, 'label' => $u->name])->toArray()
                 );
             }
+
+            // Distinguishes "no leads at all" from "your search/filters
+            // matched nothing" for the @empty blocks below — the former
+            // keeps the existing "No leads yet." copy, the latter gets its
+            // own message rather than implying the tenant has no data.
+            $hasActiveFilters = $status !== ''
+                || $priority !== ''
+                || $sourceType !== ''
+                || ($this->isClientAdmin && $assignedTo !== '')
+                || $fromDate !== ''
+                || $toDate !== ''
+                || $search !== '';
+
+            // Every action that re-queries $this->leads: the seven
+            // wire:model.live-bound filter properties (see updating()'s
+            // reset-page array) plus every pagination trait method the
+            // published pagination view can call (gotoPage/previousPage/
+            // nextPage/setPage), the mobile/desktop setPerPage() called
+            // from this page's x-init, AND completeInitialLoad() (fired
+            // once via wire:init below, right after mount — see
+            // $initialLoadComplete's docblock on Index for why the very
+            // first paint needs the skeleton too, not just later filter/
+            // search/pagination changes). wire:loading pairs below watch
+            // exactly this list so the skeleton only appears while the
+            // LIST itself is being fetched — not for unrelated requests on
+            // this same component (opening the New Lead modal, exporting,
+            // deleting a row, toggling an alert switch, ...), which would
+            // otherwise also trip a bare wire:loading with no wire:target.
+            $listLoadingTargets = 'status,priority,sourceType,assignedTo,fromDate,toDate,search,gotoPage,previousPage,nextPage,setPage,setPerPage,completeInitialLoad';
+
+            // wire:loading's class toggle only takes effect once Livewire's
+            // JS actually dispatches a request — there's a real gap between
+            // the browser painting this raw HTML and the wire:init below
+            // firing. Left to wire:loading alone, the skeleton (hidden by
+            // default, revealed on loading) and the real content (visible
+            // by default, hidden on loading) would BOTH show their
+            // "not loading" state during that gap — meaning the real
+            // side's empty-state ("No leads yet") would flash before the
+            // skeleton ever appears, since $this->leads is genuinely empty
+            // pre-initialLoadComplete. $showSkeletonByDefault flips which
+            // side's baked-in static class starts hidden, decided from
+            // server-known state at render time — no JS timing gap
+            // possible. Once initialLoadComplete is true (permanently, for
+            // the rest of this component's lifetime), this collapses back
+            // to the original defaults and wire:loading alone handles every
+            // later search/filter/pagination transition correctly.
+            $showSkeletonByDefault = ! $initialLoadComplete;
         @endphp
 
         <div class="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-7 lg:gap-3">
@@ -59,8 +107,15 @@
                 <x-dropdown-select wire:model.live="assignedTo" :placeholder="__('All users')" :options="$assignedToOptionsFormatted" icon="user" />
             @endif
 
-            <x-date-picker wire:model.live="fromDate" :label="__('From Date')" :placeholder="__('From Date')" :max="$toDate ?: now()->toDateString()" />
-            <x-date-picker wire:model.live="toDate" :label="__('To Date')" :placeholder="__('To Date')" :min="$fromDate" :max="now()->toDateString()" />
+            {{-- !h-auto !py-1.5 !text-xs sm:!text-sm overrides x-date-picker's
+            own default (h-10 px-3 py-2 text-sm, sized to match flux:input for
+            its OTHER use in the deal-form grid further down this page) so it
+            shrinks to x-dropdown-select's natural button height instead —
+            important modifiers because Blade's $attributes->merge() just
+            concatenates classes, it doesn't resolve the h-10/py-2 conflict
+            on its own. --}}
+            <x-date-picker wire:model.live="fromDate" :label="__('From Date')" :placeholder="__('From Date')" :max="$toDate ?: now()->toDateString()" class="!h-auto !py-1.5 !text-xs sm:!text-sm" />
+            <x-date-picker wire:model.live="toDate" :label="__('To Date')" :placeholder="__('To Date')" :min="$fromDate" :max="now()->toDateString()" class="!h-auto !py-1.5 !text-xs sm:!text-sm" />
 
             {{-- col-span-2/3 keeps it on its own full-width row below the
             dropdowns/dates on mobile and tablet (2- and 3-column grids) —
@@ -187,10 +242,17 @@
                         no separate View All button, same treatment as the lead cards below.
                         A <div> below (not clickable) when there are no leads yet: there's
                         nothing for "view all" to open, and Delete lives there instead. --}}
+                        {{-- Not being refetched by any of $listLoadingTargets
+                        (a separate, unpaginated computed property) — stays
+                        real content, but dimmed in step with the skeleton
+                        cards below so the whole stack reads as "loading"
+                        instead of live content sitting above placeholders. --}}
                         <a
                             href="{{ route('tenant-leads.source', $source) }}"
                             wire:navigate
                             wire:key="fb-lead-ads-source-card-{{ $source->id }}"
+                            wire:loading.class="opacity-40 pointer-events-none"
+                            wire:target="{{ $listLoadingTargets }}"
                             class="flex flex-col gap-3 rounded-xl border border-blue-200/80 bg-blue-50/50 p-4 shadow-sm active:opacity-80 dark:border-blue-900/60 dark:bg-blue-950/30"
                         >
                             <div class="flex items-start justify-between gap-2">
@@ -207,7 +269,12 @@
                             </div>
                         </a>
                     @else
-                        <div wire:key="fb-lead-ads-source-card-{{ $source->id }}" class="flex flex-col gap-3 rounded-xl border border-blue-200/80 bg-blue-50/50 p-4 shadow-sm dark:border-blue-900/60 dark:bg-blue-950/30">
+                        <div
+                            wire:key="fb-lead-ads-source-card-{{ $source->id }}"
+                            wire:loading.class="opacity-40 pointer-events-none"
+                            wire:target="{{ $listLoadingTargets }}"
+                            class="flex flex-col gap-3 rounded-xl border border-blue-200/80 bg-blue-50/50 p-4 shadow-sm dark:border-blue-900/60 dark:bg-blue-950/30"
+                        >
                             <div class="flex items-start justify-between gap-2">
                                 <div class="flex flex-col">
                                     <span class="font-medium text-zinc-900 dark:text-white">{{ $source->name }}</span>
@@ -227,6 +294,36 @@
                     @endif
                 @endforeach
 
+                {{-- display:contents so this wrapper doesn't interfere with
+                the sm:hidden stack's own flex/gap layout — it's here purely
+                to give a single element for hiding to toggle instead of
+                repeating it on every card.
+
+                Deliberately wire:loading.CLASS, not the bare
+                wire:loading.remove directive: Livewire's non-class display
+                toggling (see toggleBooleanStateDirective in its JS source)
+                only recognizes a fixed list of display values (inline,
+                block, table, flex, grid, inline-flex, list-item) — anything
+                else, including "contents", falls back to forcing
+                `display: inline-block` via inline style. Worse, that
+                fallback isn't even scoped to the "loading" state: due to
+                how it caches/recomputes the display value across the
+                start/end of a request, a plain wire:loading.remove element
+                gets permanently pinned to inline-block once a SINGLE
+                loading cycle has completed, not just while loading. Using
+                `.class="!hidden"` instead only ever touches classList
+                (never el.style.display), so it can't hit that fallback at
+                all — `!hidden` (Tailwind's `display:none !important`) wins
+                over `contents` regardless of class order, and removing it
+                cleanly reveals `contents` again. Same reasoning applies to
+                every other wire:loading toggle in this file that targets a
+                table-structural element (tr/tbody) or "contents" div.
+
+                class is conditional on $showSkeletonByDefault (see that
+                variable's docblock above) so this starts hidden on the very
+                first paint too — not just once Livewire's JS confirms a
+                request is in flight. --}}
+                <div wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" class="{{ $showSkeletonByDefault ? '!hidden' : '' }} contents">
                 @forelse ($this->leads as $lead)
                     @php
                         $isRecentlyCreated = $this->recentlyCreatedLeadId === $lead->id
@@ -315,30 +412,123 @@
                         </div>
                     </a>
                 @empty
-                    @if ($this->facebookLeadAdsSources->isEmpty())
+                    @if ($hasActiveFilters)
+                        <div class="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-200 p-8 text-center dark:border-zinc-700">
+                            <flux:icon.magnifying-glass class="size-6 text-zinc-400" />
+                            <flux:text variant="strong">{{ __('No leads match your search or filters.') }}</flux:text>
+                            <flux:text variant="subtle" size="sm">{{ __('Try adjusting or clearing them.') }}</flux:text>
+                        </div>
+                    @elseif ($this->facebookLeadAdsSources->isEmpty())
                         <div class="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-200 p-8 text-center dark:border-zinc-700">
                             <flux:icon.inbox class="size-6 text-zinc-400" />
                             <flux:text variant="subtle">{{ __('No leads yet.') }}</flux:text>
                         </div>
                     @endif
                 @endforelse
+                </div>
+
+                {{-- Skeleton: same card shape as the real one above, shown
+                only while the list itself is being refetched (see
+                $listLoadingTargets) — not on unrelated requests like opening
+                a modal. Card count matches $perPage (10 on mobile, set via
+                the page's x-init) rather than a fixed number, so the stack's
+                height doesn't visibly shrink to the skeleton then snap back
+                once real cards replace it.
+
+                Starts with `!hidden` baked into the static class list (not
+                toggled on) and `wire:loading.remove.class="!hidden"` REMOVES
+                it while loading, revealing the "flex" utility that's also
+                always present — see the long comment above the real card
+                stack's wrapper for why this has to be class-based rather
+                than a bare wire:loading directive. Whether "!hidden" is
+                baked in AT ALL is itself conditional on
+                $showSkeletonByDefault — on the very first paint (before
+                initialLoadComplete) this must start VISIBLE, not hidden,
+                since $this->leads is genuinely empty until the wire:init
+                request completes and there'd be nothing to reveal it
+                otherwise. --}}
+                <div class="{{ $showSkeletonByDefault ? '' : '!hidden' }} flex flex-col gap-3.5" wire:loading.remove.class="!hidden" wire:target="{{ $listLoadingTargets }}">
+                    @for ($i = 0; $i < $perPage; $i++)
+                        <div wire:key="lead-card-skeleton-{{ $i }}" class="flex flex-col gap-2 rounded-lg border border-zinc-200/80 bg-zinc-50 p-3 dark:border-zinc-700/80 dark:bg-zinc-900/90">
+                            <div class="flex items-start justify-between gap-2">
+                                <div class="flex flex-col gap-1.5">
+                                    <div class="h-2.5 w-14 skeleton-shimmer rounded"></div>
+                                    <div class="h-3.5 w-28 skeleton-shimmer rounded"></div>
+                                    <div class="h-2.5 w-20 skeleton-shimmer rounded"></div>
+                                </div>
+                                <div class="h-5 w-16 shrink-0 skeleton-shimmer rounded-full"></div>
+                            </div>
+                            <div class="flex items-center justify-between gap-2">
+                                <div class="h-4 w-16 skeleton-shimmer rounded-full"></div>
+                                <div class="h-4 w-14 skeleton-shimmer rounded"></div>
+                            </div>
+                        </div>
+                    @endfor
+                </div>
             </div>
 
             {{-- Desktop / Tablet Table View (hidden sm:block) --}}
             <div class="hidden sm:block">
                 <flux:table>
+                    {{-- flux:table renders table-fixed (see vendor Flux's
+                    table/index.blade.php) with no explicit column widths, so
+                    without pinning them the browser derives each column's
+                    width from whichever row happens to be the first VISIBLE
+                    one — and that row changes depending on wire:loading
+                    state (the always-visible Facebook Lead Ads row vs. a
+                    real lead row vs. a skeleton row), each with different
+                    content widths. That made the header, the live rows, and
+                    the skeleton bars disagree on column positions.
+
+                    Widths are pinned TWICE, deliberately redundant: a
+                    <colgroup> (below) AND matching classes on every
+                    <flux:table.column> header cell. Chromium honors the
+                    colgroup alone; Firefox does not reliably apply
+                    percentage <col> widths under table-fixed (confirmed via
+                    a user screenshot — DevTools showed the colgroup present
+                    in the DOM with correct classes, but columns still
+                    unaligned) — Firefox is the one browser that reliably
+                    needs the width to live on the header row's own cells
+                    (the "first row" table-fixed always uses to lock column
+                    tracks), which is also spec-legal and the more
+                    universally-supported technique on its own. Keep both in
+                    sync if column count/proportions ever change. --}}
+                    <colgroup>
+                        <col class="w-[10%]">
+                        <col class="w-[22%]">
+                        <col class="w-[15%]">
+                        <col class="w-[13%]">
+                        <col class="w-[11%]">
+                        <col class="w-[15%]">
+                        <col class="w-[14%]">
+                    </colgroup>
                     <flux:table.columns>
-                        <flux:table.column>{{ __('Lead ID') }}</flux:table.column>
-                        <flux:table.column>{{ __('Name') }}</flux:table.column>
-                        <flux:table.column>{{ __('Source') }}</flux:table.column>
-                        <flux:table.column>{{ __('Status') }}</flux:table.column>
-                        <flux:table.column>{{ __('Priority') }}</flux:table.column>
-                        <flux:table.column>{{ __('Assigned To') }}</flux:table.column>
-                        <flux:table.column></flux:table.column>
+                        <flux:table.column class="w-[10%]">{{ __('Lead ID') }}</flux:table.column>
+                        <flux:table.column class="w-[22%]">{{ __('Name') }}</flux:table.column>
+                        <flux:table.column class="w-[15%]">{{ __('Source') }}</flux:table.column>
+                        <flux:table.column class="w-[13%]">{{ __('Status') }}</flux:table.column>
+                        <flux:table.column class="w-[11%]">{{ __('Priority') }}</flux:table.column>
+                        <flux:table.column class="w-[15%]">{{ __('Assigned To') }}</flux:table.column>
+                        <flux:table.column class="w-[14%]"></flux:table.column>
                     </flux:table.columns>
                     <flux:table.rows>
                         @foreach ($this->facebookLeadAdsSources as $source)
-                            <flux:table.row wire:key="fb-lead-ads-source-{{ $source->id }}" class="bg-zinc-50/50 dark:bg-zinc-900/40">
+                            {{-- This row isn't being refetched by any of
+                            $listLoadingTargets (a separate, unpaginated
+                            computed property the search/filters don't
+                            touch), so it deliberately stays real content
+                            rather than being replaced by a skeleton — but
+                            left at full opacity it looked broken sitting
+                            directly above skeleton bars, like stale content
+                            next to a stuck loader. Dimming it in step with
+                            the skeleton reads as "this whole table is
+                            loading" instead. --}}
+                            <flux:table.row
+                                wire:key="fb-lead-ads-source-{{ $source->id }}"
+                                wire:loading.class="opacity-40 pointer-events-none"
+                                wire:target="{{ $listLoadingTargets }}"
+                                class="bg-zinc-50/50 dark:bg-zinc-900/40"
+                            >
                                 <flux:table.cell>—</flux:table.cell>
                                 <flux:table.cell>
                                     <div class="flex flex-col">
@@ -377,10 +567,16 @@
                             @endphp
                             <flux:table.row
                                 wire:key="lead-{{ $lead->id }}"
+                                wire:loading.class="!hidden"
+                                wire:target="{{ $listLoadingTargets }}"
                                 @class([
                                     'transition-all duration-700 ease-out',
                                     'animate-lead-insert bg-emerald-500/10 dark:bg-emerald-500/15 border-l-4 border-l-emerald-500' => $isRecentlyCreated,
                                     'animate-lead-lift bg-amber-500/10 dark:bg-amber-500/15 border-l-4 border-l-amber-500' => $isRecentlyUpdated,
+                                    // See $showSkeletonByDefault's docblock: starts hidden
+                                    // on the very first paint, before wire:loading's JS
+                                    // toggle has had a chance to run at all.
+                                    '!hidden' => $showSkeletonByDefault,
                                 ])
                             >
                                 <flux:table.cell>
@@ -447,12 +643,70 @@
                                 </flux:table.cell>
                             </flux:table.row>
                         @empty
-                            @if ($this->facebookLeadAdsSources->isEmpty())
-                                <flux:table.row>
-                                    <flux:table.cell colspan="7">{{ __('No leads yet.') }}</flux:table.cell>
+                            @if ($hasActiveFilters)
+                                <flux:table.row wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" @class(['!hidden' => $showSkeletonByDefault])>
+                                    <flux:table.cell colspan="7">
+                                        <div class="flex flex-col items-center justify-center gap-2 py-8 text-center">
+                                            <flux:icon.magnifying-glass class="size-6 text-zinc-400" />
+                                            <flux:text variant="strong">{{ __('No leads match your search or filters.') }}</flux:text>
+                                            <flux:text variant="subtle" size="sm">{{ __('Try adjusting or clearing them.') }}</flux:text>
+                                        </div>
+                                    </flux:table.cell>
+                                </flux:table.row>
+                            @elseif ($this->facebookLeadAdsSources->isEmpty())
+                                <flux:table.row wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" @class(['!hidden' => $showSkeletonByDefault])>
+                                    <flux:table.cell colspan="7">
+                                        <div class="flex flex-col items-center justify-center gap-2 py-8 text-center">
+                                            <flux:icon.inbox class="size-6 text-zinc-400" />
+                                            <flux:text variant="subtle">{{ __('No leads yet.') }}</flux:text>
+                                        </div>
+                                    </flux:table.cell>
                                 </flux:table.row>
                             @endif
                         @endforelse
+                    </flux:table.rows>
+
+                    {{-- Skeleton: separate <tbody> (multiple tbody per table
+                    is valid HTML) shown only while the list itself is being
+                    refetched — see $listLoadingTargets above. Row count
+                    matches $perPage (15 on desktop) rather than a fixed
+                    number: a shorter fixed count made the table visibly
+                    shrink to the skeleton's height and then snap back once
+                    real rows replaced it.
+
+                    class="!hidden" is baked in statically and REMOVED while
+                    loading (wire:loading.remove.class), not the other way
+                    around — see the long comment on the mobile card stack's
+                    wrapper above for why a bare wire:loading directive can't
+                    be used on a <tbody> at all (it can only fall back to
+                    `display: inline-block`, which breaks a tbody's row-group
+                    role and made its cells ignore the table's fixed column
+                    widths entirely — this is what was actually causing the
+                    header/skeleton column misalignment, not a browser- or
+                    colgroup-specific quirk).
+
+                    Whether "!hidden" starts present AT ALL is conditional on
+                    $showSkeletonByDefault (see its docblock near the top of
+                    this file) — on the very first paint this must start
+                    VISIBLE, or "No leads yet" flashes from the real @empty
+                    rows above before wire:loading's JS has even had a
+                    chance to run once. --}}
+                    <flux:table.rows @class(['!hidden' => ! $showSkeletonByDefault]) wire:loading.remove.class="!hidden" wire:target="{{ $listLoadingTargets }}">
+                        @for ($i = 0; $i < $perPage; $i++)
+                            <flux:table.row wire:key="lead-row-skeleton-{{ $i }}">
+                                <flux:table.cell><div class="h-3 w-16 skeleton-shimmer rounded"></div></flux:table.cell>
+                                <flux:table.cell><div class="h-3 w-32 skeleton-shimmer rounded"></div></flux:table.cell>
+                                <flux:table.cell><div class="h-5 w-20 skeleton-shimmer rounded-full"></div></flux:table.cell>
+                                <flux:table.cell><div class="h-5 w-16 skeleton-shimmer rounded-full"></div></flux:table.cell>
+                                <flux:table.cell><div class="h-3 w-14 skeleton-shimmer rounded"></div></flux:table.cell>
+                                <flux:table.cell><div class="h-3 w-20 skeleton-shimmer rounded"></div></flux:table.cell>
+                                <flux:table.cell>
+                                    <div class="flex justify-end gap-2">
+                                        <div class="h-6 w-14 skeleton-shimmer rounded"></div>
+                                    </div>
+                                </flux:table.cell>
+                            </flux:table.row>
+                        @endfor
                     </flux:table.rows>
                 </flux:table>
             </div>

@@ -25,7 +25,7 @@ test('a lead updated more than 30 seconds ago still shows the "recently updated"
     setLeadTimestamps($lead, ['created_at' => now()->subMinutes(10), 'updated_at' => now()->subMinutes(5)]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->assertSeeHtml('animate-lead-lift bg-amber-500/10');
 });
 
@@ -37,7 +37,7 @@ test('viewing a lead\'s detail page clears the "recently updated" highlight, eve
     Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->assertDontSeeHtml('animate-lead-lift bg-amber-500/10');
 });
 
@@ -51,7 +51,7 @@ test('a lead with no update since it was last seen shows no highlight', function
     ]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->assertDontSeeHtml('animate-lead-lift bg-amber-500/10');
 });
 
@@ -65,6 +65,6 @@ test('an update after the lead was last seen shows the highlight again', functio
     ]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Index::class)
+        ->test(Index::class)->call('completeInitialLoad')
         ->assertSeeHtml('animate-lead-lift bg-amber-500/10');
 });

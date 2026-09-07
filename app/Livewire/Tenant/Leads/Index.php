@@ -103,6 +103,20 @@ class Index extends Component
      */
     public int $perPage = 15;
 
+    /**
+     * Starts false on every fresh mount (table AND Kanban board share this
+     * component — see render()) so the very first paint can skip the actual
+     * leads/boardLeads/boardLeadCounts query entirely (see the `1 = 0` guard
+     * in filteredQuery()) and show the skeleton immediately, matching what a
+     * user does with search/filter changes. The view's root element carries
+     * `wire:init="completeInitialLoad"`, which Livewire fires as a real
+     * network request right after the component mounts client-side — that
+     * request is what flips this true and is also in $listLoadingTargets,
+     * so it drives the exact same skeleton toggle already used everywhere
+     * else on this page rather than a second, separate mechanism.
+     */
+    public bool $initialLoadComplete = false;
+
     public ?string $selectedLeadId = null;
 
     public bool $showLeadPanel = false;
@@ -145,6 +159,11 @@ class Index extends Component
         if ($this->openLeadId !== null) {
             $this->viewLead($this->openLeadId);
         }
+    }
+
+    public function completeInitialLoad(): void
+    {
+        $this->initialLoadComplete = true;
     }
 
     /**
@@ -940,6 +959,19 @@ class Index extends Component
         $user = Auth::user();
 
         $query = Lead::query()->where('tenant_id', $user->tenant_id);
+
+        // Deliberately guaranteed-empty (not skipped outright — leads()/
+        // boardLeads()/boardLeadCounts() all still need a real Builder/
+        // Paginator of the correct shape) until the wire:init-triggered
+        // completeInitialLoad() request lands — see $initialLoadComplete's
+        // docblock. Keeps the very first page response cheap: no joins, no
+        // status/priority/date filtering, nothing but a trivial false
+        // predicate, regardless of how large this tenant's lead table gets.
+        if (! $this->initialLoadComplete) {
+            $query->whereRaw('1 = 0');
+
+            return $query;
+        }
 
         if ($this->isClientAdmin) {
             $query->whereHas('source', fn (Builder $q) => $q->where('type', '!=', LeadSourceType::FacebookLeadAds));
