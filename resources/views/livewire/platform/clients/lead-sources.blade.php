@@ -114,7 +114,24 @@
                         <flux:table.cell><flux:badge size="sm" icon="{{ $source->type->icon() }}">{{ $source->type->label() }}</flux:badge></flux:table.cell>
                         <flux:table.cell>
                             @if ($url = $source->webhookUrl())
-                                <flux:text class="font-mono text-xs">{{ $url }}</flux:text>
+                                <flux:text class="font-mono text-xs break-all">{{ $url }}</flux:text>
+                                {{-- Website Form is the only type authenticated by a
+                                per-source secret an admin actually needs to copy out
+                                and hand to the client's developer — every other
+                                webhook type's own secret (app_secret/verify_token/
+                                access_token) is entered BY the admin in the Edit
+                                modal, not generated here, so there's nothing to
+                                surface on this side for those. readonly+copyable is
+                                Flux's built-in <flux:input> pair (see
+                                resources/views/flux/input/copyable.blade.php),
+                                already used elsewhere in this app's own Flux
+                                install — no bespoke clipboard JS needed. --}}
+                                @if ($source->type === \App\Enums\LeadSourceType::WebsiteForm)
+                                    <div class="mt-1 flex items-center gap-1.5">
+                                        <flux:text size="xs" variant="subtle" class="shrink-0">{{ __('API Key:') }}</flux:text>
+                                        <flux:input :value="$source->config['api_key'] ?? ''" readonly copyable size="sm" class="font-mono" />
+                                    </div>
+                                @endif
                             @else
                                 <flux:text class="text-xs">{{ __('Polled every :min min', ['min' => $source->config['fetch_interval_minutes'] ?? 15]) }}</flux:text>
                             @endif

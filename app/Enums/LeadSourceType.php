@@ -105,7 +105,14 @@ enum LeadSourceType: string
                 ['key' => 'fetch_interval_minutes', 'label' => 'Fetch Interval (minutes)', 'type' => 'number', 'sensitive' => false],
             ],
             self::WebsiteForm => [
-                ['key' => 'allowed_domains', 'label' => 'Allowed Domains (comma separated)', 'type' => 'text', 'sensitive' => false],
+                // Optional: enforced via the submitting request's Origin/
+                // Referer header (see LeadWebhookController::
+                // assertAllowedWebsiteFormDomain()) only once at least one
+                // domain is set here — left blank, the API key alone
+                // authenticates the submission, which is required anyway
+                // for a purely server-to-server integration that never
+                // sends either header.
+                ['key' => 'allowed_domains', 'label' => 'Allowed Domains (comma separated, optional — restricts which sites may submit)', 'type' => 'text', 'sensitive' => false],
             ],
             // No `app_secret` field here, unlike the Meta-family types above:
             // LinkedIn webhook signatures are keyed by this app's single

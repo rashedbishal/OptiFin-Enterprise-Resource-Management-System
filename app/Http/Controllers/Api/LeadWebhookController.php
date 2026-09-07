@@ -295,6 +295,8 @@ class LeadWebhookController extends Controller
             401
         );
 
+        $this->assertAllowedWebsiteFormDomain($request, $source);
+
         $this->createLead($source, [
             'name' => $request->input('name', 'Website Visitor'),
             'email' => $request->input('email'),
@@ -304,6 +306,92 @@ class LeadWebhookController extends Controller
         ]);
 
         return response()->json(['status' => 'ok']);
+    }
+
+    /**
+     * Restricts a website form submission to the source's own
+     * `allowed_domains` list, when one is configured. Deliberately opt-in
+     * (same reasoning as VerifyMetaWebhookSignature's app_secret check):
+     * an empty/unset list skips this entirely, so a source configured
+     * before this existed — or a purely server-to-server integration that
+     * never sends Origin/Referer at all — keeps working with the API key
+     * alone. Once at least one domain is configured, a request must carry
+     * an Origin (preferred — a browser sets this itself and client-side JS
+     * cannot override it, unlike Referer) or Referer header whose host
+     * matches one of them exactly or as a subdomain; a request with
+     * neither header present is rejected outright, since domain
+     * restriction is meaningless without something to check it against.
+     *
+     * Reuses LeadSource's existing last_signature_rejection_at/_reason
+     * columns rather than adding new ones — that mechanism already exists
+     * purely to surface an inbound-webhook rejection the admin had no live
+     * session to see (Meta/the client's own server made the request), and
+     * flashSignatureRejections() toasts whatever reason string is stored
+     * regardless of which check produced it.
+     */
+    private function assertAllowedWebsiteFormDomain(Request $request, LeadSource $source): void
+    {
+        $allowedDomains = $source->config['allowed_domains'] ?? [];
+
+        if (! is_array($allowedDomains) || $allowedDomains === []) {
+            return;
+        }
+
+        $originHeader = $request->header('Origin') ?: $request->header('Referer');
+        $parsedHost = $originHeader !== null ? parse_url($originHeader, PHP_URL_HOST) : null;
+        $requestHost = is_string($parsedHost) ? $parsedHost : null;
+
+        $allowed = false;
+
+        if ($requestHost !== null) {
+            foreach ($allowedDomains as $domain) {
+                if (is_string($domain) && $this->hostMatchesDomain($requestHost, $domain)) {
+                    $allowed = true;
+
+                    break;
+                }
+            }
+        }
+
+        if ($allowed) {
+            return;
+        }
+
+        $reason = $requestHost !== null
+            ? "Website form submission rejected — origin \"{$requestHost}\" is not in this source's Allowed Domains list."
+            : 'Website form submission rejected — no Origin or Referer header was sent, and this source has an Allowed Domains list configured.';
+
+        Log::warning("Rejected website form webhook for tenant [{$source->tenant->tenant_code}]: {$reason}");
+
+        $source->update([
+            'last_signature_rejection_at' => now(),
+            'last_signature_rejection_reason' => $reason,
+        ]);
+
+        abort(403);
+    }
+
+    /**
+     * A configured domain matches the request host exactly or as a parent
+     * domain of it (e.g. "example.com" matches "www.example.com"), not the
+     * other way around. Tolerates a domain accidentally saved with a
+     * scheme/path (e.g. "https://example.com/") by re-parsing it the same
+     * way as the incoming header, rather than requiring the admin to
+     * re-save a bare-host value.
+     */
+    private function hostMatchesDomain(string $requestHost, string $domain): bool
+    {
+        $domain = trim($domain);
+        $domain = str_contains($domain, '://') ? (string) parse_url($domain, PHP_URL_HOST) : $domain;
+        $domain = strtolower(trim($domain, "/. \t\n\r\0\x0B"));
+
+        if ($domain === '') {
+            return false;
+        }
+
+        $requestHost = strtolower($requestHost);
+
+        return $requestHost === $domain || str_ends_with($requestHost, '.'.$domain);
     }
 
     /**

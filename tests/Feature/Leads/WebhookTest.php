@@ -398,3 +398,107 @@ test('a deactivated tenant does not accept webhook leads', function () {
         'name' => 'Jane Doe',
     ], ['X-Api-Key' => 'test-key-123'])->assertNotFound();
 });
+
+test('a website form submission from an allowed origin is accepted when allowed_domains is configured', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::WebsiteForm,
+        'config' => ['api_key' => 'test-key-123', 'allowed_domains' => ['example.com']],
+    ]);
+
+    $this->postJson(route('api.webhook.website-form', $tenant->tenant_code), [
+        'name' => 'Jane Doe',
+        'email' => 'jane@example.com',
+    ], ['X-Api-Key' => 'test-key-123', 'Origin' => 'https://example.com'])->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->where('email', 'jane@example.com')->exists())->toBeTrue();
+});
+
+test('a website form submission from a subdomain of an allowed domain is accepted', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::WebsiteForm,
+        'config' => ['api_key' => 'test-key-123', 'allowed_domains' => ['example.com']],
+    ]);
+
+    $this->postJson(route('api.webhook.website-form', $tenant->tenant_code), [
+        'name' => 'Jane Doe',
+        'email' => 'jane@example.com',
+    ], ['X-Api-Key' => 'test-key-123', 'Origin' => 'https://www.example.com'])->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->where('email', 'jane@example.com')->exists())->toBeTrue();
+});
+
+test('a website form submission falls back to the Referer header when Origin is absent', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::WebsiteForm,
+        'config' => ['api_key' => 'test-key-123', 'allowed_domains' => ['example.com']],
+    ]);
+
+    $this->postJson(route('api.webhook.website-form', $tenant->tenant_code), [
+        'name' => 'Jane Doe',
+        'email' => 'jane@example.com',
+    ], ['X-Api-Key' => 'test-key-123', 'Referer' => 'https://example.com/contact'])->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->where('email', 'jane@example.com')->exists())->toBeTrue();
+});
+
+test('a website form submission from a domain not in allowed_domains is rejected and recorded', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::WebsiteForm,
+        'config' => ['api_key' => 'test-key-123', 'allowed_domains' => ['example.com']],
+    ]);
+
+    $this->postJson(route('api.webhook.website-form', $tenant->tenant_code), [
+        'name' => 'Jane Doe',
+    ], ['X-Api-Key' => 'test-key-123', 'Origin' => 'https://not-allowed.test'])->assertForbidden();
+
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(0);
+
+    $source->refresh();
+    expect($source->last_signature_rejection_at)->not->toBeNull();
+    expect($source->last_signature_rejection_reason)->toContain('not-allowed.test');
+});
+
+test('a website form submission with no Origin or Referer header is rejected when allowed_domains is configured', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::WebsiteForm,
+        'config' => ['api_key' => 'test-key-123', 'allowed_domains' => ['example.com']],
+    ]);
+
+    $this->postJson(route('api.webhook.website-form', $tenant->tenant_code), [
+        'name' => 'Jane Doe',
+    ], ['X-Api-Key' => 'test-key-123'])->assertForbidden();
+
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(0);
+});
+
+test('a website form submission with no Origin header is accepted when allowed_domains is left blank', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::WebsiteForm,
+        'config' => ['api_key' => 'test-key-123', 'allowed_domains' => []],
+    ]);
+
+    $this->postJson(route('api.webhook.website-form', $tenant->tenant_code), [
+        'name' => 'Jane Doe',
+        'email' => 'server-side@example.com',
+    ], ['X-Api-Key' => 'test-key-123'])->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->where('email', 'server-side@example.com')->exists())->toBeTrue();
+});
