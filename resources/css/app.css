@@ -8,6 +8,24 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/*
+x-cloak's actual hiding mechanism — Alpine.js does NOT inject this rule
+itself, the app has to. Without it, every x-cloak usage in this codebase
+(notification-bell.blade.php's dropdown, date-picker.blade.php's popup,
+datetime-picker.blade.php, dropdown-select.blade.php's panel,
+two-factor-challenge.blade.php) was silently non-functional: the element
+rendered at full visibility in the raw server HTML and stayed that way
+until Alpine's script downloaded, parsed, and processed the DOM — a real,
+user-visible flash on every page load, not just a theoretical FOUC risk
+(confirmed via the notification bell: its dropdown briefly flashed open on
+page load before this rule existed). Alpine removes the x-cloak attribute
+itself the moment it finishes initializing that element, so this rule only
+ever hides something for the brief pre-hydration window it's meant to.
+*/
+[x-cloak] {
+    display: none !important;
+}
+
 @theme {
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
 

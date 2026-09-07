@@ -39,17 +39,29 @@
     @endphp
 
     {{-- Always in the DOM (not @if-gated server-side any more — see above)
-    so Alpine's x-show can reveal it instantly on click. No static
-    "hidden"/"!hidden" class here on purpose, matching x-dropdown-select's
-    panel/x-date-picker's popup — deliberately tried adding one and it
-    broke: Alpine's x-show, when paired with x-transition, shows an
-    element by clearing its OWN inline `display` back to an empty string
-    (falls back to CSS cascade) rather than forcing a specific value, so a
-    competing class-based `display:none` (even `!hidden`'s !important
-    version) keeps winning regardless of Alpine's state — there's no
-    inline override actively canceling it. x-show alone (no static class
-    fighting it) already hides this by default before Alpine hydrates. --}}
+    so Alpine's x-show can reveal it instantly on click.
+
+    No static "hidden"/"!hidden" CLASS here — deliberately tried that and
+    it broke opening: Alpine's x-show, when paired with x-transition, shows
+    an element by clearing its OWN inline `display` back to an empty
+    string (falls back to the CSS cascade) rather than forcing a specific
+    value, so a competing class-based `display:none` (even `!hidden`'s
+    !important version) kept winning regardless of Alpine's state — no
+    inline override was ever actively canceling it.
+
+    x-cloak IS here though, for a DIFFERENT problem: without it, this div
+    has literally nothing hiding it in the raw server-rendered HTML —
+    x-show's own default-hidden behavior only takes effect once Alpine's
+    script has downloaded, parsed, and processed this element, which isn't
+    instant. The dropdown was visibly flashing open on every page load
+    until this existed. [x-cloak] { display: none !important } (see
+    app.css) hides it for that pre-hydration window; Alpine removes the
+    x-cloak attribute itself the moment it finishes initializing this
+    element, at which point x-show's own inline-style toggling takes over
+    exclusively — the two never actually fight each other, x-cloak has
+    already stopped applying by the time x-show starts. --}}
     <div
+        x-cloak
         x-show="open"
         x-transition:enter="transition ease-out duration-150"
         x-transition:enter-start="opacity-0 scale-95 -translate-y-1"
