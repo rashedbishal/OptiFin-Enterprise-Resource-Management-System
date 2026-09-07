@@ -9,9 +9,22 @@
     $backToLeadsUrl = $lead->source->type === \App\Enums\LeadSourceType::FacebookLeadAds
         ? route('tenant-leads.source', $lead->source)
         : route('tenant-leads.index');
+
+    // Unlike Activity's genuinely-deferred query, $lead itself is always
+    // loaded synchronously in Show::mount() (route-model-bound before the
+    // component even runs) — there's no query to gate here. This card's
+    // real/skeleton toggle exists purely so the whole page's cards reveal
+    // together on first paint rather than this one popping in ahead of the
+    // (genuinely async) Activity feed. See Show::$initialLoadComplete.
+    $listLoadingTargets = 'completeInitialLoad';
+    $showSkeletonByDefault = ! $initialLoadComplete;
 @endphp
 
 <div class="rounded-xl border border-zinc-200 bg-gradient-to-br from-white to-zinc-50 p-3 sm:p-5 dark:border-zinc-700 dark:from-zinc-800 dark:to-zinc-900">
+    {{-- Real content: hidden by default before initialLoadComplete, toggled
+    by wire:loading otherwise — never a bare wire:loading/.remove, see
+    leads.blade.php's long comment for why. --}}
+    <div wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" class="{{ $showSkeletonByDefault ? '!hidden' : '' }} contents">
     <div class="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div class="flex flex-col gap-1.5 sm:gap-2">
             <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
@@ -84,6 +97,36 @@
                     @endif
                 </div>
             @endif
+        </div>
+    </div>
+    </div>
+
+    {{-- Skeleton: hidden by default, revealed only while
+    initialLoadComplete's request is in flight — see leads.blade.php for
+    why this has to be class-based, never a bare wire:loading. --}}
+    <div class="{{ $showSkeletonByDefault ? '' : '!hidden' }} contents" wire:loading.remove.class="!hidden" wire:target="{{ $listLoadingTargets }}">
+        <div class="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div class="flex flex-col gap-1.5 sm:gap-2">
+                <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                    <div class="h-5 w-20 skeleton-shimmer rounded-full"></div>
+                    <div class="h-5 w-16 skeleton-shimmer rounded-full"></div>
+                    <div class="h-5 w-14 skeleton-shimmer rounded-full"></div>
+                </div>
+                <div class="flex items-center gap-2 sm:gap-3">
+                    <div class="size-9 shrink-0 skeleton-shimmer rounded-full sm:size-11"></div>
+                    <div class="flex flex-col gap-1.5">
+                        <div class="h-5 w-40 skeleton-shimmer rounded sm:h-6 sm:w-56"></div>
+                        <div class="h-3 w-32 skeleton-shimmer rounded"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="flex flex-col items-end gap-2">
+                <div class="h-8 w-32 skeleton-shimmer rounded"></div>
+                <div class="flex gap-3">
+                    <div class="h-14 w-28 skeleton-shimmer rounded-lg"></div>
+                    <div class="h-14 w-28 skeleton-shimmer rounded-lg"></div>
+                </div>
+            </div>
         </div>
     </div>
 </div>

@@ -1,8 +1,31 @@
-@php $compact ??= false; @endphp
+@php
+    $compact ??= false;
+
+    // Self-contained (like activity-card.blade.php) since this partial is
+    // shared by two callers (show.blade.php, show-panel.blade.php) that
+    // both need the identical pair. This is purely a visual
+    // reveal-together toggle, not a real query defer — see
+    // lead-hero.blade.php's identical pair for why: $lead's fields
+    // (including messageTimeline()/attachments below) are already
+    // resolved by the time this renders, nothing here is deferred.
+    // Deliberately does NOT gate $this->timeline itself (see
+    // Show::$initialLoadComplete's docblock for why that would be unsafe:
+    // the @if below branches on $lead->messageTimeline() directly, not on
+    // $timeline, so gating the latter alone would leave this @if
+    // evaluating true while iterating an empty array — a blank box, not a
+    // skeleton) — only this card's overall visibility is toggled, all of
+    // its existing branching is untouched.
+    $listLoadingTargets = 'completeInitialLoad';
+    $showSkeletonByDefault = ! $initialLoadComplete;
+@endphp
 
 <flux:card>
     <flux:heading size="lg" class="mb-4">{{ __('Details') }}</flux:heading>
 
+    {{-- Real content: hidden by default before initialLoadComplete, toggled
+    by wire:loading otherwise — never a bare wire:loading/.remove, see
+    leads.blade.php's long comment for why. --}}
+    <div wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" class="{{ $showSkeletonByDefault ? '!hidden' : '' }} contents">
     <div class="mb-4 flex items-center gap-3">
         <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-700">
             <flux:icon :icon="$lead->source->type->icon()" class="size-5 text-zinc-500 dark:text-zinc-300" />
@@ -123,4 +146,19 @@
             </div>
         @endif
     @endif
+    </div>
+
+    {{-- Skeleton: generic placeholder shape, hidden by default and revealed
+    only while initialLoadComplete's request is in flight — see
+    leads.blade.php for why this can't be a bare wire:loading directive.
+    Deliberately generic rather than matching one specific branch: which of
+    this card's several mutually-exclusive layouts (conversation feed, FB
+    Instant Form fields, email body, plain message) will actually render
+    isn't knowable until $lead->messageTimeline()/isFacebookLeadAd()/etc.
+    are evaluated above, and this toggle doesn't touch any of that. --}}
+    <div class="{{ $showSkeletonByDefault ? '' : '!hidden' }} flex flex-col gap-3" wire:loading.remove.class="!hidden" wire:target="{{ $listLoadingTargets }}">
+        <div class="h-3 w-full skeleton-shimmer rounded"></div>
+        <div class="h-3 w-5/6 skeleton-shimmer rounded"></div>
+        <div class="h-3 w-2/3 skeleton-shimmer rounded"></div>
+    </div>
 </flux:card>

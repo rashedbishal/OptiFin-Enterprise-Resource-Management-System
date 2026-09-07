@@ -49,7 +49,7 @@ test('a client user (sales rep) also sees the bell on their page load', function
 test('the bell listens for real-time notifications on its own private channel', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
-    $listeners = Livewire::actingAs($clientAdmin)->test(NotificationBell::class)->instance()->getListeners();
+    $listeners = Livewire::actingAs($clientAdmin)->test(NotificationBell::class)->call('openNotifications')->instance()->getListeners();
 
     expect($listeners)->toHaveKey('echo-private:tenant-user.'.$clientAdmin->id.',.notification.created', 'refresh');
 });
@@ -68,7 +68,7 @@ test('the bell shows the unread count and marks a notification as read without n
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'name' => 'Jane Doe']);
     $clientAdmin->notify(new NewLeadNotification($lead));
 
-    $component = Livewire::actingAs($clientAdmin)->test(NotificationBell::class);
+    $component = Livewire::actingAs($clientAdmin)->test(NotificationBell::class)->call('openNotifications');
 
     expect($component->get('unreadCount'))->toBe(1);
     $notification = $component->get('notifications')[0];
@@ -88,7 +88,7 @@ test('a client user\'s notification redirects to the Kanban board with the lead 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'assigned_to' => $rep->id]);
     $rep->notify(new LeadAssignedNotification($lead, null));
 
-    $notification = Livewire::actingAs($rep)->test(NotificationBell::class)->get('notifications')[0];
+    $notification = Livewire::actingAs($rep)->test(NotificationBell::class)->call('openNotifications')->get('notifications')[0];
 
     expect($notification['url'])->toBe(route('tenant-notifications.open', $notification['id']));
 
@@ -102,7 +102,7 @@ test('a client admin\'s notification still redirects to the full lead page, not 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
     $clientAdmin->notify(new NewLeadNotification($lead));
 
-    $notification = Livewire::actingAs($clientAdmin)->test(NotificationBell::class)->get('notifications')[0];
+    $notification = Livewire::actingAs($clientAdmin)->test(NotificationBell::class)->call('openNotifications')->get('notifications')[0];
 
     $this->actingAs($clientAdmin)
         ->get($notification['url'])
@@ -116,7 +116,7 @@ test('mark all as read clears the unread count for every notification', function
     $clientAdmin->notify(new NewLeadNotification($leadOne));
     $clientAdmin->notify(new NewLeadNotification($leadTwo));
 
-    $component = Livewire::actingAs($clientAdmin)->test(NotificationBell::class);
+    $component = Livewire::actingAs($clientAdmin)->test(NotificationBell::class)->call('openNotifications');
     expect($component->get('unreadCount'))->toBe(2);
 
     $component->call('markAllAsRead');
@@ -132,7 +132,7 @@ test('clear all deletes every notification for the current user only', function 
     $clientAdmin->notify(new NewLeadNotification($lead));
     $rep->notify(new LeadAssignedNotification($lead, $clientAdmin));
 
-    Livewire::actingAs($clientAdmin)->test(NotificationBell::class)->call('clearAll');
+    Livewire::actingAs($clientAdmin)->test(NotificationBell::class)->call('openNotifications')->call('clearAll');
 
     expect($clientAdmin->notifications()->count())->toBe(0);
     expect($rep->notifications()->count())->toBe(1);
@@ -144,7 +144,7 @@ test('clearing all goes through the confirm modal', function () {
     $clientAdmin->notify(new NewLeadNotification($lead));
 
     Livewire::actingAs($clientAdmin)
-        ->test(NotificationBell::class)
+        ->test(NotificationBell::class)->call('openNotifications')
         ->call('confirmClearAll')
         ->assertSet('showClearAllModal', true)
         ->call('clearAllConfirmed')
@@ -159,7 +159,7 @@ test('a notification for a since-deleted lead renders without a link', function 
     $clientAdmin->notify(new NewLeadNotification($lead));
     $lead->delete();
 
-    $notification = Livewire::actingAs($clientAdmin)->test(NotificationBell::class)->get('notifications')[0];
+    $notification = Livewire::actingAs($clientAdmin)->test(NotificationBell::class)->call('openNotifications')->get('notifications')[0];
 
     expect($notification['url'])->toBeNull();
 });
@@ -178,7 +178,7 @@ test('each notification type renders in the open panel with its own icon and mes
     $rep->notify(new MeetingUpdatedNotification($lead, $clientAdmin, rescheduled: false));
     $rep->notify(new FollowUpUpdatedNotification($lead, $clientAdmin, rescheduled: true));
 
-    $component = Livewire::actingAs($rep)->test(NotificationBell::class);
+    $component = Livewire::actingAs($rep)->test(NotificationBell::class)->call('openNotifications');
 
     expect(collect($component->get('notifications'))->pluck('title'))->toContain(
         __(':assignedBy assigned you a lead', ['assignedBy' => $clientAdmin->name]),
@@ -193,7 +193,7 @@ test('each notification type renders in the open panel with its own icon and mes
     // Forces a full render of the open panel (icons, empty state, per-row
     // markup) rather than just the computed data above, so an invalid Flux
     // icon name or a Blade error in that branch would actually surface here.
-    $component->call('toggle')
+    $component->call('openNotifications')
         ->assertOk()
         ->assertSee(__(':assignedBy assigned you a lead', ['assignedBy' => $clientAdmin->name]))
         ->assertSee(__('Meeting reminder'))
@@ -215,12 +215,12 @@ test('a meeting scheduled/rescheduled notification includes the time, not just t
 
     $clientAdmin->notify(new MeetingUpdatedNotification($lead, $clientAdmin, rescheduled: false));
 
-    $component = Livewire::actingAs($clientAdmin)->test(NotificationBell::class);
+    $component = Livewire::actingAs($clientAdmin)->test(NotificationBell::class)->call('openNotifications');
     $notification = $component->get('notifications')[0];
 
     expect($notification['message'])->toContain('2:30 PM');
 
-    $component->call('toggle')->assertOk()->assertSee('2:30 PM');
+    $component->call('openNotifications')->assertOk()->assertSee('2:30 PM');
 });
 
 test('a follow-up scheduled notification has no time component to show', function () {
@@ -229,7 +229,7 @@ test('a follow-up scheduled notification has no time component to show', functio
 
     $clientAdmin->notify(new FollowUpUpdatedNotification($lead, $clientAdmin, rescheduled: false));
 
-    $message = Livewire::actingAs($clientAdmin)->test(NotificationBell::class)->get('notifications')[0]['message'];
+    $message = Livewire::actingAs($clientAdmin)->test(NotificationBell::class)->call('openNotifications')->get('notifications')[0]['message'];
 
     expect($message)->not->toContain('at ');
 });
@@ -239,7 +239,7 @@ test('the empty state renders when there are no notifications', function () {
 
     Livewire::actingAs($clientAdmin)
         ->test(NotificationBell::class)
-        ->call('toggle')
+        ->call('openNotifications')
         ->assertOk()
         ->assertSee(__('No notifications yet.'));
 });

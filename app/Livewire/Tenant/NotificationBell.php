@@ -42,7 +42,25 @@ class NotificationBell extends Component
 {
     private const int RECENT_LIMIT = 20;
 
-    public bool $open = false;
+    /**
+     * Whether notifications() has been fetched at least once this page
+     * load — gates that query so it stays lazy (never runs on a plain page
+     * load where the dropdown is never opened, same as before this
+     * property existed) while letting openNotifications() show a skeleton
+     * for the brief round trip a click triggers. Deliberately does NOT
+     * gate unreadCount() (the bell icon's badge, shown regardless of
+     * whether the dropdown has ever been opened) — that must stay
+     * immediately accurate on every page load.
+     *
+     * The dropdown's open/closed VISIBILITY itself is no longer tracked
+     * here at all — it moved to a plain Alpine-local boolean in
+     * notification-bell.blade.php (`x-data="{ open: false }"`) so
+     * clicking the bell shows the dropdown shell (and its skeleton)
+     * instantly, without waiting on a round trip first. openNotifications()
+     * below is fired in parallel with that instant client-side toggle,
+     * purely to fetch/refresh the data.
+     */
+    public bool $notificationsLoaded = false;
 
     public bool $showClearAllModal = false;
 
@@ -61,6 +79,19 @@ class NotificationBell extends Component
         unset($this->unreadCount, $this->notifications);
     }
 
+    /**
+     * Fired by the bell button's click alongside its instant Alpine-local
+     * open toggle (see $notificationsLoaded's docblock) — always
+     * re-fetches fresh, same as every click did before this method
+     * existed (the old $open-toggling toggle() re-triggered notifications()
+     * on every open, not just the first).
+     */
+    public function openNotifications(): void
+    {
+        $this->notificationsLoaded = true;
+        unset($this->unreadCount, $this->notifications);
+    }
+
     #[Computed]
     public function unreadCount(): int
     {
@@ -73,22 +104,16 @@ class NotificationBell extends Component
     #[Computed]
     public function notifications(): array
     {
+        if (! $this->notificationsLoaded) {
+            return [];
+        }
+
         return Auth::user()->notifications()
             ->latest()
             ->limit(self::RECENT_LIMIT)
             ->get()
             ->map(fn (DatabaseNotification $notification): array => $this->present($notification))
             ->all();
-    }
-
-    public function toggle(): void
-    {
-        $this->open = ! $this->open;
-    }
-
-    public function close(): void
-    {
-        $this->open = false;
     }
 
     /**

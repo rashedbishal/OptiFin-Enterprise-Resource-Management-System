@@ -4,11 +4,22 @@
     // tel: is lenient but still shouldn't carry spaces/parens/dashes — keeps
     // digits and a leading + (country code) only.
     $telNumber = $lead->phone ? preg_replace('/[^\d+]/', '', $lead->phone) : null;
+
+    // See lead-hero.blade.php's identical pair for why this is purely a
+    // visual reveal-together toggle, not a real query defer: $lead's
+    // fields are already loaded, nothing here is actually being fetched
+    // async.
+    $listLoadingTargets = 'completeInitialLoad';
+    $showSkeletonByDefault = ! $initialLoadComplete;
 @endphp
 
 <flux:card class="flex flex-col gap-4">
     <flux:heading size="lg">{{ __('Contact Information') }}</flux:heading>
 
+    {{-- Real content: hidden by default before initialLoadComplete, toggled
+    by wire:loading otherwise — never a bare wire:loading/.remove, see
+    leads.blade.php's long comment for why. --}}
+    <div wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" class="{{ $showSkeletonByDefault ? '!hidden' : '' }} contents">
     @if ($hasContactDetails)
         <div class="flex flex-col gap-3">
             @if ($lead->phone)
@@ -65,4 +76,18 @@
     @else
         <flux:text variant="subtle">{{ __('No contact details yet.') }}</flux:text>
     @endif
+    </div>
+
+    {{-- Skeleton: hidden by default, revealed only while
+    initialLoadComplete's request is in flight — see leads.blade.php for
+    why this has to be class-based, never a bare wire:loading. --}}
+    <div class="{{ $showSkeletonByDefault ? '' : '!hidden' }} flex flex-col gap-3" wire:loading.remove.class="!hidden" wire:target="{{ $listLoadingTargets }}">
+        @for ($i = 0; $i < 3; $i++)
+            <div wire:key="contact-info-skeleton-{{ $i }}" class="flex items-center gap-2">
+                <div class="size-4 shrink-0 skeleton-shimmer rounded"></div>
+                <div class="h-3 w-24 skeleton-shimmer rounded"></div>
+                <div class="h-3 w-32 skeleton-shimmer rounded"></div>
+            </div>
+        @endfor
+    </div>
 </flux:card>

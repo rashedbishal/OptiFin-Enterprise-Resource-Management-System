@@ -23,6 +23,55 @@
         $showSkeletonByDefault = ! $initialLoadComplete;
     @endphp
 
+    {{-- Mobile Card Stack (sm:hidden) — the table below scrolls
+    horizontally on a phone (4 columns, one of them a webhook URL), which
+    reads badly at that width; the same real/skeleton pair as everywhere
+    else, just card-shaped instead of row-shaped. --}}
+    <div class="flex flex-col gap-2.5 sm:hidden">
+        <div wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" class="{{ $showSkeletonByDefault ? '!hidden' : '' }} contents">
+            @forelse ($this->leadSources as $source)
+                <div wire:key="lead-source-card-{{ $source->id }}" class="flex flex-col gap-2 rounded-lg border border-zinc-200/80 bg-zinc-50 p-3 dark:border-zinc-700/80 dark:bg-zinc-900/90">
+                    <div class="flex items-start justify-between gap-2">
+                        <span class="font-medium text-zinc-900 dark:text-white">{{ $source->name }}</span>
+                        <flux:badge :color="$source->is_active ? 'green' : 'zinc'" size="sm">
+                            {{ $source->is_active ? __('Active') : __('Inactive') }}
+                        </flux:badge>
+                    </div>
+                    <div class="flex items-center justify-between gap-2">
+                        <flux:badge size="sm" icon="{{ $source->type->icon() }}">{{ $source->type->label() }}</flux:badge>
+                        @if ($url = $source->webhookUrl())
+                            <flux:text class="min-w-0 truncate font-mono text-xs">{{ $url }}</flux:text>
+                        @else
+                            <flux:text class="text-xs" variant="subtle">{{ __('Polled automatically') }}</flux:text>
+                        @endif
+                    </div>
+                </div>
+            @empty
+                <div class="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-200 p-8 text-center dark:border-zinc-700">
+                    <flux:icon.inbox class="size-6 text-zinc-400" />
+                    <flux:text variant="subtle">{{ __('No lead sources configured yet.') }}</flux:text>
+                </div>
+            @endforelse
+        </div>
+
+        <div class="{{ $showSkeletonByDefault ? '' : '!hidden' }} flex flex-col gap-2.5" wire:loading.remove.class="!hidden" wire:target="{{ $listLoadingTargets }}">
+            @for ($i = 0; $i < 3; $i++)
+                <div wire:key="lead-source-card-skeleton-{{ $i }}" class="flex flex-col gap-2 rounded-lg border border-zinc-200/80 bg-zinc-50 p-3 dark:border-zinc-700/80 dark:bg-zinc-900/90">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="h-3.5 w-28 skeleton-shimmer rounded"></div>
+                        <div class="h-5 w-16 skeleton-shimmer rounded-full"></div>
+                    </div>
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="h-5 w-20 skeleton-shimmer rounded-full"></div>
+                        <div class="h-3 w-24 skeleton-shimmer rounded"></div>
+                    </div>
+                </div>
+            @endfor
+        </div>
+    </div>
+
+    {{-- Desktop / Tablet Table View (hidden sm:block) --}}
+    <div class="hidden sm:block">
     <flux:table>
         <flux:table.columns>
             <flux:table.column>{{ __('Name') }}</flux:table.column>
@@ -72,4 +121,5 @@
                 @endfor
             </flux:table.rows>
         </flux:table>
+    </div>
 </div>

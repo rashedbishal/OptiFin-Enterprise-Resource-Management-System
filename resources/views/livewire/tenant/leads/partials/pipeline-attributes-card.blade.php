@@ -1,8 +1,19 @@
-@php $canUpdate ??= false; @endphp
+@php
+    $canUpdate ??= false;
+
+    // See lead-hero.blade.php's identical pair for why this is purely a
+    // visual reveal-together toggle, not a real query defer.
+    $listLoadingTargets = 'completeInitialLoad';
+    $showSkeletonByDefault = ! $initialLoadComplete;
+@endphp
 
 <flux:card class="flex flex-col gap-4">
     <flux:heading size="lg">{{ __('Pipeline Attributes') }}</flux:heading>
 
+    {{-- Real content: hidden by default before initialLoadComplete, toggled
+    by wire:loading otherwise — never a bare wire:loading/.remove, see
+    leads.blade.php's long comment for why. --}}
+    <div wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" class="{{ $showSkeletonByDefault ? '!hidden' : '' }} contents">
     <div class="flex flex-col gap-3">
         {{-- Labeled "Source Channel" rather than "Lead Source" to avoid
         colliding with $lead->lead_source below, a different, manual-entry-
@@ -94,5 +105,18 @@
             <flux:text size="sm" variant="subtle">{{ __('Created Date:') }}</flux:text>
             <flux:text class="font-medium">{{ $lead->created_at?->format('M j, Y') }}</flux:text>
         </div>
+    </div>
+    </div>
+
+    {{-- Skeleton: hidden by default, revealed only while
+    initialLoadComplete's request is in flight — see leads.blade.php for
+    why this has to be class-based, never a bare wire:loading. --}}
+    <div class="{{ $showSkeletonByDefault ? '' : '!hidden' }} flex flex-col gap-3" wire:loading.remove.class="!hidden" wire:target="{{ $listLoadingTargets }}">
+        @for ($i = 0; $i < 5; $i++)
+            <div wire:key="pipeline-attributes-skeleton-{{ $i }}" class="flex items-center justify-between gap-2">
+                <div class="h-3 w-28 skeleton-shimmer rounded"></div>
+                <div class="h-3 w-24 skeleton-shimmer rounded"></div>
+            </div>
+        @endfor
     </div>
 </flux:card>

@@ -17,6 +17,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Livewire/Tenant/Leads/**,resources/views/livewire/tenant/{leads-kanban,leads/partials/detail-card}.blade.php | .ai/rules/leads-kanbanleads-partials.md |
 | app/Services/LeadAdminNotifier.php,app/Notifications/MeetingUpdatedNotification.php,app/Notifications/FollowUpUpdatedNotification.php,app/Livewire/Tenant/Leads/Index.php,app/Livewire/Tenant/Leads/Show.php | .ai/rules/leads-livewire-tenant-leads.md |
 | app/Livewire/Tenant/Leads/Index.php,app/Livewire/Tenant/NotificationBell.php | .ai/rules/leads-livewire-tenant.md |
+| resources/views/livewire/tenant/leads/{show,show-panel}.blade.php,resources/views/livewire/tenant/leads/partials/{lead-hero,contact-info-card,pipeline-attributes-card,detail-card,note-form,status-assignment-form}.blade.php,resources/views/livewire/tenant/lead-sources.blade.php | .ai/rules/leads-partials-views-livewire-tenant.md |
 | resources/views/livewire/tenant/leads/partials/pipeline-stepper.blade.php, resources/views/livewire/tenant/leads/partials/lead-hero.blade.php | .ai/rules/leads-partials.md |
 | app/{Livewire/Tenant/Leads,Policies,Exports}/** | .ai/rules/leads-policies-exports.md |
 | app/Livewire/Tenant/Leads/**, app/Livewire/Tenant/Leads/Index.php, app/Livewire/Tenant/Leads/Show.php, app/Livewire/Tenant/Leads/SourceLeads.php | .ai/rules/leads.md |
@@ -37,6 +38,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Models/LeadStatus.php,resources/views/livewire/tenant/leads/partials/pipeline-stepper.blade.php | .ai/rules/tenant-leads-partials.md |
 | resources/views/livewire/tenant/leads/**, resources/views/livewire/tenant/leads/source-leads.blade.php | .ai/rules/tenant-leads.md |
 | resources/views/components/date-picker.blade.php,resources/views/livewire/tenant/leads.blade.php,resources/views/livewire/tenant/leads/source-leads.blade.php | .ai/rules/tenant-views-livewire-tenant-leads.md |
+| app/Livewire/Tenant/NotificationBell.php,resources/views/livewire/tenant/notification-bell.blade.php | .ai/rules/tenant-views-livewire-tenant.md |
 | app/Events/UserNotified.php,app/Listeners/BroadcastUserNotification.php,app/Livewire/Tenant/NotificationBell.php | .ai/rules/tenant.md |
 | app/Livewire/Tenant/Leads/SourceLeads.php,resources/views/livewire/tenant/leads/source-leads.blade.php | .ai/rules/views-livewire-tenant-leads.md |
 | app/Livewire/Tenant/Leads/Index.php,resources/views/livewire/tenant/leads.blade.php | .ai/rules/views-livewire-tenant.md |

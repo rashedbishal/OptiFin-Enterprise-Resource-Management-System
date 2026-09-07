@@ -1,8 +1,22 @@
-<div class="relative" x-data x-on:click.outside="$wire.close()">
+<div
+    class="relative"
+    x-data="{ open: false }"
+    x-on:click.outside="open = false"
+>
+    {{-- Clicking flips Alpine's LOCAL `open` instantly (the dropdown shell
+    below shows immediately, with a skeleton — see $listLoadingTargets)
+    while openNotifications() fires in parallel to actually fetch fresh
+    data. This used to be a single server round trip
+    ($open toggled server-side, dropdown only existed in the DOM once that
+    returned) — see NotificationBell::$notificationsLoaded's docblock for
+    why: that made the click feel laggy on a slow connection with nothing
+    to show for the wait, and there was no way to show a loading skeleton
+    for content that didn't exist in the DOM yet. --}}
     <button
         type="button"
-        wire:click="toggle"
-        :aria-expanded="@js($open)"
+        wire:click="openNotifications"
+        x-on:click="open = ! open"
+        :aria-expanded="open"
         aria-label="{{ __('Notifications') }}"
         class="relative flex size-9 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-zinc-200 cursor-pointer"
     >
@@ -15,30 +29,57 @@
         @endif
     </button>
 
-    @if ($open)
-        <div
-            x-transition:enter="transition ease-out duration-150"
-            x-transition:enter-start="opacity-0 scale-95 -translate-y-1"
-            x-transition:enter-end="opacity-100 scale-100 translate-y-0"
-            class="absolute right-0 z-50 mt-2 w-80 origin-top-right rounded-xl border border-zinc-200/70 bg-white/95 shadow-xl backdrop-blur-sm sm:w-96 dark:border-zinc-700/70 dark:bg-zinc-900/95"
-        >
-            <div class="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-700">
-                <flux:heading size="sm">{{ __('Notifications') }}</flux:heading>
-                <div class="flex items-center gap-3">
-                    @if ($this->unreadCount > 0)
-                        <button type="button" wire:click="markAllAsRead" class="cursor-pointer text-xs font-medium text-accent hover:underline">
-                            {{ __('Mark all as read') }}
-                        </button>
-                    @endif
-                    @if (count($this->notifications) > 0)
-                        <button type="button" wire:click="confirmClearAll" class="cursor-pointer text-xs font-medium text-zinc-400 hover:text-red-500 dark:hover:text-red-400">
-                            {{ __('Clear all') }}
-                        </button>
-                    @endif
-                </div>
-            </div>
+    @php
+        // Every action that re-queries $this->notifications: just
+        // openNotifications() — this dropdown has no filters. wire:loading
+        // pairs below watch this so the skeleton only appears for the
+        // fetch this button itself triggers, not unrelated requests
+        // (markAsRead, clearAll, ...) that happen to run while it's open.
+        $listLoadingTargets = 'openNotifications';
+    @endphp
 
-            <div class="max-h-96 overflow-y-auto">
+    {{-- Always in the DOM (not @if-gated server-side any more — see above)
+    so Alpine's x-show can reveal it instantly on click. No static
+    "hidden"/"!hidden" class here on purpose, matching x-dropdown-select's
+    panel/x-date-picker's popup — deliberately tried adding one and it
+    broke: Alpine's x-show, when paired with x-transition, shows an
+    element by clearing its OWN inline `display` back to an empty string
+    (falls back to CSS cascade) rather than forcing a specific value, so a
+    competing class-based `display:none` (even `!hidden`'s !important
+    version) keeps winning regardless of Alpine's state — there's no
+    inline override actively canceling it. x-show alone (no static class
+    fighting it) already hides this by default before Alpine hydrates. --}}
+    <div
+        x-show="open"
+        x-transition:enter="transition ease-out duration-150"
+        x-transition:enter-start="opacity-0 scale-95 -translate-y-1"
+        x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+        class="absolute right-0 z-50 mt-2 w-80 origin-top-right rounded-xl border border-zinc-200/70 bg-white/95 shadow-xl backdrop-blur-sm sm:w-96 dark:border-zinc-700/70 dark:bg-zinc-900/95"
+    >
+        <div class="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-700">
+            <flux:heading size="sm">{{ __('Notifications') }}</flux:heading>
+            <div class="flex items-center gap-3">
+                @if ($this->unreadCount > 0)
+                    <button type="button" wire:click="markAllAsRead" class="cursor-pointer text-xs font-medium text-accent hover:underline">
+                        {{ __('Mark all as read') }}
+                    </button>
+                @endif
+                @if (count($this->notifications) > 0)
+                    <button type="button" wire:click="confirmClearAll" class="cursor-pointer text-xs font-medium text-zinc-400 hover:text-red-500 dark:hover:text-red-400">
+                        {{ __('Clear all') }}
+                    </button>
+                @endif
+            </div>
+        </div>
+
+        <div class="max-h-96 overflow-y-auto">
+            {{-- Real content: hidden by default until notificationsLoaded
+            (see $notificationsLoaded's docblock — the dropdown can be
+            open, via Alpine, before the server has confirmed any fetch at
+            all), toggled by wire:loading otherwise — never a bare
+            wire:loading/.remove, see leads.blade.php's long comment for
+            why. --}}
+            <div wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" class="{{ $this->notificationsLoaded ? '' : '!hidden' }} contents">
                 @forelse ($this->notifications as $n)
                     {{-- The lead link is a "stretched" anchor (absolute
                     inset-0) rather than wrapping the title/message text —
@@ -90,8 +131,27 @@
                     </div>
                 @endforelse
             </div>
+
+            {{-- Skeleton: shown until notificationsLoaded, i.e. from the
+            moment the dropdown is opened (Alpine, instant) until
+            openNotifications()'s round trip actually lands — see
+            leads.blade.php for why this can't be a bare wire:loading
+            directive. Row count is arbitrary (4), this list is capped at
+            RECENT_LIMIT but never paginated. --}}
+            <div class="{{ $this->notificationsLoaded ? '!hidden' : '' }} contents" wire:loading.remove.class="!hidden" wire:target="{{ $listLoadingTargets }}">
+                @for ($i = 0; $i < 4; $i++)
+                    <div wire:key="notification-skeleton-{{ $i }}" class="flex items-start gap-3 border-b border-zinc-100 px-4 py-3 last:border-b-0 dark:border-zinc-800">
+                        <div class="mt-0.5 size-8 shrink-0 skeleton-shimmer rounded-full"></div>
+                        <div class="min-w-0 flex-1 flex flex-col gap-1.5">
+                            <div class="h-3 w-32 skeleton-shimmer rounded"></div>
+                            <div class="h-2.5 w-full skeleton-shimmer rounded"></div>
+                            <div class="h-2.5 w-16 skeleton-shimmer rounded"></div>
+                        </div>
+                    </div>
+                @endfor
+            </div>
         </div>
-    @endif
+    </div>
 
     <x-confirm-modal
         wire:model.self="showClearAllModal"
