@@ -1,4 +1,4 @@
-<div class="flex flex-col gap-5">
+<div class="flex flex-col gap-5" wire:init="completeInitialLoad">
     @include('livewire.tenant.leads.partials.header', ['lead' => $lead, 'canDelete' => $this->canDelete, 'compact' => true])
 
     {{-- Left column is fixed-width and stacks Details/Activity on their

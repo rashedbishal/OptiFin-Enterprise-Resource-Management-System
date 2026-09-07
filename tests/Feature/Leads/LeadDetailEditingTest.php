@@ -15,7 +15,7 @@ test('the meeting date field is pre-filled as a single date+time value from the 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => '2026-09-05', 'meeting_time' => '14:30']);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->assertSet('leadMeetingDate', '2026-09-05T14:30');
 });
 
@@ -24,7 +24,7 @@ test('the meeting date field defaults the time to midnight when only a date was 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => '2026-09-05', 'meeting_time' => null]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->assertSet('leadMeetingDate', '2026-09-05T00:00');
 });
 
@@ -33,7 +33,7 @@ test('a client admin can update a lead\'s contact details', function () {
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'name' => 'Old Name', 'phone' => null, 'email' => null]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('leadName', 'New Name')
         ->set('leadPhone', '+8801712345678')
         ->set('leadEmail', 'lead@example.com')
@@ -57,7 +57,7 @@ test('an automated lead with no company details yet can have them filled in', fu
     ]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('leadCompany', 'Apex Global Logistics Ltd.')
         ->set('leadWebsite', 'https://apexlogistics.com')
         ->set('leadIndustry', 'Technology & Digital')
@@ -85,7 +85,7 @@ test('deal details can be filled in on a lead that never had them', function () 
     ]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('leadServiceInterest', 'Custom Web Application & SaaS')
         ->set('leadEstimatedBudget', '250000')
         ->set('leadEstimatedBudgetCurrencyId', $currency->id)
@@ -122,7 +122,7 @@ test('scheduling a meeting for the first time notifies other admins, but not the
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => null]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('leadMeetingDate', now()->addDays(5)->format('Y-m-d').'T14:30')
         ->call('updateDeal');
 
@@ -139,7 +139,7 @@ test('changing an already-scheduled meeting to a different date notifies admins 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => now()->addDays(2)]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('leadMeetingDate', now()->addDays(9)->format('Y-m-d').'T10:00')
         ->call('updateDeal');
 
@@ -153,7 +153,7 @@ test('resubmitting the deal form with the same meeting date sends no notificatio
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => now()->addDays(2), 'meeting_time' => '10:00:00']);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('leadMeetingDate', now()->addDays(2)->format('Y-m-d').'T10:00')
         ->call('updateDeal');
 
@@ -166,7 +166,7 @@ test('scheduling a follow-up for the first time notifies other admins as a fresh
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'next_follow_up_at' => null]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('leadNextFollowUpAt', now()->addDays(3)->toDateString())
         ->call('updateDeal');
 
@@ -180,7 +180,7 @@ test('the assigned rep scheduling a meeting notifies every admin (there is no se
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => null, 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('leadMeetingDate', now()->addDays(5)->format('Y-m-d').'T14:30')
         ->call('updateDeal');
 
@@ -193,7 +193,7 @@ test('a meeting date in the past is rejected when editing deal details', functio
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => null]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('leadMeetingDate', now()->subDay()->format('Y-m-d').'T09:00')
         ->call('updateDeal')
         ->assertHasErrors(['leadMeetingDate' => 'after_or_equal']);
@@ -206,7 +206,7 @@ test('lead source can be filled in via the sidebar on a manual-entry lead', func
     $manualSource = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual]);
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $manualSource->id, 'lead_source' => null]);
 
-    $component = Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead]);
+    $component = Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead])->call('completeInitialLoad');
     expect($component->instance()->isManualLead)->toBeTrue();
 
     $component->set('leadSource', 'Referral')
@@ -224,7 +224,7 @@ test('lead source is not shown or editable on a non-manual lead', function () {
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'lead_source' => null]);
     expect($lead->source->type)->not->toBe(LeadSourceType::Manual);
 
-    $component = Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead]);
+    $component = Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead])->call('completeInitialLoad');
     expect($component->instance()->isManualLead)->toBeFalse();
     $component->assertDontSee('Lead Source');
 
@@ -245,7 +245,7 @@ test('a client admin sees a manual lead\'s contact/company/deal cards read-only 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $manualSource->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->assertDontSeeHtml('wire:submit="updateContact"')
         ->assertDontSeeHtml('wire:submit="updateCompany"')
         ->assertDontSeeHtml('wire:submit="updateDeal"')
@@ -260,7 +260,7 @@ test('clicking a manual lead\'s Edit link switches only that card into its form,
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $manualSource->id, 'company' => 'Old Co']);
 
     $component = Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->call('startEditingCompany');
 
     $component->assertSeeHtml('wire:submit="updateCompany"')
@@ -282,7 +282,7 @@ test('cancelling a manual lead\'s edit reverts any unsaved draft and collapses b
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $manualSource->id, 'company' => 'Original Co']);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->call('startEditingCompany')
         ->set('leadCompany', 'Abandoned Draft')
         ->call('cancelEditingCompany')
@@ -299,7 +299,7 @@ test('cancelling one card\'s edit does not wipe an unsaved draft still open in a
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $manualSource->id, 'company' => 'Original Co', 'service_interest' => 'Original Interest']);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->call('startEditingCompany')
         ->set('leadCompany', 'Unsaved Company Draft')
         ->call('startEditingDeal')
@@ -318,7 +318,7 @@ test('a manual lead\'s assignee stays visible on the Overview tab even to a view
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $manualSource->id, 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->assertSee('Assigned to: '.$rep->name);
 });
 
@@ -328,7 +328,7 @@ test('a client admin still sees only read-only contact/company cards for a non-m
     expect($lead->source->type)->not->toBe(LeadSourceType::Manual);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->assertDontSeeHtml('wire:submit="updateContact"')
         ->assertDontSeeHtml('wire:submit="updateCompany"')
         ->assertDontSeeHtml('wire:submit="updateDeal"')
@@ -342,7 +342,7 @@ test('a manual lead shows no Edit links or forms on the full page to a viewer wi
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $manualSource->id, 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->assertDontSeeHtml('wire:submit="updateContact"')
         ->assertDontSeeHtml('wire:submit="updateCompany"')
         ->assertDontSeeHtml('wire:submit="updateDeal"')
@@ -356,7 +356,7 @@ test('a tampered editingCompany property cannot force a manual lead\'s form open
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $manualSource->id, 'assigned_to' => $rep->id, 'company' => 'Original Co']);
 
     Livewire::actingAs($rep)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('editingCompany', true)
         ->assertDontSeeHtml('wire:submit="updateCompany"');
 });
@@ -366,7 +366,7 @@ test('saving with no actual changes does not create an activity log entry', func
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'company' => 'Existing Co']);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('leadCompany', 'Existing Co')
         ->call('updateCompany')
         ->assertHasNoErrors();
@@ -379,12 +379,12 @@ test('the activity feed shows a combined entry naming the changed fields', funct
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'company' => null, 'website' => null]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('leadCompany', 'Apex Global Logistics Ltd.')
         ->set('leadWebsite', 'https://apexlogistics.com')
         ->call('updateCompany');
 
-    $component = Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead]);
+    $component = Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead])->call('completeInitialLoad');
     $activity = $component->instance()->activity();
 
     expect($activity[0]['type'])->toBe('details_updated');
@@ -397,7 +397,7 @@ test('a sales rep without update permission cannot edit lead details', function 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'company' => 'Original Co', 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('leadCompany', 'Hijacked Co')
         ->call('updateCompany')
         ->assertDispatched('toast-show');
@@ -410,7 +410,7 @@ test('updating deal details from the panel notifies the board instead of redirec
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'win_probability' => null]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
         ->set('leadWinProbability', '75')
         ->call('updateDeal')
         ->assertDispatched('lead-panel-updated');

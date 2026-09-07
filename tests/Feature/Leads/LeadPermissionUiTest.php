@@ -11,7 +11,7 @@ test('a sales rep without update permission cannot change a lead status and gets
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id, 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('status', leadStatus('contacted')->id)
         ->call('updateStatus')
         ->assertOk()
@@ -26,7 +26,7 @@ test('the status/note forms are hidden from a viewer without update permission',
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->assertDontSee('Add Note')
         ->assertDontSeeHtml('wire:submit="updateStatus"');
 });
@@ -37,7 +37,7 @@ test('the status/note forms are visible to a viewer with update permission', fun
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('activeTab', 'activity')
         ->assertSeeHtml('wire:submit="updateStatusAndAssignment"')
         ->assertSee('Add Note');
@@ -49,7 +49,7 @@ test('the delete button on the board is hidden from a viewer without delete perm
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->assertDontSeeHtml('wire:click="delete"');
 });
 

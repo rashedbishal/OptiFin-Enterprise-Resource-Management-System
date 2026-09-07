@@ -17,14 +17,14 @@ test('the cancel meeting modal confirms before the date is actually cleared', fu
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today()->addDays(3)]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
         ->call('confirmCancelMeeting')
         ->assertSet('showCancelMeetingModal', true);
 
     expect($lead->fresh()->meeting_date)->not->toBeNull();
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
         ->call('confirmCancelMeeting')
         ->call('cancelMeetingConfirmed')
         ->assertSet('showCancelMeetingModal', false);
@@ -37,14 +37,14 @@ test('the cancel follow-up modal confirms before the date is actually cleared', 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'next_follow_up_at' => today()->addDays(3)]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
         ->call('confirmCancelFollowUp')
         ->assertSet('showCancelFollowUpModal', true);
 
     expect($lead->fresh()->next_follow_up_at)->not->toBeNull();
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
         ->call('confirmCancelFollowUp')
         ->call('cancelFollowUpConfirmed')
         ->assertSet('showCancelFollowUpModal', false);
@@ -58,7 +58,7 @@ test('cancelling a meeting clears the date and time and logs a friendly activity
     $oldDate = $lead->meeting_date;
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
         ->call('cancelMeeting')
         ->assertSet('leadMeetingDate', '');
 
@@ -74,7 +74,7 @@ test('marking a meeting done clears the date and time, and logs it separately fr
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today(), 'meeting_time' => '09:00']);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
         ->call('markMeetingDone');
 
     expect($lead->fresh()->meeting_date)->toBeNull();
@@ -87,7 +87,7 @@ test('marking a meeting done is rejected server-side before the scheduled day, e
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today()->addDays(2)]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
         ->call('markMeetingDone');
 
     expect($lead->fresh()->meeting_date)->not->toBeNull();
@@ -99,7 +99,7 @@ test('marking a meeting done is allowed once it is overdue', function () {
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today()->subWeek()]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
         ->call('markMeetingDone');
 
     expect($lead->fresh()->meeting_date)->toBeNull();
@@ -111,7 +111,7 @@ test('cancelling or completing a meeting broadcasts a lead update so the shimmer
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today()]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
         ->call('cancelMeeting');
 
     Event::assertDispatched(LeadUpdated::class, fn (LeadUpdated $event): bool => $event->lead->is($lead));
@@ -122,7 +122,7 @@ test('the follow-up cancel/done actions mirror the meeting ones against next_fol
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'next_follow_up_at' => today()]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
         ->call('markFollowUpDone')
         ->assertSet('leadNextFollowUpAt', '');
 
@@ -136,7 +136,7 @@ test('cancelling a meeting notifies every other client admin, but not the admin 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today()]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
         ->call('cancelMeeting');
 
     expect($clientAdmin->notifications()->where('type', MeetingCancelledNotification::class)->count())->toBe(0);
@@ -149,7 +149,7 @@ test('the assigned rep cancelling a meeting notifies the client admin (never the
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today(), 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
-        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
         ->call('cancelMeeting');
 
     expect($clientAdmin->notifications()->where('type', MeetingCancelledNotification::class)->count())->toBe(1);
@@ -162,7 +162,7 @@ test('cancelling a follow-up mirrors the meeting notification behavior', functio
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'next_follow_up_at' => today()]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
         ->call('cancelFollowUp');
 
     expect($clientAdmin->notifications()->where('type', FollowUpCancelledNotification::class)->count())->toBe(0);
@@ -175,7 +175,7 @@ test('marking a meeting or follow-up done sends no cancellation notification', f
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today(), 'next_follow_up_at' => today()]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
         ->call('markMeetingDone')
         ->call('markFollowUpDone');
 
@@ -188,7 +188,7 @@ test('the full page (not just the flyout) can cancel a meeting for a non-manual 
     expect($lead->source->type->value)->not->toBe('manual');
 
     $component = Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->assertSeeHtml('wire:click="confirmCancelMeeting"')
         ->call('confirmCancelMeeting')
         ->assertSet('showCancelMeetingModal', true)
@@ -206,7 +206,7 @@ test('the full page can mark a meeting done for a non-manual lead', function () 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today()]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->assertSeeHtml('wire:click="markMeetingDone"')
         ->call('markMeetingDone');
 
@@ -218,7 +218,7 @@ test('the full page can cancel a follow-up for a non-manual lead, confirm modal 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'next_follow_up_at' => today()->addDays(3)]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->assertSeeHtml('wire:click="confirmCancelFollowUp"')
         ->call('confirmCancelFollowUp')
         ->assertSet('showCancelFollowUpModal', true)
@@ -234,7 +234,7 @@ test('the full page hides Cancel/Mark done meeting controls from a viewer withou
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today(), 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->assertDontSeeHtml('wire:click="confirmCancelMeeting"')
         ->assertDontSeeHtml('wire:click="markMeetingDone"');
 });
@@ -249,7 +249,7 @@ test('a manual lead\'s Deal card offers Cancel meeting/follow-up without needing
         'next_follow_up_at' => today()->addDays(3),
     ]);
 
-    $component = Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead]);
+    $component = Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead])->call('completeInitialLoad');
 
     // Read-only by default (never clicked Edit) — the buttons must already
     // be there, not gated behind entering edit mode.
@@ -273,7 +273,7 @@ test('a user without update permission cannot cancel or complete a meeting', fun
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => today(), 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
-        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
         ->call('cancelMeeting');
 
     expect($lead->fresh()->meeting_date)->not->toBeNull();

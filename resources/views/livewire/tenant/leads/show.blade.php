@@ -6,7 +6,7 @@
     ]" />
 @endpush
 
-<div class="flex flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8 overflow-y-auto min-h-0">
+<div class="flex flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8 overflow-y-auto min-h-0" wire:init="completeInitialLoad">
     @include('livewire.tenant.leads.partials.lead-hero', ['lead' => $lead, 'canDelete' => $this->canDelete])
 
     @include('livewire.tenant.leads.partials.pipeline-stepper', ['lead' => $lead])
@@ -32,7 +32,11 @@
             wire:click="$set('activeTab', 'activity')"
             class="-mb-px rounded-t-lg rounded-b-none transition-colors duration-150 {{ $activeTab === 'activity' ? 'border border-b-0 border-zinc-200 bg-white text-accent dark:border-zinc-700 dark:bg-white/10' : 'text-zinc-500 dark:text-zinc-400' }}"
         >
-            {{ __('Assignment & Activities') }} ({{ count($this->activity) }})
+            {{-- Blank instead of "(0)" before initialLoadComplete — activity()
+            returns [] while deferred, and a literal 0 would misleadingly
+            claim this lead has no activity at all rather than "not loaded
+            yet". --}}
+            {{ __('Assignment & Activities') }}{{ $initialLoadComplete ? ' ('.count($this->activity).')' : '' }}
         </flux:button>
 
         {{-- No lead-to-client conversion feature exists in this app —

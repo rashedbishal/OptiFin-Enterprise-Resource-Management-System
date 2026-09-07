@@ -190,7 +190,7 @@ test('deleting a lead from the detail page also requires the correct password', 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->call('confirmDelete')
         ->assertSet('showDeleteModal', true)
         ->set('deletePassword', 'wrong-password')
@@ -200,7 +200,7 @@ test('deleting a lead from the detail page also requires the correct password', 
     expect(Lead::find($lead->id))->not->toBeNull();
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->call('confirmDelete')
         ->set('deletePassword', 'password')
         ->call('deleteConfirmed');

@@ -9,7 +9,7 @@ test('the panel view renders the same core sections as the full lead page', func
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'name' => 'Panel Test Lead']);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
         ->assertSee('Panel Test Lead')
         ->assertSee('Details')
         ->assertSee('Activity')
@@ -27,7 +27,7 @@ test('the full page shows Company/Deal read-only and no Contact form, editing on
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'company' => 'Apex Global Logistics Ltd.']);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->assertSee('Apex Global Logistics Ltd.')
         ->assertDontSeeHtml('wire:submit="updateContact"')
         ->assertDontSeeHtml('wire:submit="updateCompany"')
@@ -39,7 +39,7 @@ test('updating status from the panel notifies the board instead of redirecting',
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
         ->set('status', leadStatus('contacted')->id)
         ->call('updateStatus')
         ->assertDispatched('lead-panel-updated');
@@ -52,7 +52,7 @@ test('deleting from the panel dispatches an event instead of redirecting', funct
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
         ->call('delete')
         ->assertDispatched('lead-panel-deleted', leadId: $lead->id);
 
@@ -64,7 +64,7 @@ test('the full page still redirects to the index on delete', function () {
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->call('delete')
         ->assertRedirect(route('tenant-leads.index'));
 });

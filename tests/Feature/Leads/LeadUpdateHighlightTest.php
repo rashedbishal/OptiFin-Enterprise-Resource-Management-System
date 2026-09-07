@@ -34,7 +34,7 @@ test('viewing a lead\'s detail page clears the "recently updated" highlight, eve
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
     setLeadTimestamps($lead, ['created_at' => now()->subMinutes(10), 'updated_at' => now()->subMinutes(5)]);
 
-    Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead]);
+    Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead])->call('completeInitialLoad');
 
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)->call('completeInitialLoad')

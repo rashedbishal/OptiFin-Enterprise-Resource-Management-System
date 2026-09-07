@@ -58,15 +58,34 @@ class Settings extends Component
 
     public ?string $confirmingDeleteCurrencyId = null;
 
+    /**
+     * Starts false on every fresh mount so the very first paint can skip
+     * both statuses()/currencies() queries and show skeletons instead —
+     * same technique as App\Livewire\Tenant\Leads\Index::$initialLoadComplete,
+     * scaled down: this page has no filters at all, so completeInitialLoad()
+     * (fired via wire:init) is the whole $listLoadingTargets for both
+     * tables.
+     */
+    public bool $initialLoadComplete = false;
+
     public function mount(): void
     {
         Gate::forUser(Auth::guard('platform')->user())->authorize('viewAny', LeadStatus::class);
         Gate::forUser(Auth::guard('platform')->user())->authorize('viewAny', Currency::class);
     }
 
+    public function completeInitialLoad(): void
+    {
+        $this->initialLoadComplete = true;
+    }
+
     #[Computed]
     public function statuses()
     {
+        if (! $this->initialLoadComplete) {
+            return LeadStatus::query()->whereRaw('1 = 0')->get();
+        }
+
         return LeadStatus::query()->orderBy('sort_order')->orderBy('name')->get();
     }
 
@@ -199,6 +218,10 @@ class Settings extends Component
     #[Computed]
     public function currencies()
     {
+        if (! $this->initialLoadComplete) {
+            return Currency::query()->whereRaw('1 = 0')->get();
+        }
+
         return Currency::query()->orderBy('code')->get();
     }
 

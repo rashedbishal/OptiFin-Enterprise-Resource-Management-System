@@ -52,6 +52,18 @@ class LeadSources extends Component
 
     public ?string $confirmingRemoveStatusId = null;
 
+    /**
+     * Starts false on every fresh mount so the very first paint can skip
+     * the leadSources() query and show a skeleton instead — same technique
+     * as App\Livewire\Tenant\Leads\Index::$initialLoadComplete, scaled
+     * down: this page's table has no filters, so completeInitialLoad()
+     * (fired via wire:init) is the whole $listLoadingTargets. Doesn't gate
+     * allLeadStatuses()/allCurrencies() (the pipeline picker/currency
+     * checkboxes above the table) — those are the small, cheap, global
+     * catalogs, not this tenant's own (potentially larger) source list.
+     */
+    public bool $initialLoadComplete = false;
+
     public function mount(Tenant $tenant): void
     {
         Gate::forUser(Auth::guard('platform')->user())->authorize('update', $tenant);
@@ -59,6 +71,11 @@ class LeadSources extends Component
         $this->tenant = $tenant;
 
         $this->flashSignatureRejections();
+    }
+
+    public function completeInitialLoad(): void
+    {
+        $this->initialLoadComplete = true;
     }
 
     /**
@@ -93,6 +110,10 @@ class LeadSources extends Component
     #[Computed]
     public function leadSources()
     {
+        if (! $this->initialLoadComplete) {
+            return LeadSource::query()->whereRaw('1 = 0')->get();
+        }
+
         return $this->tenant->leadSources()->latest()->get();
     }
 

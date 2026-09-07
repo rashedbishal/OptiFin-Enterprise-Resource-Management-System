@@ -9,7 +9,7 @@ test('the lead show page listens for lead.updated on its own lead channel', func
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
 
     $listeners = Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->instance()
         ->getListeners();
 
@@ -20,7 +20,7 @@ test('refreshLead reloads the lead so an appended follow-up message is visible',
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'message' => 'Original message']);
 
-    $component = Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead]);
+    $component = Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead])->call('completeInitialLoad');
 
     $lead->update(['message' => 'Original message'.PHP_EOL.'Follow-up message']);
 

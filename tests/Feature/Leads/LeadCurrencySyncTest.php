@@ -49,7 +49,7 @@ test('the kanban flyout mirrors the estimated budget currency onto deal value', 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
         ->set('leadEstimatedBudgetCurrencyId', $bdt->id)
         ->assertSet('leadDealValueCurrencyId', $bdt->id);
 });
@@ -61,7 +61,7 @@ test('the kanban flyout mirrors the deal value currency onto estimated budget', 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead, 'panel' => true])
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
         ->set('leadDealValueCurrencyId', $bdt->id)
         ->assertSet('leadEstimatedBudgetCurrencyId', $bdt->id);
 });

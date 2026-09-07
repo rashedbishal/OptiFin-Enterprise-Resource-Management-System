@@ -8,7 +8,7 @@ test('the pipeline stepper is a wrapping numbered row with no horizontal scrollb
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('qualified')->id]);
 
-    $html = Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead])->html();
+    $html = Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')->html();
 
     expect(substr_count($html, __('Status Pipeline Progression')))->toBe(1);
     expect($html)->toContain('flex flex-wrap items-center gap-y-3');
@@ -33,7 +33,7 @@ test('the current pipeline stage\'s number is highlighted, others are plain', fu
     $currentStatus = $pipeline[2];
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => $currentStatus->id]);
 
-    $html = Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead])->html();
+    $html = Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')->html();
 
     expect(substr_count($html, $currentStatus->cardBackgroundClasses()))->toBe(1);
 });
@@ -44,7 +44,7 @@ test('only the current pipeline stage\'s circle pulses, in that status\'s own co
     $currentStatus = $pipeline[2];
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => $currentStatus->id]);
 
-    $html = Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead])->html();
+    $html = Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')->html();
 
     expect(substr_count($html, 'motion-safe:animate-ping'))->toBe(1);
     expect(substr_count($html, $currentStatus->pulseRingClasses()))->toBe(1);

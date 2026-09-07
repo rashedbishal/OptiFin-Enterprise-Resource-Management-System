@@ -43,7 +43,7 @@ test('picking "Unassigned" on the lead detail page actually clears the assignmen
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'assigned_to' => $rep->id, 'assigned_at' => now()]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('assigneeId', '')
         ->call('assign')
         ->assertHasNoErrors();
@@ -57,7 +57,7 @@ test('picking "Unassigned" on the lead detail page records an activity entry, un
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'assigned_to' => $rep->id, 'assigned_at' => now()]);
 
     $component = Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('assigneeId', '')
         ->call('assign')
         ->assertHasNoErrors();
@@ -76,7 +76,7 @@ test('assigning a lead broadcasts a lead update so the assignee\'s board refresh
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('assigneeId', $rep->id)
         ->call('assign');
 
@@ -90,7 +90,7 @@ test('unassigning a lead also broadcasts a lead update', function () {
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'assigned_to' => $rep->id, 'assigned_at' => now()]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('assigneeId', '')
         ->call('assign');
 
@@ -104,7 +104,7 @@ test('a client admin assigning a lead sends the assignee an instant (real-time) 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('assigneeId', $rep->id)
         ->call('assign');
 
@@ -122,7 +122,7 @@ test('resubmitting the assignment form with the same assignee does not duplicate
     $originalLastAssignedAt = $rep->fresh()->last_assigned_at;
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('assigneeId', $rep->id)
         ->call('assign');
 
@@ -137,7 +137,7 @@ test('saving the merged status & assignment form without changing the assignee d
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'assigned_to' => $rep->id, 'assigned_at' => now(), 'status_id' => leadStatus('new')->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('status', leadStatus('contacted')->id)
         ->set('assigneeId', $rep->id)
         ->call('updateStatusAndAssignment');

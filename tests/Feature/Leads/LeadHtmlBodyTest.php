@@ -13,7 +13,7 @@ test('a lead with no html body shows only the plain text message, no toggle', fu
     ]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->assertSee('Plain text only.')
         ->assertDontSee('Original Email')
         ->assertDontSeeHtml('<iframe');
@@ -28,7 +28,7 @@ test('a lead with an html body defaults to the plain text view with a toggle ava
     ]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->assertSet('bodyView', 'text')
         ->assertSee('Plain text version.')
         ->assertSee('Original Email')
@@ -44,7 +44,7 @@ test('switching to the html view renders the original email inside a sandboxed i
     ]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('bodyView', 'html')
         ->assertSeeHtml('<iframe')
         ->assertSeeHtml('sandbox')

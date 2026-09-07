@@ -27,7 +27,7 @@ test('a lead with an image attachment and no caption shows a clickable "Sent an 
     ]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->assertSee('Sent an image')
         ->assertSeeHtml(route('tenant-leads.attachment.download', [$lead, $attachment]));
 });
@@ -53,7 +53,7 @@ test('a lead with a non-image attachment and a caption shows both the link and t
     ]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->assertSee('Sent a document')
         ->assertSee('Here is the invoice')
         ->assertSeeHtml(route('tenant-leads.attachment.download', [$lead, $attachment]));
@@ -75,7 +75,7 @@ test('an email lead with an attachment shows both its body and the attachment li
     ]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->assertSee('Please find the invoice attached.')
         ->assertSee('Sent a file')
         ->assertSeeHtml(route('tenant-leads.attachment.download', [$lead, $attachment]));
@@ -89,7 +89,7 @@ test('a lead with no attachment shows no attachment link', function () {
     ]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->assertDontSee('Sent a');
 });
 
@@ -116,7 +116,7 @@ test('text messages and attachments are shown interleaved in the order they actu
     LeadAttachment::factory()->create(['lead_id' => $lead->id, 'type' => 'video', 'sent_at' => $t0->clone()->addMinutes(6)]);
 
     $timeline = Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->instance()
         ->timeline();
 

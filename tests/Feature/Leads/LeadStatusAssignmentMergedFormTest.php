@@ -14,7 +14,7 @@ test('the merged Status & Assignment card updates both status and assignment fro
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('status', leadStatus('contacted')->id)
         ->set('assigneeId', $rep->id)
         ->call('updateStatusAndAssignment');
@@ -31,7 +31,7 @@ test('the merged submit still broadcasts LeadUpdated and LeadStatusChanged over 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('status', leadStatus('contacted')->id)
         ->set('assigneeId', $rep->id)
         ->call('updateStatusAndAssignment');
@@ -49,7 +49,7 @@ test('a viewer who can update status but not assign only has the status half app
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id, 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('status', leadStatus('contacted')->id)
         ->set('assigneeId', $otherRep->id)
         ->call('updateStatusAndAssignment');
@@ -66,7 +66,7 @@ test('a viewer without update permission has neither half applied', function () 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id, 'assigned_to' => $rep->id]);
 
     Livewire::actingAs($rep)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('status', leadStatus('contacted')->id)
         ->set('assigneeId', $otherRep->id)
         ->call('updateStatusAndAssignment');

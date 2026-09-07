@@ -153,6 +153,30 @@ class Show extends Component
 
     public bool $showCancelFollowUpModal = false;
 
+    /**
+     * Starts false on every fresh mount so the very first paint can skip
+     * activity()'s four unbounded queries (status logs, assignments,
+     * notes, detail-update logs — this lead's full history, which only
+     * grows over its lifetime) and show a skeleton in the Activity feed
+     * instead — same technique as
+     * App\Livewire\Tenant\Leads\Index::$initialLoadComplete. The lead's
+     * own core fields (name, company, deal value, ...) are NOT gated by
+     * this — $lead is loaded eagerly in mount() regardless, this only
+     * defers the secondary activity feed. Deliberately does NOT also gate
+     * timeline() (the message/attachment conversation feed in
+     * detail-card.blade.php) — that partial's outer @if branches on
+     * $lead->messageTimeline() directly, not on $this->timeline, so
+     * deferring the latter alone would leave that branch showing an empty
+     * box instead of a skeleton; fixing that needs its own pass, not a
+     * copy-paste of this pattern.
+     */
+    public bool $initialLoadComplete = false;
+
+    public function completeInitialLoad(): void
+    {
+        $this->initialLoadComplete = true;
+    }
+
     public function mount(Lead $lead): void
     {
         Gate::authorize('view', $lead);
@@ -354,6 +378,10 @@ class Show extends Component
     #[Computed]
     public function activity(): array
     {
+        if (! $this->initialLoadComplete) {
+            return [];
+        }
+
         $events = [];
 
         foreach ($this->lead->statusLogs()->with(['changedBy', 'oldStatus', 'newStatus'])->get() as $log) {

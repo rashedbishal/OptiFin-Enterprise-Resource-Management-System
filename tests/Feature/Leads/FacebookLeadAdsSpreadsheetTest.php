@@ -67,7 +67,7 @@ test('a facebook lead ads lead\'s detail panel shows its submitted instant form 
     ]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->assertSee('Contact Us')
         ->assertSee('Full Name')
         ->assertSee('City')

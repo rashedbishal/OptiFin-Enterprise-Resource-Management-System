@@ -1,5 +1,16 @@
-<div>
+<div wire:init="completeInitialLoad">
     <div class="flex flex-1 flex-col gap-6">
+        @php
+            // No filters on this page — completeInitialLoad() (fired once
+            // via wire:init above) is the whole target list for both
+            // tables below. See leads.blade.php's identical
+            // $showSkeletonByDefault for why the skeleton's/real content's
+            // STATIC class (not just their wire:loading toggle) has to be
+            // conditional on server-known state.
+            $listLoadingTargets = 'completeInitialLoad';
+            $showSkeletonByDefault = ! $initialLoadComplete;
+        @endphp
+
         <x-breadcrumbs :items="[
             ['label' => __('Dashboard'), 'href' => route('admin.dashboard')],
             ['label' => __('Modules'), 'href' => route('admin.modules.index')],
@@ -27,7 +38,7 @@
             </flux:table.columns>
             <flux:table.rows>
                 @foreach ($this->statuses as $status)
-                    <flux:table.row wire:key="status-{{ $status->id }}">
+                    <flux:table.row wire:key="status-{{ $status->id }}" wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" @class(['!hidden' => $showSkeletonByDefault])>
                         <flux:table.cell>{{ $status->name }}</flux:table.cell>
                         <flux:table.cell><flux:badge size="sm" :color="$status->color">{{ $status->color }}</flux:badge></flux:table.cell>
                         <flux:table.cell>
@@ -45,6 +56,25 @@
                         </flux:table.cell>
                     </flux:table.row>
                 @endforeach
+            </flux:table.rows>
+
+            {{-- Skeleton: a second <tbody>, hidden by default and revealed
+            only while loading — see leads.blade.php for why this can't be a
+            bare wire:loading directive. Row count is arbitrary (3), this
+            catalog is never paginated. --}}
+            <flux:table.rows @class(['!hidden' => ! $showSkeletonByDefault]) wire:loading.remove.class="!hidden" wire:target="{{ $listLoadingTargets }}">
+                @for ($i = 0; $i < 3; $i++)
+                    <flux:table.row wire:key="status-skeleton-{{ $i }}">
+                        <flux:table.cell><div class="h-3 w-24 skeleton-shimmer rounded"></div></flux:table.cell>
+                        <flux:table.cell><div class="h-5 w-16 skeleton-shimmer rounded-full"></div></flux:table.cell>
+                        <flux:table.cell><div class="h-5 w-14 skeleton-shimmer rounded-full"></div></flux:table.cell>
+                        <flux:table.cell>
+                            <div class="flex justify-end">
+                                <div class="h-6 w-24 skeleton-shimmer rounded"></div>
+                            </div>
+                        </flux:table.cell>
+                    </flux:table.row>
+                @endfor
             </flux:table.rows>
         </flux:table>
 
@@ -68,7 +98,7 @@
             </flux:table.columns>
             <flux:table.rows>
                 @foreach ($this->currencies as $currency)
-                    <flux:table.row wire:key="currency-{{ $currency->id }}">
+                    <flux:table.row wire:key="currency-{{ $currency->id }}" wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" @class(['!hidden' => $showSkeletonByDefault])>
                         <flux:table.cell class="font-mono">{{ $currency->code }}</flux:table.cell>
                         <flux:table.cell>{{ $currency->name }}</flux:table.cell>
                         <flux:table.cell>
@@ -81,6 +111,24 @@
                         </flux:table.cell>
                     </flux:table.row>
                 @endforeach
+            </flux:table.rows>
+
+            {{-- Skeleton: a second <tbody>, hidden by default and revealed
+            only while loading — see leads.blade.php for why this can't be a
+            bare wire:loading directive. Row count is arbitrary (2), this
+            catalog is never paginated. --}}
+            <flux:table.rows @class(['!hidden' => ! $showSkeletonByDefault]) wire:loading.remove.class="!hidden" wire:target="{{ $listLoadingTargets }}">
+                @for ($i = 0; $i < 2; $i++)
+                    <flux:table.row wire:key="currency-skeleton-{{ $i }}">
+                        <flux:table.cell><div class="h-3 w-12 skeleton-shimmer rounded"></div></flux:table.cell>
+                        <flux:table.cell><div class="h-3 w-28 skeleton-shimmer rounded"></div></flux:table.cell>
+                        <flux:table.cell>
+                            <div class="flex justify-end">
+                                <div class="h-6 w-24 skeleton-shimmer rounded"></div>
+                            </div>
+                        </flux:table.cell>
+                    </flux:table.row>
+                @endfor
             </flux:table.rows>
         </flux:table>
     </div>

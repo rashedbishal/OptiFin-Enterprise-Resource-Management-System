@@ -5,9 +5,23 @@
     ]" />
 @endpush
 
-<div class="flex flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8 overflow-y-auto min-h-0">
+<div class="flex flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8 overflow-y-auto min-h-0" wire:init="completeInitialLoad">
     <flux:heading size="xl" class="hidden lg:block">{{ __('Lead Sources') }}</flux:heading>
     <flux:text>{{ __('Configured by your account manager. Contact support to add or change a source.') }}</flux:text>
+
+    @php
+        // No filters on this page — completeInitialLoad() (fired once via
+        // wire:init above) is the only thing that ever re-queries
+        // $this->leadSources, so it's the whole target list. See
+        // leads.blade.php's identical $showSkeletonByDefault for why the
+        // skeleton's/real content's STATIC class (not just their
+        // wire:loading toggle) has to be conditional on server-known state
+        // — wire:loading's JS toggle only takes effect once a request is
+        // actually in flight, leaving a gap on the very first paint where
+        // neither side's toggle has run yet.
+        $listLoadingTargets = 'completeInitialLoad';
+        $showSkeletonByDefault = ! $initialLoadComplete;
+    @endphp
 
     <flux:table>
         <flux:table.columns>
@@ -18,7 +32,7 @@
         </flux:table.columns>
         <flux:table.rows>
             @forelse ($this->leadSources as $source)
-                <flux:table.row wire:key="lead-source-{{ $source->id }}">
+                <flux:table.row wire:key="lead-source-{{ $source->id }}" wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" @class(['!hidden' => $showSkeletonByDefault])>
                     <flux:table.cell>{{ $source->name }}</flux:table.cell>
                     <flux:table.cell><flux:badge size="sm" icon="{{ $source->type->icon() }}">{{ $source->type->label() }}</flux:badge></flux:table.cell>
                     <flux:table.cell>
@@ -35,10 +49,27 @@
                     </flux:table.cell>
                 </flux:table.row>
             @empty
-                <flux:table.row>
+                <flux:table.row wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" @class(['!hidden' => $showSkeletonByDefault])>
                     <flux:table.cell colspan="4">{{ __('No lead sources configured yet.') }}</flux:table.cell>
                 </flux:table.row>
             @endforelse
         </flux:table.rows>
-    </flux:table>
+
+        {{-- Skeleton: a second <tbody> — see leads.blade.php's identical
+            pattern for why this can't be a bare wire:loading directive
+            (Livewire's non-class display toggling forces
+            `display: inline-block` on a <tbody>, breaking its row-group
+            role). Row count is arbitrary (3) — this list is never
+            paginated, so there's no real per-page count to match. --}}
+            <flux:table.rows @class(['!hidden' => ! $showSkeletonByDefault]) wire:loading.remove.class="!hidden" wire:target="{{ $listLoadingTargets }}">
+                @for ($i = 0; $i < 3; $i++)
+                    <flux:table.row wire:key="lead-source-skeleton-{{ $i }}">
+                        <flux:table.cell><div class="h-3 w-24 skeleton-shimmer rounded"></div></flux:table.cell>
+                        <flux:table.cell><div class="h-5 w-20 skeleton-shimmer rounded-full"></div></flux:table.cell>
+                        <flux:table.cell><div class="h-3 w-32 skeleton-shimmer rounded"></div></flux:table.cell>
+                        <flux:table.cell><div class="h-5 w-16 skeleton-shimmer rounded-full"></div></flux:table.cell>
+                    </flux:table.row>
+                @endfor
+            </flux:table.rows>
+        </flux:table>
 </div>

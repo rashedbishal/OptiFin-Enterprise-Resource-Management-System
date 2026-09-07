@@ -16,7 +16,7 @@ test('updating status to an id outside this tenant\'s own pipeline is silently r
     $foreignStatus = LeadStatus::factory()->create();
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('status', $foreignStatus->id)
         ->call('updateStatus');
 
@@ -29,7 +29,7 @@ test('an invalid priority value is rejected by validation instead of crashing', 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('status', leadStatus('contacted')->id)
         ->set('priority', 'not-a-real-priority')
         ->call('updateStatus')
@@ -43,7 +43,7 @@ test('changing a lead status from new records the first-contacted timestamp and 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('status', leadStatus('contacted')->id)
         ->call('updateStatus');
 
@@ -58,7 +58,7 @@ test('changing only priority (status unchanged) actually saves it and records an
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id, 'priority' => LeadPriority::Low]);
 
     $component = Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('status', leadStatus('new')->id)
         ->set('priority', LeadPriority::High->value)
         ->call('updateStatus')
@@ -80,7 +80,7 @@ test('changing status and priority together records both a status log and a prio
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id, 'priority' => LeadPriority::Low]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('status', leadStatus('contacted')->id)
         ->set('priority', LeadPriority::High->value)
         ->call('updateStatus');
@@ -98,7 +98,7 @@ test('resubmitting the status form with no actual change to status or priority i
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id, 'priority' => LeadPriority::Low]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('status', leadStatus('new')->id)
         ->set('priority', LeadPriority::Low->value)
         ->call('updateStatus');
@@ -112,7 +112,7 @@ test('moving a lead to won sets the closed-at timestamp', function () {
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('negotiation')->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('status', leadStatus('won')->id)
         ->call('updateStatus');
 
@@ -125,7 +125,7 @@ test('changing a lead status broadcasts a lead update so other viewers refresh l
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('status', leadStatus('contacted')->id)
         ->call('updateStatus');
 
@@ -136,7 +136,7 @@ test('a lead detail view picks up a status changed elsewhere when its live-updat
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id, 'priority' => LeadPriority::Low]);
 
-    $component = Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead]);
+    $component = Livewire::actingAs($clientAdmin)->test(Show::class, ['lead' => $lead])->call('completeInitialLoad');
 
     // Simulate another user changing the status directly, then the
     // `.lead.updated` broadcast listener firing on this viewer's page.
@@ -152,7 +152,7 @@ test('adding a note to a lead persists it', function () {
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
 
     Livewire::actingAs($clientAdmin)
-        ->test(Show::class, ['lead' => $lead])
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->set('newNote', 'Called, left a voicemail.')
         ->call('addNote');
 
