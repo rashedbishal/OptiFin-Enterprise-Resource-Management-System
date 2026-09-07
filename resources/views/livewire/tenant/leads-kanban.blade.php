@@ -474,7 +474,19 @@
         </flux:modal>
     @endif
 
-    <flux:modal variant="flyout" wire:model.self="showLeadPanel" class="w-full sm:max-w-lg lg:max-w-6xl xl:max-w-[85rem] 2xl:max-w-[96rem]">
+    {{-- .live is load-bearing, not just .self: opening already round-trips
+    server-side (viewLead() itself sets showLeadPanel true and re-renders),
+    but Flux's flyout closes (X button, backdrop click, Escape) entirely
+    client-side via Alpine — a plain wire:model.self only updates the
+    entangled value locally and defers sending it until some LATER,
+    unrelated request happens to piggyback it along. Until then, the
+    updated() hook below (which nulls openLeadId, the ?lead= query param
+    this modal's open state is bound to) never runs, so closing looks
+    correct on screen but the URL still points at the lead — refreshing
+    right after reopens it. .live forces that round-trip immediately on
+    close (confirmed via a network trace: without .live, closing fired
+    zero Livewire requests at all). --}}
+    <flux:modal variant="flyout" wire:model.live.self="showLeadPanel" class="w-full sm:max-w-lg lg:max-w-6xl xl:max-w-[85rem] 2xl:max-w-[96rem]">
         @if ($this->selectedLead)
             <livewire:tenant.leads.show :lead="$this->selectedLead" :panel="true" :key="'lead-panel-'.$this->selectedLead->id" />
         @endif

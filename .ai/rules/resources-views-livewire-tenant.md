@@ -1,6 +1,7 @@
 ---
 paths:
   - resources/views/livewire/tenant/leads.blade.php
+  - resources/views/livewire/tenant/leads-kanban.blade.php
 ---
 
 # Resources Views Livewire Tenant
@@ -45,3 +46,10 @@ Worse: the fallback isn't cleanly scoped to "while loading" either — due to ho
 Fix used throughout this file: never target `.remove`/bare `wire:loading` at a `<tbody>`, `<tr>`, or a `display:contents` div. Always use `wire:loading.class="!hidden"` (hide-during-loading) or `wire:loading.remove.class="!hidden"` (hide-by-default, `!hidden` baked into the static `class` list, removed while loading) instead — `.class` only ever touches `classList`, never `el.style.display`, so it can't hit this fallback. The `!` (important) prefix is required so the toggle reliably wins regardless of what other display-affecting classes (`flex`, `contents`, `table-row`, ...) are also present, without depending on Tailwind's internal class source-order.
 
 The `<colgroup>`/header `w-[X%]` width-pinning added earlier is harmless and still present (redundant defense, doesn't hurt), but was NOT the actual fix — don't bother adding more of it if a future column-alignment bug appears; check for a bare `wire:loading`/`.remove` on a table-structural element first.
+
+## Flyout close must use wire:model.live, not deferred wire:model
+The lead detail flyout's <flux:modal variant="flyout" wire:model.self="showLeadPanel"> looked correct and had full, passing server-side test coverage (Index::updated() already nulls openLeadId — the #[Url(as: 'lead')]-bound query param — whenever showLeadPanel goes false) — but the bug still reproduced live in a browser: closing via the X button, Escape, or a backdrop click all close the flyout purely client-side (Alpine), and a PLAIN wire:model.self (no .live) is deferred — it updates the entangled value locally but does not send it to the server until some LATER, unrelated request happens to piggyback it along. Until then updated() never runs, so the ?lead= query param is left stale: the flyout looks closed but a refresh right afterward reopens it.
+
+Confirmed via a Playwright network trace: clicking the close button fired zero Livewire requests before the fix. Changed to wire:model.live.self="showLeadPanel" — opening already round-trips server-side via viewLead() itself (which sets showLeadPanel true and re-renders), so .live only adds one extra request specifically on close, which is exactly what's needed. Verified all three close paths (X button, Escape, backdrop click) each now fire a request and correctly clear the URL.
+
+General lesson: a Livewire test suite exercising the server-side property (->set('prop', false)->assertSet(...)) proves the PHP logic is correct, but does NOT prove the actual browser-side trigger (a third-party component's internal close mechanism) ever reaches the server at all — that needs a real browser/network check, not just a green Livewire::test() run.

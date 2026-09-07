@@ -35,7 +35,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | resources/views/livewire/tenant/leads/partials/{lead-card,header}.blade.php,resources/views/livewire/tenant/leads-kanban.blade.php | .ai/rules/partials-views-livewire-tenant.md |
 | resources/views/livewire/tenant/leads/show.blade.php,resources/views/livewire/tenant/leads/partials/{lead-hero,pipeline-stepper,contact-info-card,pipeline-attributes-card}.blade.php | .ai/rules/partials.md |
 | app/Http/Controllers/Api/LeadWebhookController.php,app/Enums/LeadSourceType.php,app/Livewire/Platform/Clients/LeadSources.php,resources/views/livewire/platform/clients/lead-sources.blade.php | .ai/rules/platform-clients.md |
-| resources/views/livewire/tenant/leads.blade.php | .ai/rules/resources-views-livewire-tenant.md |
+| resources/views/livewire/tenant/leads.blade.php, resources/views/livewire/tenant/leads-kanban.blade.php | .ai/rules/resources-views-livewire-tenant.md |
 | app/Livewire/Tenant/NotificationBell.php,app/Http/Controllers/NotificationRedirectController.php,app/Services/NotificationUrlResolver.php | .ai/rules/services.md |
 | app/Livewire/{Platform/Clients/LeadSources,Platform/LeadManagement/Settings,Tenant/LeadSources/Index,Tenant/Leads/Show}.php,resources/views/livewire/{tenant/lead-sources,platform/clients/lead-sources,platform/lead-management/settings,tenant/leads/show,tenant/leads/show-panel,tenant/leads/partials/activity-card}.blade.php | .ai/rules/show-paneltenant-leads-partials.md |
 | app/Models/LeadStatus.php,resources/views/livewire/tenant/leads/partials/pipeline-stepper.blade.php, app/Models/Lead.php,resources/views/livewire/tenant/leads/partials/detail-card.blade.php | .ai/rules/tenant-leads-partials.md |
