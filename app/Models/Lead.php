@@ -183,6 +183,76 @@ class Lead extends Model
     }
 
     /**
+     * Whether this lead came from a Website Form submission — gates the
+     * lead detail page's "Additional Details" field list (see
+     * websiteFormFieldValues()).
+     */
+    public function isWebsiteForm(): bool
+    {
+        return $this->source->type === LeadSourceType::WebsiteForm;
+    }
+
+    /**
+     * Every field a Website Form submission carried beyond the four with
+     * their own dedicated columns (name/email/phone/message) — a client's
+     * contact form can have any number of fields, under any names,
+     * unknowable in advance, so `LeadWebhookController::websiteForm()`
+     * stores literally everything else the request posted straight into
+     * `source_data` (`$request->except(['name', 'email', 'phone',
+     * 'message'])`), not a wrapped sub-key the way Facebook Lead Ads' raw
+     * `field_data` payload is (compare leadAdFieldValues()) — so for a
+     * Website Form lead, `source_data` in its entirety already IS this
+     * field list, needing no extraction step.
+     *
+     * A field's value is normalized to a plain string for display: a
+     * multi-value field (e.g. a checkbox group posted as `interests[]`)
+     * arrives as an array and is comma-joined; anything else non-scalar
+     * (a client posting nested JSON) falls back to a compact JSON dump
+     * rather than letting Blade choke on an uncastable array-to-string.
+     *
+     * @return array<string, string>
+     */
+    public function websiteFormFieldValues(): array
+    {
+        $data = $this->source_data ?? [];
+
+        if (! is_array($data)) {
+            return [];
+        }
+
+        $values = [];
+
+        foreach ($data as $field => $value) {
+            if (! is_string($field) || $field === '' || $value === null || $value === '') {
+                continue;
+            }
+
+            $values[$field] = $this->stringifyWebsiteFormFieldValue($value);
+        }
+
+        return $values;
+    }
+
+    private function stringifyWebsiteFormFieldValue(mixed $value): string
+    {
+        if (is_string($value)) {
+            return $value;
+        }
+
+        if (is_scalar($value)) {
+            return (string) $value;
+        }
+
+        if (is_array($value)) {
+            return collect($value)
+                ->map(fn (mixed $item): string => is_scalar($item) ? (string) $item : json_encode($item))
+                ->implode(', ');
+        }
+
+        return (string) json_encode($value);
+    }
+
+    /**
      * @return HasMany<LeadAttachment, $this>
      */
     public function attachments(): HasMany

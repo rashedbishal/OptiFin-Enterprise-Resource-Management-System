@@ -148,6 +148,35 @@
             </div>
         @endif
     @endif
+
+    {{-- Additional Details: a Website Form lead's own extra fields, if the
+    client's contact form had any beyond name/email/phone/message — laid
+    out identically to Facebook Lead Ads' field grid above (no fixed shape
+    to assume, so every key present is rendered under its own label,
+    whatever the client's form happened to ask for). Deliberately its own
+    block, not another @elseif branch: a Website Form lead's `message` (if
+    its form has one) already rendered via the plain-message branch above,
+    and this is complementary structured data alongside it, not a
+    replacement for it. See Lead::websiteFormFieldValues(). --}}
+    @if ($lead->isWebsiteForm())
+        @php $extraFieldValues = $lead->websiteFormFieldValues(); @endphp
+        @if (count($extraFieldValues) > 0)
+            <flux:separator class="mb-4 mt-4" />
+
+            <flux:text size="sm" variant="subtle" class="mb-3 block">{{ __('Additional Details') }}</flux:text>
+
+            <dl class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                @foreach ($extraFieldValues as $field => $value)
+                    <div class="min-w-0">
+                        <dt class="text-[10px] font-medium tracking-wide text-zinc-400 uppercase dark:text-zinc-500">
+                            {{ ucwords(str_replace(['_', '-'], ' ', $field)) }}
+                        </dt>
+                        <dd class="text-sm break-words text-zinc-700 dark:text-zinc-200">{{ $value }}</dd>
+                    </div>
+                @endforeach
+            </dl>
+        @endif
+    @endif
     </div>
 
     {{-- Skeleton: generic placeholder shape, hidden by default and revealed
