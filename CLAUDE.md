@@ -63,6 +63,11 @@ The notification bell (`App\Livewire\Tenant\NotificationBell`, embedded once in 
 ### Multi-currency
 `App\Models\Currency` is a Platform-Admin-managed catalog (same shape as `LeadStatus`): not tenant-scoped itself, shared across tenants that opt in via the `tenant_currencies` pivot (`Tenant::currencies()`). Tenants pick which currencies they support at `/admin/clients/{tenant}/lead-sources` (`LeadSources::toggleCurrency()`); those choices populate the per-field currency dropdowns on `estimated_budget`/`deal_value`. A currency in use (enabled by any tenant, or referenced by a Lead's `estimated_budget_currency_id`/`deal_value_currency_id`) can't be deleted — enforced in `App\Livewire\Platform\LeadManagement\Settings::deleteCurrency()`. The currencies-catalog migration unconditionally seeds a "USD" row, so it's a permanent baseline fixture in every test (same trap as `LeadStatus`'s legacy-seeded statuses) — see `.ai/rules/migrations-models.md`.
 
+### Exports & audit logging
+`app/Exports` holds `maatwebsite/excel` export classes, one per download — currently only `FacebookLeadAdsExport`, streamed via `Excel::download()` from `App\Livewire\Tenant\Leads\SourceLeads` and mirroring that view's dynamic per-Instant-Form-field columns. Add new exports here as sibling classes rather than inlining spreadsheet-building logic into a Livewire component.
+
+`spatie/laravel-activitylog` (`LogsActivity` trait, `logOnly([...])->logOnlyDirty()`) is wired into `TenantUser`, `PlatformUser`, `Role`, and `Tenant` to record field-level change history into the `activity_log` table. It's write-only today — no UI reads it back yet — so treat it as an audit trail to extend (same `logOnly`/`logOnlyDirty` pattern) rather than a feature to wire a viewer for unless asked.
+
 ### Skills
 Domain skills exist under `**/skills/**` (Livewire, Flux UI, Fortify, Echo/broadcasting, Tailwind, testing, Laravel best practices). Activate the matching skill proactively when working in that domain rather than waiting to get stuck.
 
