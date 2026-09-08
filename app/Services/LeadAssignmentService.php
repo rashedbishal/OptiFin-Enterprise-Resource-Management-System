@@ -88,7 +88,13 @@ class LeadAssignmentService
     {
         return $this->eligibleUsers($tenant)
             ->withCount(['assignedLeads' => function (Builder $query): void {
-                $query->whereHas('status', fn (Builder $q) => $q->where('is_closed', false));
+                // whereNull('merged_into_lead_id'): a lead merged away (see
+                // App\Services\LeadMergeService) is retired, not part of
+                // anyone's active workload — without this, "least loaded"
+                // would keep counting a ghost lead against whoever it was
+                // assigned to forever, unfairly deprioritizing them in
+                // future auto-distribution.
+                $query->whereNull('merged_into_lead_id')->whereHas('status', fn (Builder $q) => $q->where('is_closed', false));
             }])
             ->orderBy('assigned_leads_count')
             ->orderByRaw('last_assigned_at IS NOT NULL')

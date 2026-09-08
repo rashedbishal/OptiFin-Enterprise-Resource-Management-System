@@ -55,6 +55,8 @@
                     <flux:text>{{ __('Follow-up scheduled for :date was cancelled', ['date' => $event['action_date']->format('l, M j, Y')]) }}</flux:text>
                 @elseif ($event['type'] === 'followup_done')
                     <flux:text>{{ __('Follow-up scheduled for :date was marked as done', ['date' => $event['action_date']->format('l, M j, Y')]) }}</flux:text>
+                @elseif ($event['type'] === 'lead_merged')
+                    <flux:text>{{ __('Merged with lead :identifier', ['identifier' => $event['other_lead_identifier']]) }}</flux:text>
                 @else
                     <flux:text>{{ $event['note'] }}</flux:text>
                 @endif

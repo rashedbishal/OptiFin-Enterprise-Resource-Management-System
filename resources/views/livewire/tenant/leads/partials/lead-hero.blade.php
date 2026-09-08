@@ -87,9 +87,17 @@
                             </flux:text>
                         </div>
                     @endif
+                    {{-- Was mislabeled "Lead Score" — win_probability is a
+                    manually-entered deal field (see Show::updateDeal()),
+                    unrelated to the computed Lead Scoring feature's score
+                    (see score-breakdown.blade.php). Every other place this
+                    column appears (Show::FIELD_LABELS, deal-form.blade.php)
+                    already correctly called it "Win Probability" — this was
+                    the one place still using the old name. Behavior/value
+                    entirely unchanged, display label only. --}}
                     @if ($lead->win_probability !== null)
                         <div class="min-w-28 rounded-lg border card-surface-nested px-4 py-2 text-center">
-                            <flux:text size="xs" variant="subtle" class="uppercase tracking-wide">{{ __('Lead Score') }}</flux:text>
+                            <flux:text size="xs" variant="subtle" class="uppercase tracking-wide">{{ __('Win Probability') }}</flux:text>
                             <flux:text class="block text-lg font-semibold text-purple-600 dark:text-purple-400">
                                 {{ $lead->win_probability }}%
                             </flux:text>

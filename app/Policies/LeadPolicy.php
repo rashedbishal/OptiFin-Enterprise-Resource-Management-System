@@ -45,6 +45,18 @@ class LeadPolicy
             && $user->hasModulePermission('lead-management', 'update');
     }
 
+    /**
+     * Gates both merging a possible duplicate and dismissing it as "not a
+     * duplicate" — same consequential-change bar as assign()/delete(),
+     * Client-Admin-only.
+     */
+    public function merge(TenantUser $user, Lead $lead): bool
+    {
+        return $this->belongsToUserTenant($user, $lead)
+            && $user->isClientAdmin()
+            && $user->hasModulePermission('lead-management', 'update');
+    }
+
     private function belongsToUserTenant(TenantUser $user, Lead $lead): bool
     {
         return $user->tenant_id === $lead->tenant_id;

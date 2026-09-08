@@ -144,7 +144,10 @@ class SourceLeads extends Component
     private function baseQuery(): Builder
     {
         return $this->applyAssignmentScope(
-            Lead::query()->where('source_id', $this->leadSource->id)
+            // whereNull('merged_into_lead_id'): keeps a lead merged into
+            // another one (see App\Services\LeadMergeService) out of this
+            // spreadsheet view and its export, same as Index::filteredQuery().
+            Lead::query()->where('source_id', $this->leadSource->id)->whereNull('merged_into_lead_id')
         );
     }
 

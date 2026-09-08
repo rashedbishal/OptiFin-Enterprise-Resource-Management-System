@@ -2,15 +2,20 @@
 
 namespace App\Livewire\Tenant\Leads;
 
+use App\Enums\LeadDuplicateLinkStatus;
 use App\Enums\LeadPriority;
 use App\Enums\LeadSourceType;
 use App\Events\LeadStatusChanged;
 use App\Events\LeadUpdated;
+use App\Exceptions\LeadMergeException;
 use App\Livewire\Tenant\Leads\Concerns\ConfirmsLeadDeletionPassword;
+use App\Models\Currency;
 use App\Models\Lead;
 use App\Models\LeadAttachment;
 use App\Models\LeadDetailUpdateLog;
+use App\Models\LeadDuplicateLink;
 use App\Models\LeadNote;
+use App\Models\LeadScoreLog;
 use App\Models\LeadStatus;
 use App\Models\LeadStatusLog;
 use App\Models\TenantUser;
@@ -20,9 +25,13 @@ use App\Notifications\MeetingCancelledNotification;
 use App\Notifications\MeetingUpdatedNotification;
 use App\Services\LeadAdminNotifier;
 use App\Services\LeadAssignmentService;
+use App\Services\LeadDuplicateDetectionService;
+use App\Services\LeadMergeService;
+use App\Services\LeadScoringService;
 use Carbon\CarbonInterface;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
@@ -185,6 +194,28 @@ class Show extends Component
 
     public bool $showCancelFollowUpModal = false;
 
+    public bool $showMergeModal = false;
+
+    /**
+     * Which pending LeadDuplicateLink the merge modal is currently open for
+     * — set by openMergeModal(), read by mergeConflicts()/confirmMerge(),
+     * cleared by closeMergeModal(). A plain nullable string rather than the
+     * model itself, same reasoning as $status/$assigneeId: keeps public
+     * Livewire state serializable between requests.
+     */
+    public ?string $mergeLinkId = null;
+
+    /**
+     * Per-conflicting-field choice for the merge modal's radio groups —
+     * keyed by column name, each value either 'survivor' or 'loser'.
+     * openMergeModal() seeds every conflicting field to 'survivor' (the
+     * safe, non-destructive default); a field is only ever pulled from the
+     * loser by an explicit choice here. See LeadMergeService::merge().
+     *
+     * @var array<string, string>
+     */
+    public array $mergeFieldResolutions = [];
+
     /**
      * Starts false on every fresh mount so the very first paint can skip
      * activity()'s four unbounded queries (status logs, assignments,
@@ -223,6 +254,18 @@ class Show extends Component
     public function mount(Lead $lead): void
     {
         Gate::authorize('view', $lead);
+
+        // A lead merged into another one (see LeadMergeService) is never
+        // deleted, so an old bookmark/link to it must not 404 — it lands the
+        // viewer on the surviving lead instead. No toast: matches delete()'s
+        // existing silent-redirect precedent below, since a Livewire
+        // wire:navigate redirect doesn't carry this component's state to the
+        // next page anyway.
+        if ($lead->merged_into_lead_id !== null) {
+            $this->redirect(route('tenant-leads.show', $lead->merged_into_lead_id), navigate: true);
+
+            return;
+        }
 
         $lead->markUpdateSeen();
 
@@ -325,7 +368,7 @@ class Show extends Component
         $this->priority = $this->lead->priority->value;
         $this->assigneeId = $this->lead->assigned_to;
         $this->fillDetailFieldsFromLead();
-        unset($this->activity, $this->timeline);
+        unset($this->activity, $this->timeline, $this->possibleDuplicates);
     }
 
     #[Computed]
@@ -380,6 +423,88 @@ class Show extends Component
     public function canDelete(): bool
     {
         return Gate::allows('delete', $this->lead);
+    }
+
+    #[Computed]
+    public function canMerge(): bool
+    {
+        return Gate::allows('merge', $this->lead);
+    }
+
+    /**
+     * Gates the scoring rule-management link and the "Recalculate" button —
+     * no new permission slug exists to gate scoring with (see
+     * App\Policies\LeadScoringRulePolicy's docblock), so this composes the
+     * same two existing checks canUpdate()/isClientAdmin() already expose,
+     * the identical bar LeadPolicy::merge()/assign() already use.
+     */
+    #[Computed]
+    public function canManageScoring(): bool
+    {
+        return $this->canUpdate() && $this->isClientAdmin();
+    }
+
+    /**
+     * The most recent LeadScoreLog for this lead, if any — its breakdown is
+     * what the detail page's "why is this lead scored X?" panel renders.
+     * Read-only: unlike possibleDuplicates(), viewing this page never
+     * triggers a recompute — score freshness comes entirely from the
+     * explicit triggers in LeadScoringService's callers (LeadReceived,
+     * status/priority changes, scoring-relevant detail edits, merges, the
+     * daily sweep) plus the manual "Recalculate" action below.
+     */
+    #[Computed]
+    public function latestScoreLog(): ?LeadScoreLog
+    {
+        return LeadScoreLog::query()
+            ->where('lead_id', $this->lead->id)
+            ->latest('computed_at')
+            ->first();
+    }
+
+    /**
+     * Every still-open possible-duplicate pairing involving this lead, each
+     * paired with the *other* lead in it — the banner shows this regardless
+     * of canMerge (informational for any viewer who can see this lead at
+     * all), while the Merge/Dismiss buttons themselves stay gated by
+     * canMerge in the view. Runs (and upserts) detection itself rather than
+     * only reading — see LeadDuplicateDetectionService::detectFor() — kept
+     * behind $initialLoadComplete like activity(), since it's the same kind
+     * of secondary, deferrable query on this page.
+     *
+     * @return Collection<int, array{link: LeadDuplicateLink, other: Lead}>
+     */
+    #[Computed]
+    public function possibleDuplicates(): Collection
+    {
+        if (! $this->initialLoadComplete) {
+            return collect();
+        }
+
+        return app(LeadDuplicateDetectionService::class)
+            ->detectFor($this->lead)
+            ->map(fn (LeadDuplicateLink $link): array => ['link' => $link, 'other' => $link->otherLead($this->lead)]);
+    }
+
+    /**
+     * The Contact/Company/Deal fields where the lead currently open in the
+     * merge modal ($mergeLinkId) and its possible-duplicate disagree — drives
+     * that modal's per-field radio choices. Empty once no modal is open.
+     *
+     * @return array<string, array{survivor: mixed, loser: mixed}>
+     */
+    #[Computed]
+    public function mergeConflicts(): array
+    {
+        $link = $this->mergeLinkId !== null
+            ? LeadDuplicateLink::query()->where('tenant_id', $this->lead->tenant_id)->find($this->mergeLinkId)
+            : null;
+
+        if ($link === null) {
+            return [];
+        }
+
+        return app(LeadMergeService::class)->conflictingFields($this->lead, $link->otherLead($this->lead));
     }
 
     /**
@@ -477,6 +602,32 @@ class Show extends Component
             ];
         }
 
+        // Every other lead merged INTO this one — never the reverse: a lead
+        // that's itself been merged away redirects out of Show::mount()
+        // before activity() is ever reached, so $this->lead is always the
+        // survivor whenever this runs. Read from LeadDuplicateLink (the
+        // merge's own audit trail, see LeadMergeService::merge()) rather
+        // than LeadDetailUpdateLog, since "merged with LEAD-123" needs the
+        // other lead's identifier, which changed_fields' plain column-name
+        // list has no room for.
+        foreach ($this->lead->duplicateLinksAsLead()->merged()->with(['duplicateLead', 'resolvedBy'])->get() as $link) {
+            $events[] = [
+                'type' => 'lead_merged',
+                'created_at' => $link->resolved_at ?? $link->updated_at,
+                'user' => $link->resolvedBy?->name,
+                'other_lead_identifier' => $link->duplicateLead->identifier,
+            ];
+        }
+
+        foreach ($this->lead->duplicateLinksAsDuplicate()->merged()->with(['lead', 'resolvedBy'])->get() as $link) {
+            $events[] = [
+                'type' => 'lead_merged',
+                'created_at' => $link->resolved_at ?? $link->updated_at,
+                'user' => $link->resolvedBy?->name,
+                'other_lead_identifier' => $link->lead->identifier,
+            ];
+        }
+
         usort($events, fn (array $a, array $b): int => $b['created_at'] <=> $a['created_at']);
 
         return $events;
@@ -560,6 +711,19 @@ class Show extends Component
                 'changed_by' => Auth::id(),
                 'changed_fields' => ['priority'],
             ]);
+        }
+
+        // Status and Priority are both scoring fields (LeadScoringField) —
+        // a targeted recompute here, not a generic LeadUpdated listener.
+        // Resolved via app(), not method injection: this is also called
+        // internally by updateStatusAndAssignment() as a plain PHP method
+        // call ($this->updateStatus()), which Laravel's request-level
+        // action dispatch (the only thing that supports method injection)
+        // never sees.
+        if ($statusChanged || $priorityChanged) {
+            app(LeadScoringService::class)->computeFor($this->lead, 'status_priority_changed');
+            $this->lead->refresh();
+            unset($this->latestScoreLog);
         }
 
         event(new LeadUpdated($this->lead));
@@ -804,6 +968,17 @@ class Show extends Component
             'changed_by' => Auth::id(),
             'changed_fields' => $changed,
         ]);
+
+        // Only recompute when $changed actually intersects the scoring-
+        // relevant subset (budget/deal/contact fields) — a Contact-card-only
+        // save (e.g. just the name) never touches this, so this deliberately
+        // does NOT fire on every applyDetailChanges() call. See
+        // LeadScoringService::SCORING_RELEVANT_DETAIL_FIELDS.
+        if (array_intersect($changed, LeadScoringService::SCORING_RELEVANT_DETAIL_FIELDS) !== []) {
+            app(LeadScoringService::class)->computeFor($this->lead, 'detail_updated');
+            $this->lead->refresh();
+            unset($this->latestScoreLog);
+        }
 
         event(new LeadUpdated($this->lead));
 
@@ -1080,6 +1255,30 @@ class Show extends Component
         Flux::toast(variant: 'success', text: __('Note added.'));
     }
 
+    /**
+     * Manual, on-demand recompute — gated the same as scoring-rule
+     * management (canManageScoring, Client-Admin-only), since it's the same
+     * class of consequential action as merge()/assign(). Runs the exact
+     * same LeadScoringService::computeFor() every automatic trigger uses,
+     * just invoked by a click instead of an event — the result is
+     * identical to what the next automatic trigger would have produced.
+     */
+    public function recalculateScore(LeadScoringService $scoringService): void
+    {
+        if (! $this->canManageScoring()) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to recalculate this lead's score."));
+
+            return;
+        }
+
+        $scoringService->computeFor($this->lead, 'manual', Auth::user());
+
+        $this->lead->refresh();
+        unset($this->latestScoreLog);
+
+        Flux::toast(variant: 'success', text: __('Lead score recalculated.'));
+    }
+
     public function confirmDelete(): void
     {
         if (Gate::denies('delete', $this->lead)) {
@@ -1132,6 +1331,130 @@ class Show extends Component
     }
 
     /**
+     * Opens the merge modal for one specific possible-duplicate pairing,
+     * seeding every conflicting field's choice to 'survivor' — the safe
+     * default a rep must deliberately override per field to pull in the
+     * loser's value instead. See LeadMergeService::conflictingFields().
+     */
+    public function openMergeModal(string $linkId): void
+    {
+        if (Gate::denies('merge', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to merge leads."));
+
+            return;
+        }
+
+        $link = LeadDuplicateLink::query()
+            ->where('tenant_id', $this->lead->tenant_id)
+            ->where('status', LeadDuplicateLinkStatus::Pending)
+            ->find($linkId);
+
+        if ($link === null) {
+            return;
+        }
+
+        $conflicts = app(LeadMergeService::class)->conflictingFields($this->lead, $link->otherLead($this->lead));
+
+        $this->mergeLinkId = $link->id;
+        $this->mergeFieldResolutions = array_fill_keys(array_keys($conflicts), 'survivor');
+        $this->showMergeModal = true;
+    }
+
+    public function closeMergeModal(): void
+    {
+        $this->showMergeModal = false;
+        $this->mergeLinkId = null;
+        $this->mergeFieldResolutions = [];
+        unset($this->mergeConflicts);
+    }
+
+    /**
+     * Marks a possible-duplicate pairing as "not a duplicate" — permanently:
+     * LeadDuplicateDetectionService never re-creates a link for a pair that
+     * already has one, so this pair won't be re-flagged by a future
+     * detection pass (see LeadDuplicateLink::pairKeys()).
+     */
+    public function dismissDuplicate(string $linkId): void
+    {
+        if (Gate::denies('merge', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to manage possible duplicates."));
+
+            return;
+        }
+
+        $link = LeadDuplicateLink::query()
+            ->where('tenant_id', $this->lead->tenant_id)
+            ->where('status', LeadDuplicateLinkStatus::Pending)
+            ->find($linkId);
+
+        if ($link === null) {
+            return;
+        }
+
+        $link->update([
+            'status' => LeadDuplicateLinkStatus::Dismissed,
+            'resolved_by' => Auth::id(),
+            'resolved_at' => now(),
+        ]);
+
+        unset($this->possibleDuplicates);
+
+        Flux::toast(variant: 'success', text: __('Marked as not a duplicate.'));
+    }
+
+    /**
+     * Merges the possible-duplicate lead ($mergeLinkId) into this lead —
+     * this lead is always the survivor, the other side of the pair is
+     * always the one retired. See LeadMergeService::merge() for the full
+     * transaction (reparenting notes/attachments/status/assignment/detail
+     * history, applying only explicitly-chosen field overrides, and marking
+     * the other lead merged_into_lead_id).
+     */
+    public function confirmMerge(LeadMergeService $mergeService): void
+    {
+        if (Gate::denies('merge', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to merge leads."));
+
+            return;
+        }
+
+        $link = $this->mergeLinkId !== null
+            ? LeadDuplicateLink::query()
+                ->where('tenant_id', $this->lead->tenant_id)
+                ->where('status', LeadDuplicateLinkStatus::Pending)
+                ->find($this->mergeLinkId)
+            : null;
+
+        if ($link === null) {
+            $this->closeMergeModal();
+
+            return;
+        }
+
+        try {
+            $mergeService->merge($this->lead, $link->otherLead($this->lead), Auth::user(), $this->mergeFieldResolutions, $link);
+        } catch (LeadMergeException $e) {
+            Flux::toast(variant: 'danger', text: $e->getMessage());
+            $this->closeMergeModal();
+
+            return;
+        }
+
+        $this->lead->refresh();
+        $this->fillDetailFieldsFromLead();
+        $this->closeMergeModal();
+        unset($this->activity, $this->possibleDuplicates);
+
+        event(new LeadUpdated($this->lead));
+
+        if ($this->panel) {
+            $this->dispatch('lead-panel-updated');
+        }
+
+        Flux::toast(variant: 'success', text: __('Lead merged.'));
+    }
+
+    /**
      * @return array<int, LeadStatus>
      */
     public function statusOptions(): array
@@ -1142,5 +1465,29 @@ class Show extends Component
     public function priorityOptions(): array
     {
         return LeadPriority::values();
+    }
+
+    /**
+     * Human label for a merge-conflict field key, reusing the same
+     * translations the Activity feed's "Updated: :fields" line already uses
+     * (see FIELD_LABELS) rather than a second, drifting copy.
+     */
+    public function mergeFieldLabel(string $field): string
+    {
+        return __(self::FIELD_LABELS[$field] ?? $field);
+    }
+
+    /**
+     * A merge-conflict field's raw value, formatted for the modal's radio
+     * labels — the two currency columns store a Currency ULID, meaningless
+     * to a human without resolving it to its code first.
+     */
+    public function mergeFieldValueLabel(string $field, mixed $value): string
+    {
+        if (in_array($field, ['estimated_budget_currency_id', 'deal_value_currency_id'], true)) {
+            return Currency::find($value)?->code ?? (string) $value;
+        }
+
+        return (string) $value;
     }
 }

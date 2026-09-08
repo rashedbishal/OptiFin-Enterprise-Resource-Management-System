@@ -11,6 +11,10 @@
 
     @include('livewire.tenant.leads.partials.pipeline-stepper', ['lead' => $lead])
 
+    @include('livewire.tenant.leads.partials.duplicate-warning')
+
+    @include('livewire.tenant.leads.partials.score-breakdown', ['lead' => $lead])
+
     {{-- Active tab reads as a raised "file tab" merging into the panel
     below (card-like surface + -mb-px so its bottom edge overlaps the
     divider) rather than only a colored underline — plain text on the bare

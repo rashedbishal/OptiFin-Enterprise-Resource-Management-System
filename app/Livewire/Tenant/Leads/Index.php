@@ -958,7 +958,13 @@ class Index extends Component
     {
         $user = Auth::user();
 
-        $query = Lead::query()->where('tenant_id', $user->tenant_id);
+        // whereNull('merged_into_lead_id'): a lead merged into another one
+        // (see App\Services\LeadMergeService) is never deleted, just
+        // retired from every normal view — this is the one shared query
+        // every list/board on this page is built from, so this alone keeps
+        // a merged-away lead out of the table, the Kanban board, and the
+        // status-count aggregates without touching anything else here.
+        $query = Lead::query()->where('tenant_id', $user->tenant_id)->whereNull('merged_into_lead_id');
 
         // Deliberately guaranteed-empty (not skipped outright — leads()/
         // boardLeads()/boardLeadCounts() all still need a real Builder/

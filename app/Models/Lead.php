@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\DB;
 /**
  * @property string $id
  * @property string $identifier
+ * @property string|null $merged_into_lead_id
  * @property string $tenant_id
  * @property string $source_id
  * @property string|null $assigned_to
@@ -46,6 +47,8 @@ use Illuminate\Support\Facades\DB;
  * @property string|null $deal_value
  * @property string|null $deal_value_currency_id
  * @property int|null $win_probability
+ * @property int|null $lead_score
+ * @property Carbon|null $lead_score_computed_at
  * @property Carbon|null $next_follow_up_at
  * @property Carbon|null $meeting_date
  * @property string|null $meeting_time
@@ -59,6 +62,10 @@ use Illuminate\Support\Facades\DB;
  * @property-read Currency|null $estimatedBudgetCurrency
  * @property-read Currency|null $dealValueCurrency
  */
+// lead_score/lead_score_computed_at (like merged_into_lead_id/identifier)
+// are deliberately left out here — they're only ever written by
+// App\Services\LeadScoringService's raw query builder update, never via a
+// create()/update() payload.
 #[Fillable([
     'tenant_id', 'source_id', 'assigned_to', 'name', 'company', 'website', 'industry', 'location',
     'service_interest', 'lead_source', 'email', 'phone', 'message', 'html_body', 'source_data', 'status_id', 'priority',
@@ -81,6 +88,8 @@ class Lead extends Model
             'estimated_budget' => 'decimal:2',
             'deal_value' => 'decimal:2',
             'win_probability' => 'integer',
+            'lead_score' => 'integer',
+            'lead_score_computed_at' => 'datetime',
             'next_follow_up_at' => 'date',
             'meeting_date' => 'date',
             'assigned_at' => 'datetime',
@@ -327,6 +336,20 @@ class Lead extends Model
     }
 
     /**
+     * The lead this one was merged into, if any — see
+     * App\Services\LeadMergeService::merge(). `merged_into_lead_id` is
+     * deliberately left out of #[Fillable] above, same trap/pattern as
+     * `identifier`: it must only ever be set by LeadMergeService's own raw
+     * update, never from a create()/update() payload.
+     *
+     * @return BelongsTo<Lead, $this>
+     */
+    public function mergedInto(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'merged_into_lead_id');
+    }
+
+    /**
      * @return BelongsTo<Currency, $this>
      */
     public function estimatedBudgetCurrency(): BelongsTo
@@ -472,6 +495,29 @@ class Lead extends Model
     public function leadNotes(): HasMany
     {
         return $this->hasMany(LeadNote::class);
+    }
+
+    /**
+     * The two halves of LeadDuplicateLink's canonical, order-independent
+     * pair storage (see LeadDuplicateLink::pairKeys()) — a possible
+     * duplicate pairing involving this lead lives under whichever of these
+     * two relations matches how the pair happened to be ordered, never
+     * both. Show::activity() combines both to render "merged with :lead"
+     * regardless of which side this lead landed on.
+     *
+     * @return HasMany<LeadDuplicateLink, $this>
+     */
+    public function duplicateLinksAsLead(): HasMany
+    {
+        return $this->hasMany(LeadDuplicateLink::class, 'lead_id');
+    }
+
+    /**
+     * @return HasMany<LeadDuplicateLink, $this>
+     */
+    public function duplicateLinksAsDuplicate(): HasMany
+    {
+        return $this->hasMany(LeadDuplicateLink::class, 'duplicate_lead_id');
     }
 
     /**

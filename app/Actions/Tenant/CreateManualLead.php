@@ -8,6 +8,7 @@ use App\Models\LeadSource;
 use App\Models\Tenant;
 use App\Models\TenantUser;
 use App\Services\LeadAssignmentService;
+use App\Services\LeadScoringService;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -20,7 +21,10 @@ use Illuminate\Support\Facades\DB;
  */
 class CreateManualLead
 {
-    public function __construct(private readonly LeadAssignmentService $assignmentService) {}
+    public function __construct(
+        private readonly LeadAssignmentService $assignmentService,
+        private readonly LeadScoringService $scoringService,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $data
@@ -61,6 +65,11 @@ class CreateManualLead
             if ($assignee) {
                 $this->assignmentService->assign($lead, $assignee, $createdBy);
             }
+
+            // Manual leads never fire LeadReceived (see
+            // App\Listeners\RecomputeLeadScoreOnReceipt's docblock), so
+            // this is their only path to an initial score.
+            $this->scoringService->computeFor($lead, 'lead_received');
 
             return $lead->fresh();
         });

@@ -1,6 +1,10 @@
 <div class="flex flex-col gap-5" wire:init="completeInitialLoad">
     @include('livewire.tenant.leads.partials.header', ['lead' => $lead, 'canDelete' => $this->canDelete, 'compact' => true])
 
+    @include('livewire.tenant.leads.partials.duplicate-warning')
+
+    @include('livewire.tenant.leads.partials.score-breakdown', ['lead' => $lead, 'compact' => true])
+
     {{-- Left column is fixed-width and stacks Details/Activity on their
     own — they're read-only reference material, not part of the edit
     forms' row-pairing below. The right side is an explicit 2-column grid
