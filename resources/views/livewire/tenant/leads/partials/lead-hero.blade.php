@@ -62,6 +62,8 @@
                     </flux:text>
                 </div>
             </div>
+
+            @include('livewire.tenant.leads.partials.lead-tags-manager', ['lead' => $lead])
         </div>
 
         <div class="flex flex-col items-end gap-2">

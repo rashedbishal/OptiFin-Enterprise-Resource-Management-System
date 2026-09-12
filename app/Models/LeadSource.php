@@ -59,6 +59,19 @@ class LeadSource extends Model
     }
 
     /**
+     * Feature #12 — this source's recorded monthly spend history, tenant
+     * self-service (see App\Models\LeadSourceCost's docblock). Never
+     * populated for Manual/CsvImport sources by UI convention (not a DB
+     * constraint) — those aren't real paid channels.
+     *
+     * @return HasMany<LeadSourceCost, $this>
+     */
+    public function costs(): HasMany
+    {
+        return $this->hasMany(LeadSourceCost::class);
+    }
+
+    /**
      * The public webhook URL for this source, or null for source types that
      * aren't webhook-based (e.g. email).
      *
@@ -89,6 +102,9 @@ class LeadSource extends Model
             LeadSourceType::Email => null,
             // Never receives webhooks - leads are typed in directly.
             LeadSourceType::Manual => null,
+            // Never receives webhooks - leads arrive via an uploaded CSV
+            // file, processed by App\Imports\LeadCsvImport.
+            LeadSourceType::CsvImport => null,
         };
 
         if (! $routeName) {

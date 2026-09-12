@@ -3,9 +3,12 @@
 use App\Enums\LeadPriority;
 use App\Enums\LeadScoringField;
 use App\Enums\LeadScoringOperator;
+use App\Enums\LeadSourceType;
 use App\Models\Lead;
 use App\Models\LeadScoreLog;
 use App\Models\LeadScoringRule;
+use App\Models\LeadSource;
+use App\Models\LeadStatusLog;
 use App\Services\LeadScoringService;
 
 function makeScoringRule(string $tenantId, array $overrides = []): LeadScoringRule
@@ -258,6 +261,85 @@ test('days_since_created is evaluated against the current time, not stored/cumul
 
     expect(app(LeadScoringService::class)->computeFor($freshLead, 'manual'))->toBe(0);
     expect(app(LeadScoringService::class)->computeFor($oldLead, 'manual'))->toBe(10);
+});
+
+test('equals on a numeric field compares numerically, not lexicographically', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    // Stored as a bare integer-looking float (1500.0 round-trips through
+    // json_encode as "1500", no decimal point) — the rule's raw text is
+    // "1500", the lead's own decimal(2) column always renders "1500.00".
+    // A naive (string) cast would compare "1500" against "1500" and still
+    // pass by coincidence; this specifically exercises the is_numeric()
+    // branch rather than relying on that coincidence.
+    makeScoringRule($tenant->id, ['field' => LeadScoringField::EstimatedBudget->value, 'operator' => '=', 'value' => '1500', 'points' => 10]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'estimated_budget' => '1500.00']);
+
+    expect(app(LeadScoringService::class)->computeFor($lead, 'manual'))->toBe(10);
+});
+
+test('not_equals on a numeric field compares numerically', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    makeScoringRule($tenant->id, ['field' => LeadScoringField::EstimatedBudget->value, 'operator' => '!=', 'value' => '1500', 'points' => 10]);
+    $matching = Lead::factory()->create(['tenant_id' => $tenant->id, 'estimated_budget' => '2000.00']);
+    $nonMatching = Lead::factory()->create(['tenant_id' => $tenant->id, 'estimated_budget' => '1500.00']);
+
+    expect(app(LeadScoringService::class)->computeFor($matching, 'manual'))->toBe(10);
+    expect(app(LeadScoringService::class)->computeFor($nonMatching, 'manual'))->toBe(0);
+});
+
+test('status field equals/mismatch and in/not_in evaluate correctly', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('qualified')->id]);
+
+    makeScoringRule($tenant->id, ['name' => 'match', 'field' => LeadScoringField::Status->value, 'operator' => '=', 'value' => 'qualified', 'points' => 5]);
+    makeScoringRule($tenant->id, ['name' => 'mismatch', 'field' => LeadScoringField::Status->value, 'operator' => '=', 'value' => 'won', 'points' => 100]);
+    makeScoringRule($tenant->id, ['name' => 'in', 'field' => LeadScoringField::Status->value, 'operator' => 'in', 'value' => ['qualified', 'proposal_sent'], 'points' => 5]);
+    makeScoringRule($tenant->id, ['name' => 'not_in', 'field' => LeadScoringField::Status->value, 'operator' => 'not_in', 'value' => ['won', 'lost'], 'points' => 5]);
+
+    expect(app(LeadScoringService::class)->computeFor($lead, 'manual'))->toBe(15);
+});
+
+test('source_type field equals/mismatch evaluate correctly', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Whatsapp]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+
+    makeScoringRule($tenant->id, ['name' => 'match', 'field' => LeadScoringField::SourceType->value, 'operator' => '=', 'value' => 'whatsapp', 'points' => 5]);
+    makeScoringRule($tenant->id, ['name' => 'mismatch', 'field' => LeadScoringField::SourceType->value, 'operator' => '=', 'value' => 'email', 'points' => 100]);
+
+    expect(app(LeadScoringService::class)->computeFor($lead, 'manual'))->toBe(5);
+});
+
+test('days_since_last_status_change falls back to created_at when the lead has never had a status change logged', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    makeScoringRule($tenant->id, ['field' => LeadScoringField::DaysSinceLastStatusChange->value, 'operator' => '>=', 'value' => '10', 'points' => 10]);
+
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'created_at' => now()->subDays(15)]);
+
+    expect(app(LeadScoringService::class)->computeFor($lead, 'manual'))->toBe(10);
+});
+
+test('days_since_last_status_change uses the most recent LeadStatusLog when one exists, not created_at', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    makeScoringRule($tenant->id, ['field' => LeadScoringField::DaysSinceLastStatusChange->value, 'operator' => '<=', 'value' => '5', 'points' => 10]);
+
+    // Created long ago, but its status changed recently — the recent
+    // change, not the old created_at, must drive the calculation.
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'created_at' => now()->subDays(60)]);
+    LeadStatusLog::factory()->create(['lead_id' => $lead->id, 'changed_by' => $clientAdmin->id, 'created_at' => now()->subDays(2)]);
+
+    expect(app(LeadScoringService::class)->computeFor($lead, 'manual'))->toBe(10);
+});
+
+test('days_since_last_status_change ignores an older status log in favor of the most recent one', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    makeScoringRule($tenant->id, ['field' => LeadScoringField::DaysSinceLastStatusChange->value, 'operator' => '<=', 'value' => '5', 'points' => 10]);
+
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    LeadStatusLog::factory()->create(['lead_id' => $lead->id, 'changed_by' => $clientAdmin->id, 'created_at' => now()->subDays(30)]);
+    LeadStatusLog::factory()->create(['lead_id' => $lead->id, 'changed_by' => $clientAdmin->id, 'created_at' => now()->subDays(1)]);
+
+    expect(app(LeadScoringService::class)->computeFor($lead, 'manual'))->toBe(10);
 });
 
 test('scoring rules and scores never cross tenant boundaries', function () {

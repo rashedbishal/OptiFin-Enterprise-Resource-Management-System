@@ -1,6 +1,9 @@
 <?php
 
+use App\Enums\LeadSourceType;
 use App\Models\Lead;
+use App\Models\LeadImport;
+use App\Models\LeadSource;
 use App\Models\Tenant;
 use App\Models\TenantUser;
 
@@ -108,6 +111,33 @@ test('a tenant user cannot authenticate on another tenant user\'s notification c
 
     $response = $this->actingAs($clientAdmin)->post('/broadcasting/auth', [
         'channel_name' => 'private-tenant-user.'.$rep->id,
+        'socket_id' => '1234.1234',
+    ]);
+
+    $response->assertForbidden();
+});
+
+test('a client admin can authenticate on their own tenant\'s lead-import channel', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::CsvImport]);
+    $import = LeadImport::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+
+    $response = $this->actingAs($clientAdmin)->post('/broadcasting/auth', [
+        'channel_name' => 'private-lead-import.'.$import->id,
+        'socket_id' => '1234.1234',
+    ]);
+
+    $response->assertOk();
+});
+
+test('a tenant user cannot authenticate on another tenant\'s lead-import channel', function () {
+    ['tenant' => $tenantA, 'clientAdmin' => $clientAdminA] = tenantWithLeadManagement();
+    ['tenant' => $tenantB] = tenantWithLeadManagement();
+    $sourceB = LeadSource::factory()->create(['tenant_id' => $tenantB->id, 'type' => LeadSourceType::CsvImport]);
+    $importB = LeadImport::factory()->create(['tenant_id' => $tenantB->id, 'source_id' => $sourceB->id]);
+
+    $response = $this->actingAs($clientAdminA)->post('/broadcasting/auth', [
+        'channel_name' => 'private-lead-import.'.$importB->id,
         'socket_id' => '1234.1234',
     ]);
 

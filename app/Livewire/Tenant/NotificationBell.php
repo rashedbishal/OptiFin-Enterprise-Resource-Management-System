@@ -6,10 +6,13 @@ use App\Notifications\FollowUpAlertNotification;
 use App\Notifications\FollowUpCancelledNotification;
 use App\Notifications\FollowUpUpdatedNotification;
 use App\Notifications\LeadAssignedNotification;
+use App\Notifications\LeadInactivityAlertNotification;
 use App\Notifications\MeetingAlertNotification;
 use App\Notifications\MeetingCancelledNotification;
 use App\Notifications\MeetingUpdatedNotification;
 use App\Notifications\NewLeadNotification;
+use App\Notifications\TaskAlertNotification;
+use App\Notifications\TaskAssignedNotification;
 use App\Services\NotificationUrlResolver;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Carbon;
@@ -212,6 +215,30 @@ class NotificationBell extends Component
                 'clock',
                 ($data['rescheduled'] ?? false) ? __('Follow-up rescheduled') : __('Follow-up scheduled'),
                 $this->dateChangeMessage($data, 'next_follow_up_at'),
+            ],
+            TaskAssignedNotification::class => [
+                'check-circle',
+                ($data['assigned_by'] ?? null) !== null
+                    ? __(':assignedBy assigned you a task', ['assignedBy' => $data['assigned_by']])
+                    : __('A task was assigned to you'),
+                $data['name'] ?? '',
+            ],
+            TaskAlertNotification::class => [
+                'check-circle',
+                __('Task reminder'),
+                // Reuses dateReminderMessage() unmodified — TaskAlertNotification
+                // deliberately stores its due date under the same 'name'/'due_date'
+                // keys MeetingAlertNotification uses for 'name'/'meeting_date', see
+                // that notification class's own docblock.
+                $this->dateReminderMessage($data, 'due_date'),
+            ],
+            LeadInactivityAlertNotification::class => [
+                'moon',
+                __('Inactive lead'),
+                __(':name has had no activity for :days days', [
+                    'name' => $data['name'] ?? __('Unknown'),
+                    'days' => $data['days_inactive'] ?? '?',
+                ]),
             ],
             default => ['bell', __('Notification'), ''],
         };

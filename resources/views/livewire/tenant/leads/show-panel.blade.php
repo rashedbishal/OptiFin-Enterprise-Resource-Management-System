@@ -5,6 +5,16 @@
 
     @include('livewire.tenant.leads.partials.score-breakdown', ['lead' => $lead, 'compact' => true])
 
+    @include('livewire.tenant.leads.partials.deals-card', ['lead' => $lead])
+
+    @include('livewire.tenant.leads.partials.tasks-card', ['lead' => $lead])
+
+    @include('livewire.tenant.leads.partials.custom-fields-card', ['lead' => $lead])
+
+    @include('livewire.tenant.leads.partials.consent-card', ['lead' => $lead])
+
+    @include('livewire.tenant.leads.partials.notes-card')
+
     {{-- Left column is fixed-width and stacks Details/Activity on their
     own — they're read-only reference material, not part of the edit
     forms' row-pairing below. The right side is an explicit 2-column grid

@@ -258,17 +258,18 @@ class LeadSources extends Component
     }
 
     /**
-     * Excludes LeadSourceType::Manual: that type isn't a Platform-Admin-
-     * configured external channel - it's the single per-tenant source
-     * manually keyed-in leads are attributed to, provisioned automatically
-     * the first time a tenant user creates one.
+     * Excludes LeadSourceType::Manual and ::CsvImport: neither is a
+     * Platform-Admin-configured external channel - Manual is the single
+     * per-tenant source manually keyed-in leads are attributed to,
+     * CsvImport the equivalent for Feature #7 CSV imports, both
+     * provisioned automatically the first time a tenant user uses them.
      */
     #[Computed]
     public function typeOptions(): array
     {
         return array_filter(
             LeadSourceType::cases(),
-            fn (LeadSourceType $type): bool => $type !== LeadSourceType::Manual,
+            fn (LeadSourceType $type): bool => ! in_array($type, [LeadSourceType::Manual, LeadSourceType::CsvImport], true),
         );
     }
 
@@ -461,6 +462,10 @@ class LeadSources extends Component
             LeadSourceType::Manual => [
                 'success' => true,
                 'message' => __('Manual entry has nothing external to test.'),
+            ],
+            LeadSourceType::CsvImport => [
+                'success' => true,
+                'message' => __('CSV Import has nothing external to test.'),
             ],
         };
 

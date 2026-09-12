@@ -39,6 +39,11 @@ class Tenant extends Model
         'meeting_alert_days_before',
         'followup_alert_enabled',
         'followup_alert_days_before',
+        'task_alert_enabled',
+        'task_alert_days_before',
+        'lead_nurturing_notify_enabled',
+        'lead_nurturing_task_enabled',
+        'lead_nurturing_inactive_days',
     ];
 
     /**
@@ -54,6 +59,11 @@ class Tenant extends Model
             'meeting_alert_days_before' => 'integer',
             'followup_alert_enabled' => 'boolean',
             'followup_alert_days_before' => 'integer',
+            'task_alert_enabled' => 'boolean',
+            'task_alert_days_before' => 'integer',
+            'lead_nurturing_notify_enabled' => 'boolean',
+            'lead_nurturing_task_enabled' => 'boolean',
+            'lead_nurturing_inactive_days' => 'integer',
         ];
     }
 

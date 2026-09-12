@@ -27,6 +27,10 @@
                 [['value' => '', 'label' => __('All sources')]],
                 collect($this->sourceTypeOptions())->map(fn($opt) => ['value' => $opt, 'label' => \App\Enums\LeadSourceType::from($opt)->label()])->toArray()
             );
+            $tagOptionsFormatted = array_merge(
+                [['value' => '', 'label' => __('All tags')]],
+                collect($this->tagOptions())->map(fn($opt) => ['value' => (string) $opt->id, 'label' => $opt->name])->toArray()
+            );
             if ($this->isClientAdmin) {
                 $assignedToOptionsFormatted = array_merge(
                     [
@@ -53,7 +57,7 @@
             // forces `display: inline-block` on anything outside a small
             // supported list, and permanently corrupts a .remove element
             // after its first completed loading cycle).
-            $listLoadingTargets = 'priority,sourceType,assignedTo,search,completeInitialLoad';
+            $listLoadingTargets = 'priority,sourceType,assignedTo,tag,search,completeInitialLoad';
 
             // See the identical $showSkeletonByDefault in leads.blade.php
             // for the full explanation: wire:loading's class toggle only
@@ -69,6 +73,10 @@
         <div class="grid grid-cols-2 gap-2 md:grid-cols-3 lg:gap-3">
             <x-dropdown-select wire:model.live="priority" :placeholder="__('All priorities')" :options="$priorityOptionsFormatted" icon="funnel" />
             <x-dropdown-select wire:model.live="sourceType" :placeholder="__('All sources')" :options="$sourceTypeOptionsFormatted" icon="tag" />
+            {{-- icon="hashtag", not "tag" — the Source filter above already
+            uses the Heroicon literally named "tag" for an unrelated concept,
+            see leads.blade.php's identical note. --}}
+            <x-dropdown-select wire:model.live="tag" :placeholder="__('All tags')" :options="$tagOptionsFormatted" icon="hashtag" />
 
             {{-- size="sm" matches Flux's own input height (h-10 by default)
             to x-dropdown-select's button height (py-1.5, no fixed h-*).
@@ -90,6 +98,19 @@
             @if ($this->isClientAdmin)
                 <x-dropdown-select wire:model.live="assignedTo" :placeholder="__('All users')" :options="$assignedToOptionsFormatted" icon="user" />
             @endif
+        </div>
+
+        {{-- Feature #6 (Bulk Actions): board-wide equivalent of the table's
+        header checkbox — "visible" here means every card currently
+        rendered across every column (boardLeads(), capped at
+        BOARD_LEAD_LIMIT), since this board has no pagination. --}}
+        @php
+            $boardLeadIds = $this->boardLeads->flatten(1)->pluck('id')->all();
+            $allBoardLeadsSelected = $boardLeadIds !== [] && array_diff($boardLeadIds, $selectedLeadIds) === [];
+        @endphp
+        <div class="flex items-center gap-2">
+            <flux:checkbox wire:click="toggleSelectAllOnBoard" :checked="$allBoardLeadsSelected" :disabled="$boardLeadIds === []" />
+            <flux:text size="sm">{{ __('Select all visible') }}</flux:text>
         </div>
     </div>
 
@@ -349,6 +370,8 @@
         @endif
         </div>
     </div>
+
+    @include('livewire.tenant.leads.partials.bulk-actions-toolbar')
 
     @if ($this->canCreateLead)
         <flux:modal wire:model.self="showCreateLeadModal" :dismissible="false" scroll="body" class="w-full md:max-w-[46rem] lg:max-w-[80rem]">

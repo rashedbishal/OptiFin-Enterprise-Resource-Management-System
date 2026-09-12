@@ -80,7 +80,27 @@
             <x-dropdown-select wire:model.live="operator" :label="__('Condition')" :options="$this->operatorOptions" placeholder="{{ __('Select a condition') }}" />
 
             @if ($this->valueOptions !== null && ! $this->isListOperator)
-                <x-dropdown-select wire:model="value" :label="__('Value')" :options="$this->valueOptions" placeholder="{{ __('Select a value') }}" />
+                {{--
+                    wire:key is load-bearing here, not decorative: x-dropdown-select
+                    bakes its `options: {{ json_encode(...) }}` array into Alpine's
+                    x-data ONCE, the first time this element mounts — Alpine never
+                    re-evaluates x-data on a later Livewire morph/patch of the SAME
+                    DOM node, only on a full destroy+recreate. Without a wire:key
+                    that changes every time the form opens, reopening this same
+                    modal (create() or edit(), even for the exact same rule/field
+                    twice in a row) leaves this dropdown showing whatever options
+                    array was baked in the FIRST time it ever mounted in this
+                    browser tab — which can go stale after a valueOptions() change
+                    ships, even though every subsequent server response already
+                    reflects it. Keyed on TWO things: $formInstance (increments
+                    on every create()/edit() call, so reopening the modal always
+                    remounts fresh) AND $field itself (so switching between two
+                    Enum-kind fields — e.g. Priority to Source Channel — inside
+                    an ALREADY-open form, which keeps the same $formInstance,
+                    still forces a remount instead of showing the previous
+                    field's options under the new field's selection).
+                --}}
+                <x-dropdown-select wire:key="scoring-rule-value-{{ $formInstance }}-{{ $field }}" wire:model="value" :label="__('Value')" :options="$this->valueOptions" placeholder="{{ __('Select a value') }}" />
             @else
                 <flux:input
                     wire:model="value"

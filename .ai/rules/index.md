@@ -6,6 +6,8 @@ Before planning or editing, find the row whose globs match the file's path and r
 | --- | --- |
 | app/{Models,Livewire,Http/Controllers/Api}/** | .ai/rules/api.md |
 | resources/views/layouts/app.blade.php,resources/views/layouts/app/sidebar.blade.php,app/Livewire/Tenant/Leads/Index.php | .ai/rules/app-livewire-tenant-leads.md |
+| app/{Models/Deal.php,Models/DealStatusLog.php,Enums/DealStatus.php,Services/LeadMergeService.php} | .ai/rules/app-models.md |
+| app/Services/LeadMergeService.php | .ai/rules/app-services.md |
 | app/{Enums/LeadSourceType.php,Models/LeadSource.php,Livewire/Platform/Clients/LeadSources.php}, app/{Enums/LeadSourceType.php,Livewire/Platform/Clients/LeadSources.php} | .ai/rules/clients.md |
 | app/Livewire/Tenant/NotificationBell.php,app/Notifications/*.php,app/Console/Commands/SendLeadAlertNotifications.php | .ai/rules/commands.md |
 | app/Console/Commands/SendLeadAlertNotifications.php | .ai/rules/console-commands.md |
@@ -15,6 +17,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Jobs/ProcessEmailLeadSource.php | .ai/rules/jobs.md |
 | resources/{js,css}/** | .ai/rules/jscss.md |
 | app/Livewire/Platform/LeadManagement/Settings.php | .ai/rules/lead-management.md |
+| app/{Models/LeadTag.php,Livewire/Tenant/LeadTags/**,Policies/LeadTagPolicy.php} | .ai/rules/lead-tags.md |
 | app/Livewire/Tenant/Leads/**,resources/views/livewire/tenant/{leads-kanban,leads/partials/detail-card}.blade.php | .ai/rules/leads-kanbanleads-partials.md |
 | app/Services/LeadAdminNotifier.php,app/Notifications/MeetingUpdatedNotification.php,app/Notifications/FollowUpUpdatedNotification.php,app/Livewire/Tenant/Leads/Index.php,app/Livewire/Tenant/Leads/Show.php | .ai/rules/leads-livewire-tenant-leads.md |
 | app/Livewire/Tenant/Leads/Index.php,app/Livewire/Tenant/NotificationBell.php | .ai/rules/leads-livewire-tenant.md |
@@ -30,6 +33,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Livewire/** | .ai/rules/livewire.md |
 | app/{Models,Http/Middleware,Policies}/** | .ai/rules/middleware-policies.md |
 | database/migrations/2026_09_02_16*.php,app/Models/Currency.php,tests/** | .ai/rules/migrations-models.md |
+| app/{Models/Task.php,Models/TaskStatusLog.php,Enums/TaskStatus.php,Console/Commands/SendTaskAlertNotifications.php} | .ai/rules/models-commands.md |
 | app/Models/{PlatformUser,TenantUser}.php, app/Models/{LeadAssignment,LeadNote,LeadStatusLog,LeadDetailUpdateLog}.php | .ai/rules/models.md |
 | app/Livewire/Tenant/Leads/Show.php,app/Notifications/MeetingCancelledNotification.php,app/Notifications/FollowUpCancelledNotification.php | .ai/rules/notifications.md |
 | resources/views/livewire/tenant/leads/partials/{lead-card,header}.blade.php,resources/views/livewire/tenant/leads-kanban.blade.php | .ai/rules/partials-views-livewire-tenant.md |

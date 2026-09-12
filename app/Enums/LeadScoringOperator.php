@@ -50,16 +50,36 @@ enum LeadScoringOperator: string
             self::LessThanOrEqual => is_numeric($actual) && is_numeric($expected) && (float) $actual <= (float) $expected,
             self::GreaterThan => is_numeric($actual) && is_numeric($expected) && (float) $actual > (float) $expected,
             self::LessThan => is_numeric($actual) && is_numeric($expected) && (float) $actual < (float) $expected,
-            self::Equals => self::normalize($actual) === self::normalize($expected),
-            self::NotEquals => self::normalize($actual) !== self::normalize($expected),
+            // Numeric operands compare numerically (1500 must equal 1500.0
+            // regardless of how each side's original string/int/float
+            // representation differs), never lexicographically like the
+            // Enum/Boolean-kind fallback below — the same is_numeric() bare
+            // gate the four inequality operators above already use.
+            self::Equals => is_numeric($actual) && is_numeric($expected)
+                ? (float) $actual === (float) $expected
+                : self::normalize($actual) === self::normalize($expected),
+            self::NotEquals => is_numeric($actual) && is_numeric($expected)
+                ? (float) $actual !== (float) $expected
+                : self::normalize($actual) !== self::normalize($expected),
             self::In => is_array($expected) && in_array(self::normalize($actual), array_map(self::normalize(...), $expected), true),
             self::NotIn => is_array($expected) && ! in_array(self::normalize($actual), array_map(self::normalize(...), $expected), true),
         };
     }
 
+    /**
+     * Reduces $value to a string for Enum/Boolean-kind (non-numeric)
+     * equality — never called with an array by evaluate() itself (In/NotIn
+     * pre-filter with is_array($expected) before mapping this over each
+     * element, and Equals/NotEquals only reach this branch for a
+     * non-numeric operand), but guarded anyway: a hand-edited/malformed
+     * rule value that somehow ends up an array here would otherwise trip
+     * PHP's "Array to string conversion" warning on the bare (string) cast
+     * below. Returning null instead makes it a clean non-match, consistent
+     * with every other "can't be evaluated" case in this class.
+     */
     private static function normalize(mixed $value): ?string
     {
-        if ($value === null) {
+        if ($value === null || is_array($value)) {
             return null;
         }
 

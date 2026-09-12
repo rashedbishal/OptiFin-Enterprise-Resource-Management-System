@@ -16,6 +16,9 @@
                 <flux:text variant="strong">{{ $lead->company }}</flux:text>
             @endif
             <flux:text>{{ $lead->email }} {{ $lead->phone ? '· '.$lead->phone : '' }}</flux:text>
+            <div class="mt-2">
+                @include('livewire.tenant.leads.partials.lead-tags-manager', ['lead' => $lead])
+            </div>
         </div>
     </div>
     @if ($canDelete)

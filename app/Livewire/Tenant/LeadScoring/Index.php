@@ -51,6 +51,20 @@ class Index extends Component
 
     public ?string $confirmingDeleteId = null;
 
+    /**
+     * Incremented every time create()/edit() opens the form — used purely
+     * as a wire:key cache-buster on the Value field's x-dropdown-select
+     * (see lead-scoring.blade.php). x-dropdown-select bakes its options
+     * array into Alpine's x-data once, the first time that DOM node
+     * mounts, and never re-reads it on a later Livewire morph of the SAME
+     * node — only a full destroy+recreate re-evaluates it. Editing one
+     * rule, then another with the same field (or reopening the same rule
+     * again) without this counter would keep the ORIGINAL mount's options
+     * array, which could go stale — e.g. reused across sessions on the
+     * server code being deployed with a valueOptions() change.
+     */
+    public int $formInstance = 0;
+
     public function mount(): void
     {
         // Whole page Client-Admin-gated, same precedent as
@@ -160,6 +174,7 @@ class Index extends Component
         $this->sortOrder = '0';
         $this->resetErrorBag();
         $this->showModal = true;
+        $this->formInstance++;
     }
 
     public function edit(string $id): void
@@ -172,12 +187,33 @@ class Index extends Component
         $this->name = $rule->name;
         $this->field = $rule->field;
         $this->operator = $rule->operator;
-        $this->value = is_array($rule->value) ? implode(', ', $rule->value) : (string) $rule->value;
+        $this->value = $this->valueForForm($rule->value);
         $this->points = (string) $rule->points;
         $this->isActive = $rule->is_active;
         $this->sortOrder = (string) $rule->sort_order;
         $this->resetErrorBag();
         $this->showModal = true;
+        $this->formInstance++;
+    }
+
+    /**
+     * Converts a stored rule value back into the string the form controls
+     * expect. Boolean rules are stored as PHP true/false; the dropdown-select
+     * uses 'yes'/'no' as its option keys, so we map back accordingly. Array
+     * values (In/NotIn) are rejoined as comma-separated text. Everything else
+     * casts straight to string.
+     */
+    private function valueForForm(mixed $stored): string
+    {
+        if (is_bool($stored)) {
+            return $stored ? 'yes' : 'no';
+        }
+
+        if (is_array($stored)) {
+            return implode(', ', $stored);
+        }
+
+        return (string) $stored;
     }
 
     public function save(): void

@@ -3,7 +3,9 @@
 namespace App\Livewire\Platform\LeadManagement;
 
 use App\Models\Currency;
+use App\Models\Deal;
 use App\Models\Lead;
+use App\Models\LeadSourceCost;
 use App\Models\LeadStatus;
 use Flux\Flux;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -322,7 +324,19 @@ class Settings extends Component
             ->orWhere('deal_value_currency_id', $currency->id)
             ->exists();
 
-        if ($inUseByLead || DB::table('tenant_currencies')->where('currency_id', $currency->id)->exists()) {
+        // Feature #4 (Deal / Opportunity): a currency referenced only by a
+        // Deal (never by any Lead) must block deletion too, or that Deal's
+        // currency_id would be silently null-on-deleted out from under it.
+        $inUseByDeal = Deal::where('currency_id', $currency->id)->exists();
+
+        // Feature #12: a currency referenced only by a recorded source cost
+        // entry (never by any Lead or Deal) must block deletion too, or
+        // that entry's currency_id would be silently null-on-deleted out
+        // from under it — same reasoning Feature #4 already established
+        // for $inUseByDeal above.
+        $inUseByLeadSourceCost = LeadSourceCost::where('currency_id', $currency->id)->exists();
+
+        if ($inUseByLead || $inUseByDeal || $inUseByLeadSourceCost || DB::table('tenant_currencies')->where('currency_id', $currency->id)->exists()) {
             Flux::toast(variant: 'danger', text: __('This currency is in use by a client and cannot be deleted.'));
 
             return;

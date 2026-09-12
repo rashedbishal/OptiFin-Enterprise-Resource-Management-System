@@ -133,6 +133,16 @@
                 ])
             @endif
 
+            @include('livewire.tenant.leads.partials.deals-card', ['lead' => $lead])
+
+            @include('livewire.tenant.leads.partials.tasks-card', ['lead' => $lead])
+
+            @include('livewire.tenant.leads.partials.custom-fields-card', ['lead' => $lead])
+
+            @include('livewire.tenant.leads.partials.consent-card', ['lead' => $lead])
+
+            @include('livewire.tenant.leads.partials.notes-card')
+
             @include('livewire.tenant.leads.partials.detail-card', ['lead' => $lead, 'timeline' => $this->timeline, 'bodyView' => $bodyView])
         </div>
     @else

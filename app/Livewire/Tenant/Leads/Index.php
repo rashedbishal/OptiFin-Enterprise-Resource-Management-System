@@ -3,6 +3,7 @@
 namespace App\Livewire\Tenant\Leads;
 
 use App\Actions\Tenant\CreateManualLead;
+use App\Actions\Tenant\SaveLeadCustomFieldValues;
 use App\Enums\LeadPriority;
 use App\Enums\LeadSourceType;
 use App\Events\LeadStatusChanged;
@@ -10,16 +11,24 @@ use App\Events\LeadUpdated;
 use App\Livewire\Tenant\Leads\Concerns\ConfirmsLeadDeletionPassword;
 use App\Livewire\Tenant\Leads\Concerns\FiltersLeadsQuery;
 use App\Models\Lead;
+use App\Models\LeadCustomFieldDefinition;
+use App\Models\LeadDetailUpdateLog;
 use App\Models\LeadSource;
 use App\Models\LeadStatusLog;
+use App\Models\LeadTag;
 use App\Models\TenantUser;
 use App\Notifications\FollowUpUpdatedNotification;
 use App\Notifications\MeetingUpdatedNotification;
 use App\Services\LeadAdminNotifier;
+use App\Services\LeadAssignmentService;
+use App\Services\LeadScoringService;
+use App\Support\LeadValidationRules;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
@@ -86,6 +95,20 @@ class Index extends Component
     public string $leadMeetingDate = '';
 
     /**
+     * Feature #11 — Custom Fields. Keyed by lead_custom_field_definition_id,
+     * bound via wire:model="customFieldValues.{id}" in the New Lead modal's
+     * dynamically-rendered custom-fields section. Only ever validated/saved
+     * against this tenant's currently ACTIVE definitions (see
+     * activeCustomFieldDefinitions() and App\Actions\Tenant\
+     * SaveLeadCustomFieldValues) — a stale key left over from a definition
+     * that was deactivated between opening and submitting the form is
+     * simply never looked at, never trusted.
+     *
+     * @var array<string, mixed>
+     */
+    public array $customFieldValues = [];
+
+    /**
      * Caps how many leads are fetched for the Kanban board / mobile list in
      * one query — grouped in PHP afterwards, since a per-column SQL limit
      * would need a window function. `boardLeadCounts()` is queried
@@ -131,6 +154,23 @@ class Index extends Component
 
     public string $followUpAlertDaysInput = '0';
 
+    public bool $showTaskAlertModal = false;
+
+    public string $taskAlertDaysInput = '0';
+
+    public bool $showNurturingDaysModal = false;
+
+    public string $nurturingDaysInput = '0';
+
+    /**
+     * Which action a click on toggleNurturingNotify()/toggleNurturingTask()
+     * is trying to turn on when the shared threshold modal opens — null
+     * when the modal was opened via openNurturingDaysEditor() to just
+     * adjust the existing threshold, in which case saveNurturingDays()
+     * updates the number only, without also flipping either enabled flag.
+     */
+    public ?string $pendingNurturingToggle = null;
+
     public bool $showDeleteLeadModal = false;
 
     public ?string $confirmingDeleteLeadId = null;
@@ -151,6 +191,54 @@ class Index extends Component
      */
     #[Url(as: 'lead')]
     public ?string $openLeadId = null;
+
+    /**
+     * Bulk Actions (Feature #6, Phase 1) — the checked set of Lead ids from
+     * the table's checkbox column / Kanban board's card overlay. Never
+     * trusted directly by a bulk action: eligibleSelectedLeads() always
+     * re-derives the real, authorized set from this tenant's own
+     * tenant/assignment-scoped query before anything runs.
+     *
+     * @var array<int, string>
+     */
+    public array $selectedLeadIds = [];
+
+    /**
+     * Hard cap on how many Leads a single bulk action can touch —
+     * eligibleSelectedLeads() silently truncates to this; selectAllVisible-
+     * style helpers below toast a warning when they would have exceeded it.
+     */
+    private const int MAX_BULK_SELECTION = 100;
+
+    public bool $showBulkStatusModal = false;
+
+    public string $bulkStatusId = '';
+
+    public bool $showBulkPriorityModal = false;
+
+    public string $bulkPriority = '';
+
+    public bool $showBulkAssignModal = false;
+
+    public string $bulkAssigneeId = '';
+
+    public bool $showBulkTagModal = false;
+
+    public string $bulkTagId = '';
+
+    /**
+     * 'attach' or 'remove' — one shared modal handles both directions of
+     * the bulk tag action, switched by which button opened it.
+     */
+    public string $bulkTagAction = 'attach';
+
+    /**
+     * Whether the shared password-confirmation delete modal (see
+     * ConfirmsLeadDeletionPassword) was opened for a bulk delete rather
+     * than a single lead — deleteLeadConfirmed() branches on this instead
+     * of a second modal/property pair.
+     */
+    public bool $bulkDeleteMode = false;
 
     public function mount(): void
     {
@@ -224,6 +312,26 @@ class Index extends Component
         return Auth::user()->tenant->currencies()->orderBy('code')->get();
     }
 
+    /**
+     * This tenant's currently active custom field definitions (Feature #11),
+     * in display order — the single source of truth for both which fields
+     * the New Lead modal renders and which fields saveLead() validates
+     * against. Explicitly filtered by tenant_id rather than relying on a
+     * global scope, same discipline as every other query in this module.
+     *
+     * @return Collection<int, LeadCustomFieldDefinition>
+     */
+    #[Computed]
+    public function activeCustomFieldDefinitions(): Collection
+    {
+        return LeadCustomFieldDefinition::query()
+            ->where('tenant_id', Auth::user()->tenant_id)
+            ->active()
+            ->orderBy('sort_order')
+            ->orderBy('created_at')
+            ->get();
+    }
+
     public function createLead(): void
     {
         if (Gate::denies('create', Lead::class)) {
@@ -236,6 +344,7 @@ class Index extends Component
             'leadName', 'leadCompany', 'leadWebsite', 'leadIndustry', 'leadLocation', 'leadServiceInterest',
             'leadSource', 'leadEmail', 'leadPhone', 'leadMessage', 'leadAssigneeId',
             'leadEstimatedBudget', 'leadDealValue', 'leadWinProbability', 'leadNextFollowUpAt', 'leadMeetingDate',
+            'customFieldValues',
         );
         $this->leadStatus = (string) Auth::user()->tenant->initialLeadStatus()?->id;
         $this->leadPriority = LeadPriority::Medium->value;
@@ -259,34 +368,33 @@ class Index extends Component
 
         $tenant = Auth::user()->tenant;
 
+        // Field-level rule VALUES live in App\Support\LeadValidationRules —
+        // the single source of truth also used by Feature #7's CSV import
+        // (App\Imports\LeadCsvImport) — so the two paths can never silently
+        // drift apart. Only the rule values are shared; custom messages
+        // below stay inline, since Livewire's field-level message bag and a
+        // CSV row's own error reporting are different UI concerns.
         $validated = $this->validate([
-            // Letters (incl. accented/Unicode), spaces, apostrophes, periods
-            // and hyphens only - covers "Md. Rafiqul Islam", "O'Brien",
-            // "Jean-Pierre" without allowing digits or stray symbols.
-            'leadName' => ['required', 'string', 'min:2', 'max:255', 'regex:/^[\p{L}\p{M}][\p{L}\p{M}\s\'.-]*$/u'],
-            'leadCompany' => ['nullable', 'string', 'max:255', 'regex:/^[\p{L}\p{N}][\p{L}\p{N}\s.,&\'()-]*$/u'],
-            'leadWebsite' => ['nullable', 'url', 'max:255', 'regex:#^https?://#i'],
-            'leadIndustry' => ['nullable', 'string', 'max:255', 'regex:#^[\p{L}][\p{L}\s&,/-]*$#u'],
-            'leadLocation' => ['nullable', 'string', 'max:255', 'regex:/^[\p{L}][\p{L}\s,.-]*$/u'],
-            'leadServiceInterest' => ['nullable', 'string', 'max:255', 'regex:#^[\p{L}\p{N}][\p{L}\p{N}\s&,./()-]*$#u'],
-            'leadSource' => ['nullable', 'string', 'max:255', 'regex:#^[\p{L}\p{N}][\p{L}\p{N}\s&,./()-]*$#u'],
-            'leadEmail' => ['nullable', 'email', 'max:255'],
-            // Digits, spaces and the punctuation real phone numbers use
-            // (+880 1712-345678, +1 (555) 123-4567); the lookahead requires
-            // at least 7 digits so "(--)  --" can't slip through.
-            'leadPhone' => ['required', 'regex:/^(?=(?:\D*\d){7,})[0-9+\-\s()]{7,20}$/'],
-            'leadMessage' => ['nullable', 'string', 'max:2000'],
-            'leadStatus' => ['required', Rule::exists('tenant_lead_statuses', 'lead_status_id')->where('tenant_id', $tenant->id)],
-            'leadPriority' => ['required', Rule::enum(LeadPriority::class)],
+            'leadName' => LeadValidationRules::name(),
+            'leadCompany' => LeadValidationRules::company(),
+            'leadWebsite' => LeadValidationRules::website(),
+            'leadIndustry' => LeadValidationRules::industry(),
+            'leadLocation' => LeadValidationRules::location(),
+            'leadServiceInterest' => LeadValidationRules::serviceInterest(),
+            'leadSource' => LeadValidationRules::leadSourceText(),
+            'leadEmail' => LeadValidationRules::email(),
+            'leadPhone' => LeadValidationRules::phone(),
+            'leadMessage' => LeadValidationRules::message(),
+            'leadStatus' => LeadValidationRules::statusId($tenant),
+            'leadPriority' => LeadValidationRules::priority(),
             'leadAssigneeId' => ['nullable', 'string'],
-            // Plain decimal amounts only (no scientific notation, no thousands separators).
-            'leadEstimatedBudget' => ['nullable', 'numeric', 'min:0', 'max:999999999999.99', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
-            'leadEstimatedBudgetCurrencyId' => ['nullable', 'string', Rule::exists('tenant_currencies', 'currency_id')->where('tenant_id', $tenant->id)],
-            'leadDealValue' => ['nullable', 'numeric', 'min:0', 'max:999999999999.99', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
-            'leadDealValueCurrencyId' => ['nullable', 'string', Rule::exists('tenant_currencies', 'currency_id')->where('tenant_id', $tenant->id)],
-            'leadWinProbability' => ['nullable', 'integer', 'min:0', 'max:100'],
-            'leadNextFollowUpAt' => ['nullable', 'date', 'after_or_equal:today'],
-            'leadMeetingDate' => ['nullable', 'date_format:Y-m-d\TH:i', 'after_or_equal:today'],
+            'leadEstimatedBudget' => LeadValidationRules::amount(),
+            'leadEstimatedBudgetCurrencyId' => LeadValidationRules::currencyId($tenant),
+            'leadDealValue' => LeadValidationRules::amount(),
+            'leadDealValueCurrencyId' => LeadValidationRules::currencyId($tenant),
+            'leadWinProbability' => LeadValidationRules::winProbability(),
+            'leadNextFollowUpAt' => LeadValidationRules::nextFollowUpAt(),
+            'leadMeetingDate' => LeadValidationRules::meetingDate(),
         ], [
             'leadName.regex' => __('Contact person may only contain letters, spaces, apostrophes, periods and hyphens.'),
             'leadCompany.regex' => __('Company name contains characters that are not allowed.'),
@@ -301,6 +409,27 @@ class Index extends Component
             'leadNextFollowUpAt.after_or_equal' => __('Next follow-up date cannot be in the past.'),
             'leadMeetingDate.after_or_equal' => __('Meeting date cannot be in the past.'),
         ]);
+
+        // Feature #11 — a separate validate() pass, deliberately: the rule
+        // set here is assembled at runtime from this tenant's own active
+        // custom field definitions, unlike every rule above (all fixed,
+        // known ahead of time via LeadValidationRules). Keeping it apart
+        // means a tenant with zero custom fields adds a no-op empty
+        // validate([]) call rather than complicating the fixed rule array.
+        $customFieldRules = [];
+
+        foreach ($this->activeCustomFieldDefinitions as $definition) {
+            $customFieldRules['customFieldValues.'.$definition->id] = $definition->validationRules();
+        }
+
+        // An empty array passed to validate() doesn't mean "validate
+        // nothing" — Livewire treats it as "no rules were passed, fall back
+        // to a $rules property/rules() method", which this component has
+        // neither of, and throws. Only call it when this tenant actually
+        // has at least one active custom field.
+        if ($customFieldRules !== []) {
+            $this->validate($customFieldRules);
+        }
 
         $user = Auth::user();
 
@@ -353,6 +482,8 @@ class Index extends Component
         ], $user, $assignee);
 
         $this->recentlyCreatedLeadId = $createdLead->id;
+
+        app(SaveLeadCustomFieldValues::class)->handle($createdLead, $tenant->id, $this->customFieldValues);
 
         // A brand new lead's meeting/follow-up is always a fresh schedule
         // (rescheduled: false) — there's no "before" to compare against the
@@ -412,10 +543,22 @@ class Index extends Component
 
     public function updating(string $property): void
     {
-        if (in_array($property, ['status', 'priority', 'sourceType', 'assignedTo', 'fromDate', 'toDate', 'search'], true)) {
+        if (in_array($property, ['status', 'priority', 'sourceType', 'assignedTo', 'tag', 'fromDate', 'toDate', 'search'], true)) {
             $this->resetPage();
             unset($this->boardLeads, $this->boardLeadCounts, $this->leads);
+            $this->clearSelection();
         }
+    }
+
+    /**
+     * Livewire's WithPagination magic hook, fired whenever its own `page`
+     * property changes (gotoPage/previousPage/nextPage/setPage) — a bulk
+     * selection is scoped to whatever's currently on screen, so paging away
+     * from it must clear it rather than silently carry stale ids forward.
+     */
+    public function updatingPage(): void
+    {
+        $this->clearSelection();
     }
 
     /**
@@ -427,7 +570,7 @@ class Index extends Component
     public function leads()
     {
         return $this->applyDropdownFilters($this->applyAssignmentScope($this->filteredQuery()))
-            ->with(['source', 'assignedUser', 'status', 'estimatedBudgetCurrency', 'dealValueCurrency'])
+            ->with(['source', 'assignedUser', 'status', 'estimatedBudgetCurrency', 'dealValueCurrency', 'tags'])
             ->latest('updated_at')
             ->paginate($this->perPage);
     }
@@ -450,6 +593,7 @@ class Index extends Component
         $this->perPage = $perPage;
         $this->resetPage();
         unset($this->leads);
+        $this->clearSelection();
     }
 
     /**
@@ -465,7 +609,7 @@ class Index extends Component
     public function boardLeads()
     {
         $leads = $this->applyDropdownFilters($this->applyAssignmentScope($this->filteredQuery()))
-            ->with(['source', 'assignedUser', 'status', 'estimatedBudgetCurrency', 'dealValueCurrency'])
+            ->with(['source', 'assignedUser', 'status', 'estimatedBudgetCurrency', 'dealValueCurrency', 'tags'])
             ->latest()
             ->limit(self::BOARD_LEAD_LIMIT)
             ->get();
@@ -512,7 +656,7 @@ class Index extends Component
 
     public function updated(string $property): void
     {
-        if (in_array($property, ['status', 'priority', 'sourceType', 'assignedTo', 'fromDate', 'toDate', 'search'], true)) {
+        if (in_array($property, ['status', 'priority', 'sourceType', 'assignedTo', 'tag', 'fromDate', 'toDate', 'search'], true)) {
             $this->resetPage();
             $this->refreshBoard();
         }
@@ -705,6 +849,28 @@ class Index extends Component
         $this->reset('deletePassword');
         $this->resetErrorBag('deletePassword');
         $this->confirmingDeleteLeadId = $id;
+        $this->bulkDeleteMode = false;
+        $this->showDeleteLeadModal = true;
+    }
+
+    /**
+     * Bulk Actions (Feature #6) reuses this exact same password-confirmation
+     * modal/flow instead of a second one — deleteLeadConfirmed() below
+     * branches on $bulkDeleteMode rather than duplicating the modal, which
+     * would otherwise put two flux:input wire:model="deletePassword" fields
+     * (same DOM id, since Flux derives it from the model name) on the page
+     * at once.
+     */
+    public function confirmBulkDelete(): void
+    {
+        if (! $this->canDeleteLeads || $this->selectedLeadIds === []) {
+            return;
+        }
+
+        $this->reset('deletePassword');
+        $this->resetErrorBag('deletePassword');
+        $this->confirmingDeleteLeadId = null;
+        $this->bulkDeleteMode = true;
         $this->showDeleteLeadModal = true;
     }
 
@@ -714,7 +880,9 @@ class Index extends Component
             return;
         }
 
-        if ($this->confirmingDeleteLeadId) {
+        if ($this->bulkDeleteMode) {
+            $this->performBulkDelete();
+        } elseif ($this->confirmingDeleteLeadId) {
             $this->delete($this->confirmingDeleteLeadId);
         }
 
@@ -725,6 +893,7 @@ class Index extends Component
     {
         $this->showDeleteLeadModal = false;
         $this->confirmingDeleteLeadId = null;
+        $this->bulkDeleteMode = false;
         $this->reset('deletePassword');
         $this->resetErrorBag('deletePassword');
     }
@@ -791,6 +960,17 @@ class Index extends Component
 
         if ($source->leads()->exists()) {
             Flux::toast(variant: 'danger', text: __('This source has leads and can no longer be deleted.'));
+
+            return;
+        }
+
+        // Feature #12: a source with recorded cost history must not be
+        // deletable out from under it, even when it has zero leads (e.g. a
+        // month of ad spend that produced no leads) — same "don't silently
+        // lose recorded financial data" principle as Currency's in-use
+        // block below.
+        if ($source->costs()->exists()) {
+            Flux::toast(variant: 'danger', text: __('This source has recorded cost history and can no longer be deleted.'));
 
             return;
         }
@@ -906,6 +1086,153 @@ class Index extends Component
         Flux::toast(variant: 'success', text: __('Follow-up alerts updated.'));
     }
 
+    /**
+     * A third, independent alert pair alongside meeting/follow-up above —
+     * same toggle-then-confirm shape, deliberately not reusing either of
+     * those settings (see the add_task_alert_settings_to_tenants_table
+     * migration's docblock).
+     */
+    public function toggleTaskAlert(): void
+    {
+        if (! $this->isClientAdmin) {
+            return;
+        }
+
+        $tenant = Auth::user()->tenant;
+
+        if ($tenant->task_alert_enabled) {
+            $tenant->update(['task_alert_enabled' => false]);
+
+            return;
+        }
+
+        $this->taskAlertDaysInput = (string) $tenant->task_alert_days_before;
+        $this->showTaskAlertModal = true;
+    }
+
+    public function openTaskAlertDaysEditor(): void
+    {
+        if (! $this->isClientAdmin) {
+            return;
+        }
+
+        $this->taskAlertDaysInput = (string) Auth::user()->tenant->task_alert_days_before;
+        $this->showTaskAlertModal = true;
+    }
+
+    public function saveTaskAlertDays(): void
+    {
+        if (! $this->isClientAdmin) {
+            return;
+        }
+
+        $validated = $this->validate([
+            'taskAlertDaysInput' => ['required', 'integer', 'min:0'],
+        ]);
+
+        Auth::user()->tenant->update([
+            'task_alert_enabled' => true,
+            'task_alert_days_before' => $validated['taskAlertDaysInput'],
+        ]);
+
+        $this->showTaskAlertModal = false;
+        Flux::toast(variant: 'success', text: __('Task due-date alerts updated.'));
+    }
+
+    /**
+     * Feature #9 — unlike the three alert pairs above (one enabled flag
+     * each), notification and follow-up-task are independently toggleable
+     * but share one threshold, so turning either on for the first time (both
+     * currently off) opens the shared days editor; turning one on while the
+     * other is already on just flips the flag directly, since a threshold
+     * is already configured. Turning either off never needs the modal.
+     */
+    public function toggleNurturingNotify(): void
+    {
+        if (! $this->isClientAdmin) {
+            return;
+        }
+
+        $tenant = Auth::user()->tenant;
+
+        if ($tenant->lead_nurturing_notify_enabled) {
+            $tenant->update(['lead_nurturing_notify_enabled' => false]);
+
+            return;
+        }
+
+        if ($tenant->lead_nurturing_task_enabled) {
+            $tenant->update(['lead_nurturing_notify_enabled' => true]);
+
+            return;
+        }
+
+        $this->pendingNurturingToggle = 'notify';
+        $this->nurturingDaysInput = (string) $tenant->lead_nurturing_inactive_days;
+        $this->showNurturingDaysModal = true;
+    }
+
+    public function toggleNurturingTask(): void
+    {
+        if (! $this->isClientAdmin) {
+            return;
+        }
+
+        $tenant = Auth::user()->tenant;
+
+        if ($tenant->lead_nurturing_task_enabled) {
+            $tenant->update(['lead_nurturing_task_enabled' => false]);
+
+            return;
+        }
+
+        if ($tenant->lead_nurturing_notify_enabled) {
+            $tenant->update(['lead_nurturing_task_enabled' => true]);
+
+            return;
+        }
+
+        $this->pendingNurturingToggle = 'task';
+        $this->nurturingDaysInput = (string) $tenant->lead_nurturing_inactive_days;
+        $this->showNurturingDaysModal = true;
+    }
+
+    public function openNurturingDaysEditor(): void
+    {
+        if (! $this->isClientAdmin) {
+            return;
+        }
+
+        $this->pendingNurturingToggle = null;
+        $this->nurturingDaysInput = (string) Auth::user()->tenant->lead_nurturing_inactive_days;
+        $this->showNurturingDaysModal = true;
+    }
+
+    public function saveNurturingDays(): void
+    {
+        if (! $this->isClientAdmin) {
+            return;
+        }
+
+        $validated = $this->validate([
+            'nurturingDaysInput' => ['required', 'integer', 'min:0', 'max:365'],
+        ]);
+
+        $updates = ['lead_nurturing_inactive_days' => $validated['nurturingDaysInput']];
+
+        if ($this->pendingNurturingToggle === 'notify') {
+            $updates['lead_nurturing_notify_enabled'] = true;
+        } elseif ($this->pendingNurturingToggle === 'task') {
+            $updates['lead_nurturing_task_enabled'] = true;
+        }
+
+        Auth::user()->tenant->update($updates);
+
+        $this->pendingNurturingToggle = null;
+        $this->showNurturingDaysModal = false;
+        Flux::toast(variant: 'success', text: __('Lead inactivity nurturing updated.'));
+    }
+
     public function export(): StreamedResponse
     {
         Gate::authorize('viewAny', Lead::class);
@@ -940,6 +1267,498 @@ class Index extends Component
 
             fclose($handle);
         }, 'leads.csv', ['Content-Type' => 'text/csv']);
+    }
+
+    /**
+     * =========================================================================
+     * Bulk Actions (Feature #6, Phase 1)
+     * =========================================================================
+     */
+    #[Computed]
+    public function selectedCount(): int
+    {
+        return count($this->selectedLeadIds);
+    }
+
+    public function clearSelection(): void
+    {
+        $this->selectedLeadIds = [];
+    }
+
+    public function toggleLeadSelection(string $id): void
+    {
+        if (in_array($id, $this->selectedLeadIds, true)) {
+            $this->selectedLeadIds = array_values(array_diff($this->selectedLeadIds, [$id]));
+
+            return;
+        }
+
+        if (count($this->selectedLeadIds) >= self::MAX_BULK_SELECTION) {
+            Flux::toast(variant: 'warning', text: __('You can select up to :max leads at a time.', ['max' => self::MAX_BULK_SELECTION]));
+
+            return;
+        }
+
+        $this->selectedLeadIds[] = $id;
+    }
+
+    /**
+     * Toggles every Lead currently on this page of the Client Admin table —
+     * unchecks the whole page if every one of its rows is already selected,
+     * otherwise adds every not-yet-selected row (capped at
+     * MAX_BULK_SELECTION, same as toggleLeadSelection()). Additive rather
+     * than replacing $selectedLeadIds outright, so a selection made on an
+     * earlier page survives paging back to it — though in practice paging
+     * away already clears it via updatingPage().
+     */
+    public function toggleSelectAllOnPage(): void
+    {
+        $this->toggleSelectAllFor($this->leads->pluck('id')->all());
+    }
+
+    /**
+     * Same as toggleSelectAllOnPage() but for the Client User's Kanban
+     * board, which has no pagination — "visible" means every Lead currently
+     * rendered across every column (boardLeads(), capped at
+     * BOARD_LEAD_LIMIT), not just one page's worth.
+     */
+    public function toggleSelectAllOnBoard(): void
+    {
+        $this->toggleSelectAllFor($this->boardLeads->flatten(1)->pluck('id')->all());
+    }
+
+    /**
+     * @param  array<int, string>  $ids
+     */
+    private function toggleSelectAllFor(array $ids): void
+    {
+        $ids = array_values(array_unique($ids));
+
+        if ($ids === []) {
+            return;
+        }
+
+        $allAlreadySelected = array_diff($ids, $this->selectedLeadIds) === [];
+
+        if ($allAlreadySelected) {
+            $this->selectedLeadIds = array_values(array_diff($this->selectedLeadIds, $ids));
+
+            return;
+        }
+
+        $merged = array_values(array_unique(array_merge($this->selectedLeadIds, $ids)));
+
+        if (count($merged) > self::MAX_BULK_SELECTION) {
+            Flux::toast(variant: 'warning', text: __('You can select up to :max leads at a time.', ['max' => self::MAX_BULK_SELECTION]));
+            $merged = array_slice($merged, 0, self::MAX_BULK_SELECTION);
+        }
+
+        $this->selectedLeadIds = $merged;
+    }
+
+    /**
+     * The real, authorized set of Leads a bulk action can act on — always
+     * re-derived from this tenant's own tenant-scoped + assignment-scoped
+     * query (never trusting $selectedLeadIds' ids directly, and never
+     * re-applying the dropdown filters, per the approved spec: "current
+     * tenant-scoped and assignment-scoped Lead query"). A stale id (another
+     * tab merged/deleted it, or a non-admin's assignment scope no longer
+     * covers it) simply isn't returned here — the caller's own per-Lead
+     * authorization check on top of this is what actually decides
+     * eligibility for a given action (e.g. delete requires isClientAdmin,
+     * assign requires isClientAdmin, update allows an assignee too).
+     *
+     * @return Collection<int, Lead>
+     */
+    private function eligibleSelectedLeads(): Collection
+    {
+        if ($this->selectedLeadIds === []) {
+            return collect();
+        }
+
+        $ids = array_slice($this->selectedLeadIds, 0, self::MAX_BULK_SELECTION);
+
+        return $this->applyAssignmentScope($this->filteredQuery())
+            ->whereIn('id', $ids)
+            ->with(['source', 'status', 'tags'])
+            ->get();
+    }
+
+    /**
+     * Shared partial-success toast for every bulk action below — "X of Y
+     * Leads {verb}." plus a trailing "Z skipped." clause when anything was
+     * skipped. $attempted is the size of the original selection (capped),
+     * not just how many Leads eligibleSelectedLeads() actually returned —
+     * a stale/no-longer-eligible id counts as skipped too, exactly like a
+     * per-Lead authorization failure does.
+     */
+    private function reportBulkResult(int $succeeded, int $attempted, string $verb): void
+    {
+        $skipped = $attempted - $succeeded;
+
+        $text = __(':succeeded of :attempted Leads :verb.', ['succeeded' => $succeeded, 'attempted' => $attempted, 'verb' => $verb]);
+
+        if ($skipped > 0) {
+            $text .= ' '.__(':skipped skipped.', ['skipped' => $skipped]);
+        }
+
+        $this->clearSelection();
+        $this->refreshBoard();
+
+        Flux::toast(variant: $skipped > 0 ? 'warning' : 'success', text: $text);
+    }
+
+    public function openBulkStatusModal(): void
+    {
+        if (! $this->canUpdateLeads || $this->selectedLeadIds === []) {
+            return;
+        }
+
+        $this->bulkStatusId = '';
+        $this->resetErrorBag('bulkStatusId');
+        $this->showBulkStatusModal = true;
+    }
+
+    /**
+     * Replicates Show::updateStatus()'s status-only side effects (status
+     * log row, LeadStatusChanged event, scoring recompute, LeadUpdated
+     * event, first_contacted_at/closed_at bookkeeping) per Lead, in its own
+     * DB::transaction() so one failure can't roll back everything else
+     * already applied. Deliberately NOT calling into Show — that component
+     * is untouched, this is a parallel implementation of the same rules.
+     */
+    public function applyBulkStatusChange(LeadScoringService $scoringService): void
+    {
+        $validated = $this->validate([
+            'bulkStatusId' => ['required', Rule::exists('tenant_lead_statuses', 'lead_status_id')->where('tenant_id', Auth::user()->tenant_id)],
+        ]);
+
+        $tenant = Auth::user()->tenant;
+        $newStatus = $tenant->leadStatuses->firstWhere('id', $validated['bulkStatusId']);
+
+        if ($newStatus === null) {
+            return;
+        }
+
+        $attempted = min(count($this->selectedLeadIds), self::MAX_BULK_SELECTION);
+        $succeeded = 0;
+
+        foreach ($this->eligibleSelectedLeads() as $lead) {
+            if (Gate::denies('update', $lead)) {
+                continue;
+            }
+
+            DB::transaction(function () use ($lead, $newStatus, $scoringService): void {
+                $oldStatus = $lead->status;
+
+                if ($oldStatus->id === $newStatus->id) {
+                    return;
+                }
+
+                $updates = ['status_id' => $newStatus->id];
+
+                if ($oldStatus->id === $lead->tenant->initialLeadStatus()?->id) {
+                    $updates['first_contacted_at'] = $lead->first_contacted_at ?? now();
+                }
+
+                if ($newStatus->is_closed) {
+                    $updates['closed_at'] = now();
+                }
+
+                $lead->update($updates);
+
+                LeadStatusLog::create([
+                    'lead_id' => $lead->id,
+                    'changed_by' => Auth::id(),
+                    'old_status_id' => $oldStatus->id,
+                    'new_status_id' => $newStatus->id,
+                ]);
+
+                event(new LeadStatusChanged($lead, $oldStatus, $newStatus, Auth::user()));
+                $scoringService->computeFor($lead, 'status_priority_changed');
+                event(new LeadUpdated($lead));
+            });
+
+            $succeeded++;
+        }
+
+        $this->showBulkStatusModal = false;
+        $this->reportBulkResult($succeeded, $attempted, __('updated'));
+    }
+
+    public function openBulkPriorityModal(): void
+    {
+        if (! $this->canUpdateLeads || $this->selectedLeadIds === []) {
+            return;
+        }
+
+        $this->bulkPriority = '';
+        $this->resetErrorBag('bulkPriority');
+        $this->showBulkPriorityModal = true;
+    }
+
+    /**
+     * Replicates Show::updateStatus()'s priority-only side effects (the
+     * LeadDetailUpdateLog 'priority' entry + scoring recompute +
+     * LeadUpdated), same transaction-per-Lead shape as
+     * applyBulkStatusChange().
+     */
+    public function applyBulkPriorityChange(LeadScoringService $scoringService): void
+    {
+        $validated = $this->validate(['bulkPriority' => ['required', Rule::enum(LeadPriority::class)]]);
+        $newPriority = LeadPriority::from($validated['bulkPriority']);
+
+        $attempted = min(count($this->selectedLeadIds), self::MAX_BULK_SELECTION);
+        $succeeded = 0;
+
+        foreach ($this->eligibleSelectedLeads() as $lead) {
+            if (Gate::denies('update', $lead)) {
+                continue;
+            }
+
+            DB::transaction(function () use ($lead, $newPriority, $scoringService): void {
+                if ($lead->priority === $newPriority) {
+                    return;
+                }
+
+                $lead->update(['priority' => $newPriority]);
+
+                LeadDetailUpdateLog::create([
+                    'lead_id' => $lead->id,
+                    'changed_by' => Auth::id(),
+                    'changed_fields' => ['priority'],
+                ]);
+
+                $scoringService->computeFor($lead, 'status_priority_changed');
+                event(new LeadUpdated($lead));
+            });
+
+            $succeeded++;
+        }
+
+        $this->showBulkPriorityModal = false;
+        $this->reportBulkResult($succeeded, $attempted, __('updated'));
+    }
+
+    public function openBulkAssignModal(): void
+    {
+        if (! $this->isClientAdmin || $this->selectedLeadIds === []) {
+            return;
+        }
+
+        $this->bulkAssigneeId = '';
+        $this->resetErrorBag('bulkAssigneeId');
+        $this->showBulkAssignModal = true;
+    }
+
+    /**
+     * Reuses LeadAssignmentService::assign() directly (not autoAssign() —
+     * this must never invoke round-robin/least-loaded distribution) per
+     * eligible Lead, replicating Show::assign()'s no-op guard so a Lead
+     * already assigned to the chosen assignee isn't re-assigned (which
+     * would otherwise duplicate its LeadAssignment history row, re-fire
+     * LeadAssignedNotification, and reset the assignee's
+     * last_assigned_at — the exact bug .ai/rules/leads.md documents as
+     * already fixed once for the single-Lead path).
+     */
+    public function applyBulkAssign(LeadAssignmentService $assignmentService): void
+    {
+        $validated = $this->validate(['bulkAssigneeId' => ['required', 'string']]);
+
+        $assignee = TenantUser::where('tenant_id', Auth::user()->tenant_id)->find((string) $validated['bulkAssigneeId']);
+
+        if (! $assignee) {
+            $this->addError('bulkAssigneeId', __('Please select a valid user.'));
+
+            return;
+        }
+
+        $attempted = min(count($this->selectedLeadIds), self::MAX_BULK_SELECTION);
+        $succeeded = 0;
+
+        foreach ($this->eligibleSelectedLeads() as $lead) {
+            if (Gate::denies('assign', $lead)) {
+                continue;
+            }
+
+            DB::transaction(function () use ($lead, $assignee, $assignmentService): void {
+                if ($lead->assigned_to === $assignee->id) {
+                    return;
+                }
+
+                $assignmentService->assign($lead, $assignee, Auth::user());
+                $lead->refresh();
+                event(new LeadUpdated($lead));
+            });
+
+            $succeeded++;
+        }
+
+        $this->showBulkAssignModal = false;
+        $this->reportBulkResult($succeeded, $attempted, __('assigned'));
+    }
+
+    /**
+     * Reuses LeadAssignmentService::unassign() per eligible Lead, and —
+     * since unassign() itself deliberately writes no history row and fires
+     * no event (its docblock: "the caller is responsible for broadcasting
+     * LeadUpdated") — replicates the exact same manual LeadDetailUpdateLog
+     * 'unassigned' entry + LeadUpdated event Show::assign()'s own unassign
+     * branch writes for the single-Lead path.
+     */
+    public function bulkUnassign(): void
+    {
+        if (! $this->isClientAdmin || $this->selectedLeadIds === []) {
+            return;
+        }
+
+        $assignmentService = app(LeadAssignmentService::class);
+        $attempted = min(count($this->selectedLeadIds), self::MAX_BULK_SELECTION);
+        $succeeded = 0;
+
+        foreach ($this->eligibleSelectedLeads() as $lead) {
+            if (Gate::denies('assign', $lead)) {
+                continue;
+            }
+
+            DB::transaction(function () use ($lead, $assignmentService): void {
+                if ($lead->assigned_to === null) {
+                    return;
+                }
+
+                $assignmentService->unassign($lead);
+
+                LeadDetailUpdateLog::create([
+                    'lead_id' => $lead->id,
+                    'changed_by' => Auth::id(),
+                    'changed_fields' => ['assigned_to'],
+                    'action' => 'unassigned',
+                ]);
+
+                $lead->refresh();
+                event(new LeadUpdated($lead));
+            });
+
+            $succeeded++;
+        }
+
+        $this->reportBulkResult($succeeded, $attempted, __('unassigned'));
+    }
+
+    public function openBulkTagModal(string $action): void
+    {
+        if (! $this->canUpdateLeads || $this->selectedLeadIds === [] || ! in_array($action, ['attach', 'remove'], true)) {
+            return;
+        }
+
+        $this->bulkTagAction = $action;
+        $this->bulkTagId = '';
+        $this->resetErrorBag('bulkTagId');
+        $this->showBulkTagModal = true;
+    }
+
+    /**
+     * Reuses Show::attachTag()/detachTag()'s idempotent
+     * syncWithoutDetaching()/detach() calls per eligible Lead, only writing
+     * a LeadDetailUpdateLog tag_added/tag_removed entry for a Lead where
+     * the tag's presence actually changed — matching the single-Lead path,
+     * which never logs a no-op attach/detach either.
+     */
+    public function applyBulkTagAction(): void
+    {
+        $validated = $this->validate(['bulkTagId' => ['required', 'string']]);
+
+        $tag = LeadTag::where('tenant_id', Auth::user()->tenant_id)->find((string) $validated['bulkTagId']);
+
+        if (! $tag) {
+            $this->addError('bulkTagId', __('Please select a valid tag.'));
+
+            return;
+        }
+
+        $isAttach = $this->bulkTagAction === 'attach';
+        $attempted = min(count($this->selectedLeadIds), self::MAX_BULK_SELECTION);
+        $succeeded = 0;
+
+        foreach ($this->eligibleSelectedLeads() as $lead) {
+            if (Gate::denies('update', $lead)) {
+                continue;
+            }
+
+            DB::transaction(function () use ($lead, $tag, $isAttach): void {
+                $currentlyAttached = $lead->tags->contains('id', $tag->id);
+
+                if ($isAttach === $currentlyAttached) {
+                    return;
+                }
+
+                if ($isAttach) {
+                    $lead->tags()->syncWithoutDetaching([$tag->id => ['tagged_by' => Auth::id()]]);
+                    $action = 'tag_added';
+                } else {
+                    $lead->tags()->detach($tag->id);
+                    $action = 'tag_removed';
+                }
+
+                LeadDetailUpdateLog::create([
+                    'lead_id' => $lead->id,
+                    'changed_by' => Auth::id(),
+                    'changed_fields' => ['tag' => $tag->name],
+                    'action' => $action,
+                ]);
+
+                event(new LeadUpdated($lead));
+            });
+
+            $succeeded++;
+        }
+
+        $this->showBulkTagModal = false;
+        $this->reportBulkResult($succeeded, $attempted, $isAttach ? __('tagged') : __('untagged'));
+    }
+
+    /**
+     * Per-Lead LeadPolicy::delete() check (Client-Admin-only, same as
+     * single-Lead delete) PLUS a new source-type restriction scoped to
+     * bulk delete specifically — email/website_form/manual only, matching
+     * the per-row Delete button's existing UI-only restriction in
+     * leads.blade.php, but enforced server-side here rather than left as a
+     * UI-only gap the way the single-Lead path still is (out of scope to
+     * change here — see the approved spec). No activity/aggregate log
+     * entry beyond each Lead's own cascade-deleted history. Called from
+     * deleteLeadConfirmed() once the shared password check already passed.
+     */
+    private function performBulkDelete(): void
+    {
+        $attempted = min(count($this->selectedLeadIds), self::MAX_BULK_SELECTION);
+        $succeeded = 0;
+        $wasShowingSelectedLead = false;
+
+        foreach ($this->eligibleSelectedLeads() as $lead) {
+            $deletableSourceType = in_array($lead->source->type->value, ['email', 'website_form', 'manual'], true);
+
+            if (! $deletableSourceType || Gate::denies('delete', $lead)) {
+                continue;
+            }
+
+            DB::transaction(function () use ($lead): void {
+                $lead->delete();
+            });
+
+            if ($this->selectedLeadId === $lead->id) {
+                $wasShowingSelectedLead = true;
+            }
+
+            $succeeded++;
+        }
+
+        if ($wasShowingSelectedLead) {
+            $this->showLeadPanel = false;
+            $this->selectedLeadId = null;
+            $this->openLeadId = null;
+        }
+
+        $this->reportBulkResult($succeeded, $attempted, __('deleted'));
     }
 
     /**
@@ -1028,7 +1847,8 @@ class Index extends Component
                     return false;
                 }
 
-                return $value === LeadSourceType::Manual->value || in_array($value, $configuredTypes, true);
+                return in_array($value, [LeadSourceType::Manual->value, LeadSourceType::CsvImport->value], true)
+                    || in_array($value, $configuredTypes, true);
             },
         ));
     }

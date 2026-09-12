@@ -97,14 +97,29 @@ enum LeadScoringField: string
      * LeadScoringService's "malformed/unsupported rule is safely skipped"
      * guarantee.
      *
-     * @return array<string, string>|null label => value
+     * value => label — matches x-dropdown-select's own associative-array
+     * convention (resources/views/components/dropdown-select.blade.php:
+     * its fallback branch treats the array KEY as the option's stored value
+     * and the array VALUE as its display label). Priority/SourceType used
+     * to build this backwards (label() => value), which silently bound
+     * wire:model="value" to the enum's LABEL (e.g. "High") instead of its
+     * value ("high") whenever a tenant picked an option from the dropdown —
+     * LeadScoringOperator::normalize() then case-sensitively compared that
+     * against Lead::priority->value ("high"), so an Equals/NotEquals rule
+     * built through the UI could never match. HasEmail/HasPhone already
+     * follow the correct value => label orientation (fixed for the same
+     * bug once before, see LeadScoringRuleManagementTest) — this aligns
+     * Priority/SourceType with them rather than leaving two different
+     * orientations for the same UI component to trip over again later.
+     *
+     * @return array<string, string>|null value => label
      */
     public function valueOptions(): ?array
     {
         return match ($this) {
-            self::Priority => collect(LeadPriority::cases())->mapWithKeys(fn (LeadPriority $p): array => [$p->label() => $p->value])->all(),
-            self::SourceType => collect(LeadSourceType::cases())->mapWithKeys(fn (LeadSourceType $t): array => [$t->label() => $t->value])->all(),
-            self::HasEmail, self::HasPhone => ['Yes' => '1', 'No' => '0'],
+            self::Priority => collect(LeadPriority::cases())->mapWithKeys(fn (LeadPriority $p): array => [$p->value => $p->label()])->all(),
+            self::SourceType => collect(LeadSourceType::cases())->mapWithKeys(fn (LeadSourceType $t): array => [$t->value => $t->label()])->all(),
+            self::HasEmail, self::HasPhone => ['yes' => 'Yes', 'no' => 'No'],
             default => null,
         };
     }

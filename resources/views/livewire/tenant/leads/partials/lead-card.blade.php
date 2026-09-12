@@ -66,6 +66,17 @@
 >
     <div class="flex items-start justify-between gap-2">
         <div class="flex min-w-0 flex-nowrap items-center gap-1.5">
+            {{-- Feature #6 (Bulk Actions): the Kanban board's selection
+            surface, one per card — click-stop so it doesn't also trigger
+            the card's own wire:click="viewLead(...)", same pattern already
+            used below for the "Move to…" dropdown. --}}
+            <div x-on:click.stop x-on:keydown.enter.stop>
+                <flux:checkbox
+                    wire:click="toggleLeadSelection('{{ $lead->id }}')"
+                    :checked="in_array($lead->id, $selectedLeadIds, true)"
+                    aria-label="{{ __('Select :name', ['name' => $lead->name]) }}"
+                />
+            </div>
             <flux:badge size="sm" variant="pill" class="shrink-0 !px-1.5 py-0.5 font-mono font-bold text-[9px] leading-none">{{ $lead->identifier }}</flux:badge>
             <flux:badge size="sm" variant="pill" :color="$lead->priority->color()" class="shrink-0 !px-1.5 py-0.5 text-[9px] leading-none">{{ $lead->priority->label() }}</flux:badge>
         </div>
@@ -103,6 +114,18 @@
             <flux:badge variant="pill" color="zinc" class="mt-2 max-w-full truncate">
                 {{ $lead->service_interest }}
             </flux:badge>
+        @endif
+
+        {{-- Same "first 2 + N more" capped chip row as the Leads table (see
+        partials/tag-chips.blade.php) — no emptyDash here: unlike a table
+        cell, a card with no tags simply shows nothing, same as
+        service_interest above. mt-1 (not mt-2) keeps this snug under
+        service_interest when both are present, without another mt-2 gap
+        stacking on top of it. --}}
+        @if ($lead->tags->isNotEmpty())
+            <div class="mt-1">
+                @include('livewire.tenant.leads.partials.tag-chips', ['tags' => $lead->tags])
+            </div>
         @endif
     </div>
 

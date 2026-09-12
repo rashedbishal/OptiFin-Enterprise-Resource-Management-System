@@ -17,6 +17,14 @@ enum LeadSourceType: string
     // created on first use. Excluded from
     // Platform\Clients\LeadSources::typeOptions() for that reason.
     case Manual = 'manual';
+    // Same lazily-provisioned, non-Platform-Admin-configured shape as
+    // Manual above (see App\Actions\Tenant\CreateLeadFromImport) — every
+    // Lead created via Feature #7's CSV Import is attributed to the
+    // tenant's single CsvImport source, not Manual, so imported leads stay
+    // distinguishable from phone-call/walk-in leads in the Source filter
+    // and badges. Also excluded from
+    // Platform\Clients\LeadSources::typeOptions().
+    case CsvImport = 'csv_import';
 
     /**
      * @return array<int, string>
@@ -40,6 +48,7 @@ enum LeadSourceType: string
             self::WebsiteForm => 'Website Form',
             self::LinkedInLeadGen => 'LinkedIn Lead Gen',
             self::Manual => 'Custom',
+            self::CsvImport => 'CSV Import',
         };
     }
 
@@ -57,6 +66,7 @@ enum LeadSourceType: string
             self::WebsiteForm => 'globe-alt',
             self::LinkedInLeadGen => 'briefcase',
             self::Manual => 'pencil-square',
+            self::CsvImport => 'table-cells',
         };
     }
 
@@ -147,6 +157,8 @@ enum LeadSourceType: string
             ],
             // Nothing to configure - see the case's own doc comment above.
             self::Manual => [],
+            // Same reasoning as Manual above.
+            self::CsvImport => [],
         };
     }
 
@@ -222,6 +234,7 @@ enum LeadSourceType: string
                 'config.fetch_interval_minutes' => ['nullable', 'integer', 'min:1'],
             ],
             self::Manual => [],
+            self::CsvImport => [],
         };
     }
 }

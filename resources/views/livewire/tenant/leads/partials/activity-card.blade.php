@@ -57,6 +57,21 @@
                     <flux:text>{{ __('Follow-up scheduled for :date was marked as done', ['date' => $event['action_date']->format('l, M j, Y')]) }}</flux:text>
                 @elseif ($event['type'] === 'lead_merged')
                     <flux:text>{{ __('Merged with lead :identifier', ['identifier' => $event['other_lead_identifier']]) }}</flux:text>
+                @elseif ($event['type'] === 'tag_added')
+                    <flux:text>{{ __('Tag added: :tag', ['tag' => $event['fields']['tag'] ?? '']) }}</flux:text>
+                @elseif ($event['type'] === 'tag_removed')
+                    <flux:text>{{ __('Tag removed: :tag', ['tag' => $event['fields']['tag'] ?? '']) }}</flux:text>
+                @elseif ($event['type'] === 'deal_status_change')
+                    <flux:text>{{ __('Deal ":deal" status changed to :status', ['deal' => $event['deal_name'], 'status' => $event['new_status']]) }}</flux:text>
+                @elseif ($event['type'] === 'task_status_change')
+                    <flux:text>{{ __('Task ":task" status changed to :status', ['task' => $event['task_title'], 'status' => $event['new_status']]) }}</flux:text>
+                @elseif ($event['type'] === 'consent_change')
+                    <flux:text>
+                        {{ __(':type :status', ['type' => $event['consent_type']->label(), 'status' => strtolower($event['consent_status']->label())]) }}
+                        <span class="text-zinc-500">
+                            ({{ $event['consent_source']->value === 'website_form' ? __('Website Form: :name', ['name' => $event['website_form_name'] ?? __('unknown')]) : $event['consent_source']->label() }})
+                        </span>
+                    </flux:text>
                 @else
                     <flux:text>{{ $event['note'] }}</flux:text>
                 @endif

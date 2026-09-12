@@ -2,27 +2,43 @@
 
 namespace App\Livewire\Tenant\Leads;
 
+use App\Actions\Tenant\RecordLeadConsent;
+use App\Actions\Tenant\SaveLeadCustomFieldValues;
+use App\Enums\ConsentSource;
+use App\Enums\ConsentStatus;
+use App\Enums\ConsentType;
+use App\Enums\DealStatus;
 use App\Enums\LeadDuplicateLinkStatus;
 use App\Enums\LeadPriority;
 use App\Enums\LeadSourceType;
+use App\Enums\TaskStatus;
 use App\Events\LeadStatusChanged;
 use App\Events\LeadUpdated;
 use App\Exceptions\LeadMergeException;
 use App\Livewire\Tenant\Leads\Concerns\ConfirmsLeadDeletionPassword;
 use App\Models\Currency;
+use App\Models\Deal;
+use App\Models\DealStatusLog;
 use App\Models\Lead;
 use App\Models\LeadAttachment;
+use App\Models\LeadConsent;
+use App\Models\LeadConsentEvent;
+use App\Models\LeadCustomFieldDefinition;
 use App\Models\LeadDetailUpdateLog;
 use App\Models\LeadDuplicateLink;
 use App\Models\LeadNote;
 use App\Models\LeadScoreLog;
 use App\Models\LeadStatus;
 use App\Models\LeadStatusLog;
+use App\Models\LeadTag;
+use App\Models\Task;
+use App\Models\TaskStatusLog;
 use App\Models\TenantUser;
 use App\Notifications\FollowUpCancelledNotification;
 use App\Notifications\FollowUpUpdatedNotification;
 use App\Notifications\MeetingCancelledNotification;
 use App\Notifications\MeetingUpdatedNotification;
+use App\Notifications\TaskAssignedNotification;
 use App\Services\LeadAdminNotifier;
 use App\Services\LeadAssignmentService;
 use App\Services\LeadDuplicateDetectionService;
@@ -31,6 +47,7 @@ use App\Services\LeadScoringService;
 use Carbon\CarbonInterface;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
@@ -84,6 +101,57 @@ class Show extends Component
     public ?string $assigneeId = null;
 
     public string $newNote = '';
+
+    /**
+     * The "Add tag" picker's currently-selected tag, bound to a dropdown
+     * populated from availableTagsToAttach() — reset after each successful
+     * attachTag() call, same pattern as $newNote after addNote().
+     */
+    public string $selectedTagId = '';
+
+    public bool $showDealModal = false;
+
+    public ?string $editingDealId = null;
+
+    public string $dealName = '';
+
+    public string $dealValue = '';
+
+    public string $dealCurrencyId = '';
+
+    public string $dealProbability = '';
+
+    public string $dealExpectedCloseDate = '';
+
+    public string $dealOwnerId = '';
+
+    public string $dealNotes = '';
+
+    public bool $showDeleteDealModal = false;
+
+    public ?string $confirmingDeleteDealId = null;
+
+    public bool $showTaskModal = false;
+
+    public ?string $editingTaskId = null;
+
+    public string $taskTitle = '';
+
+    public string $taskDescription = '';
+
+    public string $taskDealId = '';
+
+    public string $taskDueDate = '';
+
+    public string $taskDueTime = '';
+
+    public string $taskPriority = '';
+
+    public string $taskAssignedTo = '';
+
+    public bool $showDeleteTaskModal = false;
+
+    public ?string $confirmingDeleteTaskId = null;
 
     public string $bodyView = 'text';
 
@@ -188,6 +256,27 @@ class Show extends Component
 
     public bool $editingDeal = false;
 
+    /**
+     * Feature #11 — same toggle pattern as editingContact/editingCompany/
+     * editingDeal above. Meaningless on the Kanban flyout for the same
+     * reason those are: show-panel.blade.php has no per-card toggle, its
+     * forms are simply always shown whenever canUpdate is true.
+     */
+    public bool $editingCustomFields = false;
+
+    /**
+     * Feature #11 — keyed by lead_custom_field_definition_id, bound via
+     * wire:model="customFieldValues.{id}" in the Custom Fields card's edit
+     * form. Only ever validated/saved against this tenant's currently
+     * ACTIVE definitions (see activeCustomFieldDefinitions() and
+     * App\Actions\Tenant\SaveLeadCustomFieldValues) — a stale key left over
+     * from a definition deactivated between opening and submitting the form
+     * is simply never looked at, never trusted.
+     *
+     * @var array<string, mixed>
+     */
+    public array $customFieldValues = [];
+
     public bool $showDeleteModal = false;
 
     public bool $showCancelMeetingModal = false;
@@ -291,6 +380,7 @@ class Show extends Component
         $this->fillContactFieldsFromLead();
         $this->fillCompanyFieldsFromLead();
         $this->fillDealFieldsFromLead();
+        $this->fillCustomFieldValuesFromLead();
     }
 
     private function fillContactFieldsFromLead(): void
@@ -321,6 +411,26 @@ class Show extends Component
         $this->leadMeetingDate = $this->lead->meeting_date
             ? $this->lead->meeting_date->format('Y-m-d').'T'.($this->lead->meeting_time !== null ? substr($this->lead->meeting_time, 0, 5) : '00:00')
             : '';
+    }
+
+    /**
+     * Feature #11 — only pre-fills the tenant's currently ACTIVE
+     * definitions (matching the edit form, which only renders those); an
+     * inactive field's historical value is display-only (see
+     * customFieldDisplayRows()) and is never bound into this editable
+     * array.
+     */
+    private function fillCustomFieldValuesFromLead(): void
+    {
+        $existingValues = $this->lead->customFieldValues()->get()->keyBy('lead_custom_field_definition_id');
+
+        $this->customFieldValues = $this->activeCustomFieldDefinitions
+            ->mapWithKeys(function (LeadCustomFieldDefinition $definition) use ($existingValues): array {
+                $existingValue = $existingValues->get($definition->id);
+
+                return [$definition->id => $existingValue !== null ? (string) $existingValue->value : ''];
+            })
+            ->all();
     }
 
     public function render(): View
@@ -368,7 +478,7 @@ class Show extends Component
         $this->priority = $this->lead->priority->value;
         $this->assigneeId = $this->lead->assigned_to;
         $this->fillDetailFieldsFromLead();
-        unset($this->activity, $this->timeline, $this->possibleDuplicates);
+        unset($this->activity, $this->timeline, $this->possibleDuplicates, $this->customFieldDisplayRows);
     }
 
     #[Computed]
@@ -432,6 +542,346 @@ class Show extends Component
     }
 
     /**
+     * This tenant's currently active custom field definitions (Feature
+     * #11), in display order — the single source of truth for both which
+     * fields the edit form renders/validates against and
+     * fillCustomFieldValuesFromLead()'s pre-fill. Explicitly filtered by
+     * tenant_id rather than relying on a global scope, same discipline as
+     * every other query in this module.
+     *
+     * @return Collection<int, LeadCustomFieldDefinition>
+     */
+    #[Computed]
+    public function activeCustomFieldDefinitions(): Collection
+    {
+        return LeadCustomFieldDefinition::query()
+            ->where('tenant_id', $this->lead->tenant_id)
+            ->active()
+            ->orderBy('sort_order')
+            ->orderBy('created_at')
+            ->get();
+    }
+
+    /**
+     * Every row the read-only "Custom Fields" display should show: this
+     * tenant's active definitions, PLUS any definition that's since been
+     * deactivated but still has a value on THIS lead — a deactivated
+     * field's already-captured value must stay visible, never disappear,
+     * even though it's no longer editable (see
+     * LeadCustomFieldDefinition::hasValues()'s docblock). One bounded query
+     * for the lead's own values (eager-loading `definition`), never one
+     * query per field.
+     *
+     * @return Collection<int, array{definition: LeadCustomFieldDefinition, value: ?string}>
+     */
+    #[Computed]
+    public function customFieldDisplayRows(): Collection
+    {
+        $values = $this->lead->customFieldValues()->with('definition')->get()->keyBy('lead_custom_field_definition_id');
+
+        $definitionsById = $this->activeCustomFieldDefinitions->keyBy('id');
+
+        foreach ($values as $definitionId => $value) {
+            // $value->definition can't actually be null here: the FK is
+            // restrictOnDelete and LeadCustomFieldDefinition deletion is
+            // itself blocked while any value exists (see
+            // LeadCustomFieldDefinition::hasValues()) — an orphaned value
+            // row pointing at a deleted definition can't exist.
+            if (! $definitionsById->has($definitionId)) {
+                $definitionsById->put($definitionId, $value->definition);
+            }
+        }
+
+        return $definitionsById->values()
+            ->sortBy([['sort_order', 'asc'], ['created_at', 'asc']])
+            ->map(fn (LeadCustomFieldDefinition $definition): array => [
+                'definition' => $definition,
+                'value' => $values->get($definition->id)?->value,
+            ])
+            ->values();
+    }
+
+    public function startEditingCustomFields(): void
+    {
+        $this->editingCustomFields = true;
+    }
+
+    public function cancelEditingCustomFields(): void
+    {
+        $this->editingCustomFields = false;
+        $this->fillCustomFieldValuesFromLead();
+    }
+
+    /**
+     * Validates the submitted values against this tenant's currently active
+     * definitions (built at runtime, same "assembled from the current
+     * catalog" approach as Index::saveLead()'s own custom-field validation),
+     * persists via the same SaveLeadCustomFieldValues action that path
+     * uses, and writes exactly one LeadDetailUpdateLog entry naming the
+     * fields that actually changed — or none at all on a true no-op, same
+     * diff-based discipline as applyDetailChanges().
+     */
+    public function updateCustomFields(SaveLeadCustomFieldValues $saveCustomFields): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        $rules = [];
+
+        foreach ($this->activeCustomFieldDefinitions as $definition) {
+            $rules['customFieldValues.'.$definition->id] = $definition->validationRules();
+        }
+
+        // An empty array passed to validate() doesn't mean "validate
+        // nothing" — Livewire falls back to a $rules property/rules()
+        // method, which this component has neither of, and throws. Only
+        // validate when this tenant actually has an active custom field.
+        if ($rules !== []) {
+            $this->validate($rules);
+        }
+
+        $changedFieldNames = $saveCustomFields->handle($this->lead, $this->lead->tenant_id, $this->customFieldValues);
+
+        $this->editingCustomFields = false;
+
+        if ($changedFieldNames === []) {
+            return;
+        }
+
+        LeadDetailUpdateLog::create([
+            'lead_id' => $this->lead->id,
+            'changed_by' => Auth::id(),
+            'changed_fields' => $changedFieldNames,
+        ]);
+
+        unset($this->activity, $this->customFieldDisplayRows);
+
+        event(new LeadUpdated($this->lead));
+
+        if ($this->panel) {
+            $this->dispatch('lead-panel-updated');
+        }
+
+        Flux::toast(variant: 'success', text: __('Lead updated.'));
+    }
+
+    /**
+     * This tenant's own tag catalog (see App\Models\LeadTag's docblock for
+     * why it's tenant self-service, not a Platform-Admin-managed shared
+     * catalog) — explicitly filtered by tenant_id, same discipline as every
+     * other query in this module. Used both for the "Add tag" picker's
+     * available options and the empty-catalog "Manage Tags" prompt.
+     *
+     * @return Collection<int, LeadTag>
+     */
+    /**
+     * Feature #14 — this lead's CURRENT consent state for every
+     * App\Enums\ConsentType, keyed by that type's own value so the Consent
+     * card can look up "privacy"/"marketing" directly rather than
+     * searching a plain list. A type with no entry here means Not
+     * Provided — never a placeholder row (see App\Models\LeadConsent's
+     * docblock).
+     *
+     * @return Collection<string, LeadConsent>
+     */
+    #[Computed]
+    public function currentConsents(): Collection
+    {
+        return $this->lead->consents()->get()->keyBy(fn (LeadConsent $consent): string => $consent->consent_type->value);
+    }
+
+    /**
+     * Feature #14 — this lead's full, permanent consent history, newest
+     * first — surfaced both inline on the Consent card and via the general
+     * Activity feed (see activity()'s own consent_change branch).
+     *
+     * @return Collection<int, LeadConsentEvent>
+     */
+    #[Computed]
+    public function consentHistory(): Collection
+    {
+        return $this->lead->consentEvents()->with('changedBy')->orderByDesc('occurred_at')->get();
+    }
+
+    #[Computed]
+    public function tenantTags(): Collection
+    {
+        return LeadTag::query()->where('tenant_id', $this->lead->tenant_id)->orderBy('name')->get();
+    }
+
+    /**
+     * This tenant's tags not already attached to this lead — the "Add tag"
+     * dropdown's option list, so a tampered submission can't re-attach an
+     * already-attached tag (attachTag() also re-verifies server-side).
+     *
+     * @return Collection<int, LeadTag>
+     */
+    #[Computed]
+    public function availableTagsToAttach(): Collection
+    {
+        $attachedIds = $this->lead->tags->pluck('id');
+
+        return $this->tenantTags->reject(fn (LeadTag $tag): bool => $attachedIds->contains($tag->id))->values();
+    }
+
+    /**
+     * This lead's Deals — open ones first (grouped), each group newest
+     * first. Not paginated: a realistic per-lead Deal count is small enough
+     * that a plain list is fine for Phase 1 (see the approved architecture's
+     * explicit "no Deal list/table route" scope boundary).
+     *
+     * @return Collection<int, Deal>
+     */
+    #[Computed]
+    public function deals(): Collection
+    {
+        return $this->lead->deals()
+            ->with(['currency', 'owner'])
+            ->orderByRaw("CASE WHEN status = 'open' THEN 0 ELSE 1 END")
+            ->orderByDesc('created_at')
+            ->get();
+    }
+
+    /**
+     * Drives the Deal list's "Current" badge only — see Lead::currentDeal()'s
+     * own docblock for why this is a pure display convenience, never a
+     * persisted flag.
+     */
+    #[Computed]
+    public function currentDealId(): ?string
+    {
+        return $this->lead->currentDeal()?->id;
+    }
+
+    /**
+     * The "Deal Owner" dropdown's option list — independent of Lead
+     * assignment (see App\Models\Deal's docblock); reuses the same
+     * tenant-scoped assignableUsers() this page already exposes for Lead
+     * assignment, since both draw from the same pool of tenant users, not a
+     * second lookup. A leading "Unassigned" option since owner_id is
+     * nullable.
+     *
+     * @return array<int, array{value: string, label: string}>
+     */
+    public function dealOwnerOptions(): array
+    {
+        $options = [['value' => '', 'label' => __('Unassigned')]];
+
+        // Plain foreach rather than collect($this->assignableUsers)->map():
+        // assignableUsers() has no declared return type (pre-existing, see
+        // its own docblock), so collect() can't resolve its generic from it
+        // — a foreach has no such requirement.
+        foreach ($this->assignableUsers as $user) {
+            $options[] = ['value' => (string) $user->id, 'label' => $user->name];
+        }
+
+        return $options;
+    }
+
+    /**
+     * This lead's Tasks — pending first (grouped), each group newest first,
+     * same ordering shape as deals() above. Eager-loads assignee/deal so the
+     * card never repeats the N+1 mistake deals() itself was caught making
+     * during Feature #4's verification pass.
+     *
+     * @return Collection<int, Task>
+     */
+    #[Computed]
+    public function tasks(): Collection
+    {
+        return $this->lead->tasks()
+            ->with(['assignee', 'deal'])
+            ->orderByRaw("CASE WHEN status = 'pending' THEN 0 ELSE 1 END")
+            ->orderByDesc('created_at')
+            ->get();
+    }
+
+    /**
+     * This lead's Notes — newest first, eager-loading the author so the
+     * notes-card partial can display their name without an N+1 query. Gate
+     * is implicit: only users who can already view this lead's detail page
+     * reach this computed property (see LeadPolicy::view()).
+     *
+     * @return Collection<int, LeadNote>
+     */
+    #[Computed]
+    public function leadNotes(): Collection
+    {
+        return $this->lead->leadNotes()->with('tenantUser')->orderByDesc('created_at')->get();
+    }
+
+    /**
+     * This lead's own Deals, for the "Link to Deal" dropdown — a Task's
+     * deal_id must always belong to the same lead_id/tenant_id (re-verified
+     * server-side in saveTask(), never trusted from this list alone). A
+     * leading "No Deal" option since deal_id is nullable.
+     *
+     * @return array<int, array{value: string, label: string}>
+     */
+    public function taskDealOptions(): array
+    {
+        $options = [['value' => '', 'label' => __('No Deal')]];
+
+        foreach ($this->deals as $deal) {
+            $options[] = ['value' => (string) $deal->id, 'label' => $deal->name];
+        }
+
+        return $options;
+    }
+
+    /**
+     * The "Assignee" dropdown's option list — same tenant-scoped
+     * assignableUsers() pool dealOwnerOptions() above already draws from,
+     * since a Task's assignee is independent of, but drawn from the same
+     * pool as, a Deal's owner.
+     *
+     * @return array<int, array{value: string, label: string}>
+     */
+    public function taskAssigneeOptions(): array
+    {
+        $options = [['value' => '', 'label' => __('Unassigned')]];
+
+        foreach ($this->assignableUsers as $user) {
+            $options[] = ['value' => (string) $user->id, 'label' => $user->name];
+        }
+
+        return $options;
+    }
+
+    /**
+     * Whether the current viewer may delete THIS specific task. Two
+     * different bars, deliberately not just isClientAdmin() layered on top
+     * of the lightweight update() gate every other Task action uses:
+     *
+     * - A Client Admin needs the module's "delete" permission specifically
+     *   (Gate::allows('delete', $lead) — LeadPolicy::delete(), the same
+     *   check Deal's own admin-only deletion uses) — NOT just "update".
+     *   PermissionSlug's View/Create/Update/Delete are independently
+     *   assignable per role, so a Client Admin role deliberately scoped to
+     *   never delete anything in this module (e.g. a "Manager" role kept
+     *   off Delete on purpose) must not be able to delete a Task either,
+     *   even though they can create/edit/close/reopen one.
+     * - A non-admin may delete only a task actually assigned to them
+     *   (never another user's, including an unassigned one) and still
+     *   needs the ordinary update() bar (module "update" permission +
+     *   being assigned to the lead) — deliberately the lighter bar, not
+     *   "delete", since the approved architecture is explicit that a rep
+     *   deleting their own task is a day-to-day action, not a Deal-style
+     *   consequential one.
+     */
+    public function canDeleteTask(Task $task): bool
+    {
+        if ($this->isClientAdmin()) {
+            return Gate::allows('delete', $this->lead);
+        }
+
+        return Gate::allows('update', $this->lead) && $task->assigned_to === Auth::id();
+    }
+
+    /**
      * Gates the scoring rule-management link and the "Recalculate" button —
      * no new permission slug exists to gate scoring with (see
      * App\Policies\LeadScoringRulePolicy's docblock), so this composes the
@@ -491,6 +941,14 @@ class Show extends Component
      * merge modal ($mergeLinkId) and its possible-duplicate disagree — drives
      * that modal's per-field radio choices. Empty once no modal is open.
      *
+     * Feature #11's custom-field conflicts (namespaced "custom_field:{id}"
+     * keys, see LeadMergeService::conflictingCustomFieldValues()) are merged
+     * in alongside the scalar ones here rather than kept separate — the
+     * modal's Blade loop (duplicate-warning.blade.php) already renders
+     * `$field => $values` generically, so no template change is needed;
+     * only mergeFieldLabel()/mergeFieldValueLabel() below need a
+     * custom-field-aware branch.
+     *
      * @return array<string, array{survivor: mixed, loser: mixed}>
      */
     #[Computed]
@@ -504,7 +962,13 @@ class Show extends Component
             return [];
         }
 
-        return app(LeadMergeService::class)->conflictingFields($this->lead, $link->otherLead($this->lead));
+        $otherLead = $link->otherLead($this->lead);
+        $mergeService = app(LeadMergeService::class);
+
+        return [
+            ...$mergeService->conflictingFields($this->lead, $otherLead),
+            ...$mergeService->conflictingCustomFieldValues($this->lead, $otherLead),
+        ];
     }
 
     /**
@@ -589,6 +1053,11 @@ class Show extends Component
                     'created_at' => $log->created_at,
                     'user' => $log->changedBy?->name,
                     'action_date' => $log->action_date,
+                    // Only tag_added/tag_removed read this today (the tag's
+                    // name — see attachTag()/detachTag()) — harmless no-op
+                    // addition for every other action type, which don't
+                    // reference 'fields' in activity-card.blade.php.
+                    'fields' => $log->changed_fields,
                 ];
 
                 continue;
@@ -625,6 +1094,54 @@ class Show extends Component
                 'created_at' => $link->resolved_at ?? $link->updated_at,
                 'user' => $link->resolvedBy?->name,
                 'other_lead_identifier' => $link->lead->identifier,
+            ];
+        }
+
+        // Queried directly against DealStatusLog (via whereHas on the deal's
+        // lead_id) rather than looping $this->lead->deals and calling
+        // ->statusLogs() per deal — a single query regardless of how many
+        // Deals this lead has, avoiding an N+1 across a lead with several.
+        foreach (DealStatusLog::query()->whereHas('deal', fn (Builder $q) => $q->where('lead_id', $this->lead->id))->with(['deal', 'changedBy'])->get() as $log) {
+            $events[] = [
+                'type' => 'deal_status_change',
+                'created_at' => $log->created_at,
+                'user' => $log->changedBy?->name,
+                'deal_name' => $log->deal->name,
+                'old_status' => $log->old_status?->label(),
+                'new_status' => $log->new_status->label(),
+            ];
+        }
+
+        // Same single-query, eager-loaded shape as the Deal block above —
+        // task_status_change is the only Task event Phase 1 surfaces here
+        // (no task_created/task_reassigned, see Show::saveTask()'s docblock
+        // for why reassignment is a notification concern, not an activity-
+        // feed one).
+        foreach (TaskStatusLog::query()->whereHas('task', fn (Builder $q) => $q->where('lead_id', $this->lead->id))->with(['task', 'changedBy'])->get() as $log) {
+            $events[] = [
+                'type' => 'task_status_change',
+                'created_at' => $log->created_at,
+                'user' => $log->changedBy?->name,
+                'task_title' => $log->task->title,
+                'old_status' => $log->old_status?->label(),
+                'new_status' => $log->new_status->label(),
+            ];
+        }
+
+        // Feature #14 — every consent grant/withdrawal ever recorded for
+        // this lead, system-originated (Website Form) or staff-originated
+        // (Manual), plus any synthetic merge-audit event. Reuses the
+        // already-loaded $this->consentHistory computed rather than a
+        // second query.
+        foreach ($this->consentHistory as $event) {
+            $events[] = [
+                'type' => 'consent_change',
+                'created_at' => $event->created_at,
+                'user' => $event->changedBy?->name,
+                'consent_type' => $event->consent_type,
+                'consent_status' => $event->status,
+                'consent_source' => $event->source,
+                'website_form_name' => $event->website_form_name,
             ];
         }
 
@@ -1256,6 +1773,529 @@ class Show extends Component
     }
 
     /**
+     * Attaches an existing tenant tag to this lead — reuses LeadPolicy::
+     * update() as-is (no new permission slug, no isClientAdmin() bar), the
+     * same lightweight authorization bar as addNote() above, since tagging
+     * a lead you already have update access to is a day-to-day action, not
+     * a catalog-management one (see App\Policies\LeadTagPolicy's docblock).
+     * Never creates a new tag from here — the catalog is managed
+     * exclusively at /leads/tags.
+     */
+    public function attachTag(): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        $validated = $this->validate([
+            'selectedTagId' => ['required', 'string'],
+        ]);
+
+        // availableTagsToAttach() only ever offers this lead's own tenant's
+        // catalog, but a tampered submission must not be able to attach a
+        // foreign tenant's tag id — re-verified here, not just trusted from
+        // the dropdown's rendered options.
+        $tag = LeadTag::where('tenant_id', $this->lead->tenant_id)->find((string) $validated['selectedTagId']);
+
+        if (! $tag) {
+            $this->addError('selectedTagId', __('Please select a valid tag.'));
+
+            return;
+        }
+
+        // syncWithoutDetaching is idempotent — attaching an already-attached
+        // tag (e.g. a resubmitted request) merges pivot data onto the
+        // existing row instead of racing the unique(lead_id, lead_tag_id)
+        // constraint into a real error.
+        $this->lead->tags()->syncWithoutDetaching([$tag->id => ['tagged_by' => Auth::id()]]);
+
+        LeadDetailUpdateLog::create([
+            'lead_id' => $this->lead->id,
+            'changed_by' => Auth::id(),
+            'changed_fields' => ['tag' => $tag->name],
+            'action' => 'tag_added',
+        ]);
+
+        $this->reset('selectedTagId');
+        $this->lead->load('tags');
+        unset($this->activity, $this->availableTagsToAttach);
+        Flux::toast(variant: 'success', text: __('Tag added.'));
+    }
+
+    /**
+     * Detaches a tag from this lead — same authorization bar as
+     * attachTag()/addNote() above.
+     */
+    public function detachTag(string $tagId): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        // Looked up from the lead's own already-loaded tags relation
+        // (never a bare LeadTag::find()) so a tampered tag id that isn't
+        // actually attached to THIS lead is a silent no-op rather than an
+        // detach() call that would harmlessly affect nothing anyway — this
+        // also gives us the tag's name for the activity log without an
+        // extra query.
+        $tag = $this->lead->tags->firstWhere('id', $tagId);
+
+        if (! $tag) {
+            return;
+        }
+
+        $this->lead->tags()->detach($tag->id);
+
+        LeadDetailUpdateLog::create([
+            'lead_id' => $this->lead->id,
+            'changed_by' => Auth::id(),
+            'changed_fields' => ['tag' => $tag->name],
+            'action' => 'tag_removed',
+        ]);
+
+        $this->lead->load('tags');
+        unset($this->activity, $this->availableTagsToAttach);
+        Flux::toast(variant: 'success', text: __('Tag removed.'));
+    }
+
+    /**
+     * Feature #14 — records a manual consent grant. Same lightweight
+     * LeadPolicy::update() authorization bar as addNote()/attachTag() above
+     * — no new permission slug, no dedicated LeadConsentPolicy, per the
+     * approved architecture (recording consent on a lead you already have
+     * update access to is a day-to-day data-entry action, not a
+     * catalog-management one).
+     */
+    public function grantConsent(string $type, RecordLeadConsent $recordConsent): void
+    {
+        $this->mutateConsent($type, ConsentStatus::Granted, $recordConsent);
+    }
+
+    /**
+     * Feature #14 — records a manual consent withdrawal. Deliberately the
+     * SAME authorization bar as grantConsent() above, per the approved
+     * architecture — withdrawal is not gated behind the stricter `delete`
+     * permission.
+     */
+    public function withdrawConsent(string $type, RecordLeadConsent $recordConsent): void
+    {
+        $this->mutateConsent($type, ConsentStatus::Withdrawn, $recordConsent);
+    }
+
+    private function mutateConsent(string $type, ConsentStatus $status, RecordLeadConsent $recordConsent): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        $consentType = ConsentType::tryFrom($type);
+
+        if ($consentType === null) {
+            return;
+        }
+
+        $recordConsent->handle(
+            lead: $this->lead,
+            type: $consentType,
+            status: $status,
+            source: ConsentSource::Manual,
+            changedBy: Auth::id(),
+        );
+
+        unset($this->currentConsents, $this->consentHistory, $this->activity);
+
+        Flux::toast(
+            variant: 'success',
+            text: $status === ConsentStatus::Granted
+                ? __(':type consent granted.', ['type' => $consentType->label()])
+                : __(':type consent withdrawn.', ['type' => $consentType->label()]),
+        );
+    }
+
+    public function createDeal(): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        $this->reset('editingDealId', 'dealName', 'dealValue', 'dealProbability', 'dealExpectedCloseDate', 'dealNotes');
+        $this->dealCurrencyId = (string) $this->tenantCurrencies->first()?->id;
+        // Defaults to the Lead's current assignee — a one-time copy, not a
+        // live sync (see App\Models\Deal's docblock) — independently
+        // editable here and never overwritten by a later Lead reassignment.
+        $this->dealOwnerId = (string) $this->lead->assigned_to;
+        $this->resetErrorBag();
+        $this->showDealModal = true;
+    }
+
+    public function editDeal(string $dealId): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        // Scoped through the lead's own deals() relation, never a bare
+        // Deal::find() — a tampered id belonging to another lead (even in
+        // the same tenant) 404s instead of silently opening someone else's
+        // deal for editing.
+        $deal = $this->lead->deals()->findOrFail($dealId);
+
+        $this->editingDealId = $deal->id;
+        $this->dealName = $deal->name;
+        $this->dealValue = $deal->value !== null ? (string) $deal->value : '';
+        $this->dealCurrencyId = (string) $deal->currency_id;
+        $this->dealProbability = $deal->probability !== null ? (string) $deal->probability : '';
+        $this->dealExpectedCloseDate = $deal->expected_close_date?->toDateString() ?? '';
+        $this->dealOwnerId = (string) $deal->owner_id;
+        $this->dealNotes = (string) $deal->notes;
+        $this->resetErrorBag();
+        $this->showDealModal = true;
+    }
+
+    public function saveDeal(): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        $tenant = $this->lead->tenant;
+
+        $validated = $this->validate([
+            'dealName' => ['required', 'string', 'max:255'],
+            'dealValue' => ['nullable', 'numeric', 'min:0', 'max:999999999999.99', 'regex:/^\d{1,12}(\.\d{1,2})?$/'],
+            'dealCurrencyId' => ['nullable', 'string', Rule::exists('tenant_currencies', 'currency_id')->where('tenant_id', $tenant->id)],
+            'dealProbability' => ['nullable', 'integer', 'min:0', 'max:100'],
+            'dealExpectedCloseDate' => ['nullable', 'date'],
+            'dealOwnerId' => ['nullable', 'string', Rule::exists('tenant_users', 'id')->where('tenant_id', $tenant->id)],
+            'dealNotes' => ['nullable', 'string', 'max:2000'],
+        ], [
+            'dealValue.regex' => __('Enter a plain amount with up to 2 decimal places.'),
+        ]);
+
+        $attributes = [
+            'name' => $validated['dealName'],
+            'value' => $validated['dealValue'] ?: null,
+            // A currency without an amount means nothing — same rule
+            // Show::updateDeal() already applies to the Lead's own
+            // deal_value/estimated_budget pairing.
+            'currency_id' => $validated['dealValue'] ? ($validated['dealCurrencyId'] ?: null) : null,
+            'probability' => $validated['dealProbability'] ?: null,
+            'expected_close_date' => $validated['dealExpectedCloseDate'] ?: null,
+            'owner_id' => $validated['dealOwnerId'] ?: null,
+            'notes' => $validated['dealNotes'] ?: null,
+        ];
+
+        if ($this->editingDealId) {
+            $deal = $this->lead->deals()->findOrFail($this->editingDealId);
+            $deal->update($attributes);
+        } else {
+            Deal::create([
+                'tenant_id' => $this->lead->tenant_id,
+                'lead_id' => $this->lead->id,
+                'status' => DealStatus::Open,
+                'created_by' => Auth::id(),
+                ...$attributes,
+            ]);
+        }
+
+        $this->showDealModal = false;
+        unset($this->deals, $this->currentDealId);
+        Flux::toast(variant: 'success', text: __('Deal saved.'));
+    }
+
+    /**
+     * Moves a Deal to $newStatus (open/won/lost) — the single entry point
+     * for every status change this page offers (Mark Won, Mark Lost,
+     * Reopen all call this with a different target), so the allowed-
+     * transition check and the DealStatusLog write only ever live in one
+     * place. DealStatus::canTransitionTo() is what actually blocks a direct
+     * Won<->Lost flip — see that enum's own docblock.
+     */
+    public function changeDealStatus(string $dealId, string $newStatus): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        $deal = $this->lead->deals()->findOrFail($dealId);
+        $target = DealStatus::from($newStatus);
+
+        if (! $deal->status->canTransitionTo($target)) {
+            Flux::toast(variant: 'danger', text: __('That status change is not allowed.'));
+
+            return;
+        }
+
+        $oldStatus = $deal->status;
+
+        $deal->update([
+            'status' => $target,
+            // Cleared back to null on reopen, written the moment the Deal
+            // closes either way — never directly user-editable (see the
+            // deals table migration's docblock).
+            'actual_close_date' => $target === DealStatus::Open ? null : now()->toDateString(),
+        ]);
+
+        DealStatusLog::create([
+            'deal_id' => $deal->id,
+            'changed_by' => Auth::id(),
+            'old_status' => $oldStatus,
+            'new_status' => $target,
+        ]);
+
+        unset($this->deals, $this->currentDealId, $this->activity);
+        Flux::toast(variant: 'success', text: __('Deal status updated.'));
+    }
+
+    public function confirmDeleteDeal(string $dealId): void
+    {
+        $this->confirmingDeleteDealId = $dealId;
+        $this->showDeleteDealModal = true;
+    }
+
+    public function deleteDealConfirmed(): void
+    {
+        if ($this->confirmingDeleteDealId) {
+            $this->deleteDeal($this->confirmingDeleteDealId);
+        }
+
+        $this->showDeleteDealModal = false;
+        $this->confirmingDeleteDealId = null;
+    }
+
+    /**
+     * Deleting a Deal is the one Deal action gated Client-Admin-only
+     * (LeadPolicy::delete(), same bar as deleting the whole Lead) rather
+     * than the lighter update() bar every other Deal action uses — removing
+     * a revenue record outright is a consequential, hard-to-undo action.
+     * Cascades its DealStatusLog rows via the FK's cascadeOnDelete.
+     */
+    public function deleteDeal(string $dealId): void
+    {
+        if (Gate::denies('delete', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to delete deals on this lead."));
+
+            return;
+        }
+
+        $deal = $this->lead->deals()->findOrFail($dealId);
+        $deal->delete();
+
+        unset($this->deals, $this->currentDealId, $this->activity);
+        Flux::toast(variant: 'success', text: __('Deal deleted.'));
+    }
+
+    public function createTask(): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        $this->reset('editingTaskId', 'taskTitle', 'taskDescription', 'taskDealId', 'taskDueDate', 'taskDueTime');
+        $this->taskPriority = LeadPriority::Medium->value;
+        // Defaults to the Lead's current assignee — a one-time copy, not a
+        // live sync (see App\Models\Task's docblock) — independently
+        // editable here and never overwritten by a later Lead reassignment.
+        $this->taskAssignedTo = (string) $this->lead->assigned_to;
+        $this->resetErrorBag();
+        $this->showTaskModal = true;
+    }
+
+    public function editTask(string $taskId): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        // Scoped through the lead's own tasks() relation, never a bare
+        // Task::find() — a tampered id belonging to another lead 404s
+        // instead of silently opening someone else's task for editing.
+        $task = $this->lead->tasks()->findOrFail($taskId);
+
+        $this->editingTaskId = $task->id;
+        $this->taskTitle = $task->title;
+        $this->taskDescription = (string) $task->description;
+        $this->taskDealId = (string) $task->deal_id;
+        $this->taskDueDate = $task->due_date?->toDateString() ?? '';
+        $this->taskDueTime = $task->due_time !== null ? substr($task->due_time, 0, 5) : '';
+        $this->taskPriority = $task->priority->value;
+        $this->taskAssignedTo = (string) $task->assigned_to;
+        $this->resetErrorBag();
+        $this->showTaskModal = true;
+    }
+
+    /**
+     * Sends TaskAssignedNotification only when the assignee actually
+     * changed — on creation with an assignee already set, or a genuine
+     * reassignment — never when re-saving the same assignee (the approved
+     * architecture is explicit: do not notify unnecessarily). Task
+     * reassignment is deliberately NOT logged to the Activity timeline —
+     * only task_status_change is (see activity()) — the notification is
+     * the only surface for "you were (re)assigned this task".
+     */
+    public function saveTask(): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        $tenant = $this->lead->tenant;
+
+        $validated = $this->validate([
+            'taskTitle' => ['required', 'string', 'max:255'],
+            'taskDescription' => ['nullable', 'string', 'max:2000'],
+            // Re-verified server-side against THIS lead's own deals, never
+            // trusted from the dropdown alone — a tampered submission can't
+            // link a task to an unrelated tenant's or lead's Deal.
+            'taskDealId' => ['nullable', 'string', Rule::exists('deals', 'id')->where('tenant_id', $tenant->id)->where('lead_id', $this->lead->id)],
+            'taskDueDate' => ['nullable', 'date'],
+            'taskDueTime' => ['nullable', 'date_format:H:i'],
+            'taskPriority' => ['required', Rule::enum(LeadPriority::class)],
+            'taskAssignedTo' => ['nullable', 'string', Rule::exists('tenant_users', 'id')->where('tenant_id', $tenant->id)],
+        ]);
+
+        $attributes = [
+            'title' => $validated['taskTitle'],
+            'description' => $validated['taskDescription'] ?: null,
+            'deal_id' => $validated['taskDealId'] ?: null,
+            'due_date' => $validated['taskDueDate'] ?: null,
+            'due_time' => $validated['taskDueTime'] ?: null,
+            'priority' => $validated['taskPriority'],
+            'assigned_to' => $validated['taskAssignedTo'] ?: null,
+        ];
+
+        $previousAssignee = null;
+
+        if ($this->editingTaskId) {
+            $task = $this->lead->tasks()->findOrFail($this->editingTaskId);
+            $previousAssignee = $task->assigned_to;
+            $task->update($attributes);
+        } else {
+            $task = Task::create([
+                'tenant_id' => $this->lead->tenant_id,
+                'lead_id' => $this->lead->id,
+                'status' => TaskStatus::Pending,
+                'created_by' => Auth::id(),
+                ...$attributes,
+            ]);
+        }
+
+        if ($task->assigned_to !== null && $task->assigned_to !== $previousAssignee) {
+            $assignee = TenantUser::where('tenant_id', $tenant->id)->find($task->assigned_to);
+            $assignee?->notify(new TaskAssignedNotification($task, Auth::user()));
+        }
+
+        $this->showTaskModal = false;
+        unset($this->tasks);
+        Flux::toast(variant: 'success', text: __('Task saved.'));
+    }
+
+    /**
+     * Moves a Task to $newStatus (pending/completed/cancelled) — the single
+     * entry point for every status change this page offers (Complete,
+     * Cancel, Reopen all call this with a different target), mirroring
+     * Show::changeDealStatus() exactly. TaskStatus::canTransitionTo() is
+     * what blocks a direct Completed<->Cancelled flip.
+     */
+    public function changeTaskStatus(string $taskId, string $newStatus): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        $task = $this->lead->tasks()->findOrFail($taskId);
+        $target = TaskStatus::from($newStatus);
+
+        if (! $task->status->canTransitionTo($target)) {
+            Flux::toast(variant: 'danger', text: __('That status change is not allowed.'));
+
+            return;
+        }
+
+        $oldStatus = $task->status;
+
+        $task->update([
+            'status' => $target,
+            // Cleared back to null on reopen, written the moment the task
+            // closes either way — never directly user-editable (see the
+            // tasks table migration's docblock).
+            'closed_at' => $target === TaskStatus::Pending ? null : now(),
+        ]);
+
+        TaskStatusLog::create([
+            'task_id' => $task->id,
+            'changed_by' => Auth::id(),
+            'old_status' => $oldStatus,
+            'new_status' => $target,
+        ]);
+
+        unset($this->tasks, $this->activity);
+        Flux::toast(variant: 'success', text: __('Task status updated.'));
+    }
+
+    public function confirmDeleteTask(string $taskId): void
+    {
+        $this->confirmingDeleteTaskId = $taskId;
+        $this->showDeleteTaskModal = true;
+    }
+
+    public function deleteTaskConfirmed(): void
+    {
+        if ($this->confirmingDeleteTaskId) {
+            $this->deleteTask($this->confirmingDeleteTaskId);
+        }
+
+        $this->showDeleteTaskModal = false;
+        $this->confirmingDeleteTaskId = null;
+    }
+
+    /**
+     * Deliberately NOT the same Client-Admin-only bar Deal's deletion uses
+     * — see canDeleteTask()'s own docblock for the approved authorization
+     * model (Client Admin deletes any task within this lead; a non-admin
+     * only their own assigned task). Cascades the task's own TaskStatusLog
+     * history (cascadeOnDelete), so the UI gates this behind a confirmation
+     * modal the same way Deal's deletion does.
+     */
+    public function deleteTask(string $taskId): void
+    {
+        $task = $this->lead->tasks()->findOrFail($taskId);
+
+        if (! $this->canDeleteTask($task)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to delete this task."));
+
+            return;
+        }
+
+        $task->delete();
+
+        unset($this->tasks, $this->activity);
+        Flux::toast(variant: 'success', text: __('Task deleted.'));
+    }
+
+    /**
      * Manual, on-demand recompute — gated the same as scoring-rule
      * management (canManageScoring, Client-Admin-only), since it's the same
      * class of consequential action as merge()/assign(). Runs the exact
@@ -1353,7 +2393,12 @@ class Show extends Component
             return;
         }
 
-        $conflicts = app(LeadMergeService::class)->conflictingFields($this->lead, $link->otherLead($this->lead));
+        $otherLead = $link->otherLead($this->lead);
+        $mergeService = app(LeadMergeService::class);
+        $conflicts = [
+            ...$mergeService->conflictingFields($this->lead, $otherLead),
+            ...$mergeService->conflictingCustomFieldValues($this->lead, $otherLead),
+        ];
 
         $this->mergeLinkId = $link->id;
         $this->mergeFieldResolutions = array_fill_keys(array_keys($conflicts), 'survivor');
@@ -1474,13 +2519,31 @@ class Show extends Component
      */
     public function mergeFieldLabel(string $field): string
     {
+        // Feature #11 — a custom field's name is tenant-defined and
+        // unbounded, so it can't live in the static FIELD_LABELS array the
+        // way every fixed Lead column does; resolved live from the catalog
+        // instead. Falls back to the raw key in the extremely unlikely case
+        // the definition was deleted between opening the merge modal and
+        // this render (deletion is blocked while any value exists — see
+        // LeadCustomFieldDefinition::hasValues() — so this is only reachable
+        // if a definition with a value was somehow removed by another
+        // process mid-merge).
+        if (str_starts_with($field, 'custom_field:')) {
+            $definitionId = substr($field, strlen('custom_field:'));
+
+            return LeadCustomFieldDefinition::find($definitionId)?->name ?? $field;
+        }
+
         return __(self::FIELD_LABELS[$field] ?? $field);
     }
 
     /**
      * A merge-conflict field's raw value, formatted for the modal's radio
      * labels — the two currency columns store a Currency ULID, meaningless
-     * to a human without resolving it to its code first.
+     * to a human without resolving it to its code first. A Feature #11
+     * custom field's value is already a plain display string regardless of
+     * its type (see LeadCustomFieldValue's docblock), so it needs no
+     * special-casing here.
      */
     public function mergeFieldValueLabel(string $field, mixed $value): string
     {

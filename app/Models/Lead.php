@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Concerns\BelongsToTenant;
+use App\Enums\DealStatus;
 use App\Enums\LeadPriority;
 use App\Enums\LeadSourceType;
 use Carbon\CarbonInterface;
@@ -14,6 +15,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -58,6 +60,7 @@ use Illuminate\Support\Facades\DB;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property Carbon|null $update_seen_at
+ * @property Carbon|null $nurturing_task_created_at
  * @property-read Tenant $tenant
  * @property-read Currency|null $estimatedBudgetCurrency
  * @property-read Currency|null $dealValueCurrency
@@ -65,7 +68,12 @@ use Illuminate\Support\Facades\DB;
 // lead_score/lead_score_computed_at (like merged_into_lead_id/identifier)
 // are deliberately left out here — they're only ever written by
 // App\Services\LeadScoringService's raw query builder update, never via a
-// create()/update() payload.
+// create()/update() payload. nurturing_task_created_at is the same case:
+// only ever written by App\Console\Commands\NurtureInactiveLeads via a raw
+// query builder update, never $lead->update(), so it never spuriously
+// bumps updated_at (see Lead::markUpdateSeen()'s docblock for why that
+// matters — it would trip hasUnseenUpdate()'s "recently updated" highlight
+// for every viewer).
 #[Fillable([
     'tenant_id', 'source_id', 'assigned_to', 'name', 'company', 'website', 'industry', 'location',
     'service_interest', 'lead_source', 'email', 'phone', 'message', 'html_body', 'source_data', 'status_id', 'priority',
@@ -96,6 +104,7 @@ class Lead extends Model
             'first_contacted_at' => 'datetime',
             'closed_at' => 'datetime',
             'update_seen_at' => 'datetime',
+            'nurturing_task_created_at' => 'datetime',
         ];
     }
 
@@ -495,6 +504,116 @@ class Lead extends Model
     public function leadNotes(): HasMany
     {
         return $this->hasMany(LeadNote::class);
+    }
+
+    /**
+     * This lead's tags, drawn from its tenant's own LeadTag catalog (see
+     * that model's docblock for why it isn't a Platform-Admin-managed
+     * shared catalog). `tagged_by` is nullable/null-on-delete — see the
+     * lead_lead_tag pivot migration. Ordered by name (there's no per-tag
+     * "position" the way Tenant::leadStatuses() has) so the chip row on the
+     * table/Kanban card/detail page renders in a stable, predictable order
+     * rather than whatever order the database happens to return pivot rows
+     * in.
+     *
+     * @return BelongsToMany<LeadTag, $this>
+     */
+    public function tags(): BelongsToMany
+    {
+        return $this->belongsToMany(LeadTag::class)->withPivot('tagged_by')->withTimestamps()->orderBy('lead_tags.name');
+    }
+
+    /**
+     * This lead's Deals — a Lead may have many over its lifetime (repeat
+     * business, an upsell, a lost deal followed by a fresh one). See
+     * App\Models\Deal's docblock: Deal's own status is deliberately
+     * independent of this Lead's status pipeline.
+     *
+     * @return HasMany<Deal, $this>
+     */
+    public function deals(): HasMany
+    {
+        return $this->hasMany(Deal::class);
+    }
+
+    /**
+     * A UI convenience only — never persisted (no primary_deal_id/is_primary
+     * column exists), and never implies any other Deal is inactive, invalid,
+     * or subordinate; every Deal stays fully visible/editable/reopenable in
+     * the Deal list regardless of what this returns. The most recently
+     * created OPEN deal if one or more exist; otherwise the most recently
+     * created deal overall, purely so the Deal card isn't empty for a lead
+     * whose only deal already closed. Ordered by created_at then id (ULIDs
+     * sort chronologically) so two deals sharing a timestamp still resolve
+     * deterministically rather than depending on incidental row order.
+     */
+    public function currentDeal(): ?Deal
+    {
+        $openDeal = $this->deals()
+            ->where('status', DealStatus::Open)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->first();
+
+        if ($openDeal !== null) {
+            return $openDeal;
+        }
+
+        return $this->deals()
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    /**
+     * This lead's custom field values (Feature #11) — one row per
+     * tenant-defined field that's actually been filled in, never a row per
+     * field that exists in the catalog. See LeadCustomFieldValue's docblock
+     * for why a blank value is absence, not an empty-string row.
+     *
+     * @return HasMany<LeadCustomFieldValue, $this>
+     */
+    public function customFieldValues(): HasMany
+    {
+        return $this->hasMany(LeadCustomFieldValue::class);
+    }
+
+    /**
+     * Feature #14 — this lead's CURRENT effective consent state, one row
+     * per App\Enums\ConsentType actually granted or withdrawn at least once
+     * (never a row for "not provided" — see App\Models\LeadConsent's
+     * docblock).
+     *
+     * @return HasMany<LeadConsent, $this>
+     */
+    public function consents(): HasMany
+    {
+        return $this->hasMany(LeadConsent::class);
+    }
+
+    /**
+     * Feature #14 — this lead's full, permanent consent history (every
+     * grant/withdrawal ever recorded, including synthetic merge-audit
+     * events) — see App\Models\LeadConsentEvent's docblock.
+     *
+     * @return HasMany<LeadConsentEvent, $this>
+     */
+    public function consentEvents(): HasMany
+    {
+        return $this->hasMany(LeadConsentEvent::class);
+    }
+
+    /**
+     * This lead's Tasks — a Lead may have many, each independently tracked
+     * to completion (see App\Models\Task's docblock). Complementary to, and
+     * never a replacement for, next_follow_up_at/meeting_date below, which
+     * remain untouched single-slot scheduling fields on this model.
+     *
+     * @return HasMany<Task, $this>
+     */
+    public function tasks(): HasMany
+    {
+        return $this->hasMany(Task::class);
     }
 
     /**

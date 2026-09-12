@@ -24,6 +24,9 @@
                     <flux:button variant="primary" icon="plus" size="sm" wire:click="createLead">{{ __('New Lead') }}</flux:button>
                 @endif
                 <flux:button icon="arrow-down-tray" size="sm" wire:click="export">{{ __('Export CSV') }}</flux:button>
+                @if ($this->canCreateLead)
+                    <flux:button icon="arrow-up-tray" size="sm" :href="route('tenant-lead-imports.index')" wire:navigate>{{ __('Import Leads') }}</flux:button>
+                @endif
             </div>
         </div>
 
@@ -39,6 +42,10 @@
             $sourceTypeOptionsFormatted = array_merge(
                 [['value' => '', 'label' => __('All sources')]],
                 collect($this->sourceTypeOptions())->map(fn($opt) => ['value' => $opt, 'label' => \App\Enums\LeadSourceType::from($opt)->label()])->toArray()
+            );
+            $tagOptionsFormatted = array_merge(
+                [['value' => '', 'label' => __('All tags')]],
+                collect($this->tagOptions())->map(fn($opt) => ['value' => (string) $opt->id, 'label' => $opt->name])->toArray()
             );
             if ($this->isClientAdmin) {
                 $assignedToOptionsFormatted = array_merge(
@@ -58,11 +65,12 @@
                 || $priority !== ''
                 || $sourceType !== ''
                 || ($this->isClientAdmin && $assignedTo !== '')
+                || $tag !== ''
                 || $fromDate !== ''
                 || $toDate !== ''
                 || $search !== '';
 
-            // Every action that re-queries $this->leads: the seven
+            // Every action that re-queries $this->leads: the eight
             // wire:model.live-bound filter properties (see updating()'s
             // reset-page array) plus every pagination trait method the
             // published pagination view can call (gotoPage/previousPage/
@@ -77,7 +85,7 @@
             // this same component (opening the New Lead modal, exporting,
             // deleting a row, toggling an alert switch, ...), which would
             // otherwise also trip a bare wire:loading with no wire:target.
-            $listLoadingTargets = 'status,priority,sourceType,assignedTo,fromDate,toDate,search,gotoPage,previousPage,nextPage,setPage,setPerPage,completeInitialLoad';
+            $listLoadingTargets = 'status,priority,sourceType,assignedTo,tag,fromDate,toDate,search,gotoPage,previousPage,nextPage,setPage,setPerPage,completeInitialLoad';
 
             // wire:loading's class toggle only takes effect once Livewire's
             // JS actually dispatches a request — there's a real gap between
@@ -98,10 +106,15 @@
             $showSkeletonByDefault = ! $initialLoadComplete;
         @endphp
 
-        <div class="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-7 lg:gap-3">
+        <div class="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-8 lg:gap-3">
             <x-dropdown-select wire:model.live="status" :placeholder="__('All statuses')" :options="$statusOptionsFormatted" icon="squares-2x2" />
             <x-dropdown-select wire:model.live="priority" :placeholder="__('All priorities')" :options="$priorityOptionsFormatted" icon="funnel" />
             <x-dropdown-select wire:model.live="sourceType" :placeholder="__('All sources')" :options="$sourceTypeOptionsFormatted" icon="tag" />
+            {{-- icon="hashtag", not "tag" — the Source filter above already
+            uses the Heroicon literally named "tag" for an unrelated concept
+            (which channel captured the lead), and reusing it here for the
+            actual Tags feature would visually conflate the two. --}}
+            <x-dropdown-select wire:model.live="tag" :placeholder="__('All tags')" :options="$tagOptionsFormatted" icon="hashtag" />
 
             @if ($this->isClientAdmin)
                 <x-dropdown-select wire:model.live="assignedTo" :placeholder="__('All users')" :options="$assignedToOptionsFormatted" icon="user" />
@@ -119,12 +132,16 @@
 
             {{-- col-span-2/3 keeps it on its own full-width row below the
             dropdowns/dates on mobile and tablet (2- and 3-column grids) —
-            no span at all from lg up, where the grid grows to 7 columns
-            (one more than the 6 dropdown/date fields) specifically so the
-            search box sits as a normal 7th cell in that same row instead
-            of on its own line. size="sm" matches Flux's own input height
-            (h-10 by default) to x-dropdown-select/x-date-picker's button
-            height (py-1.5, no fixed h-*). --}}
+            no span at all from lg up, where the grid grows to 8 columns
+            (one more than the 7 dropdown/date fields for a Client Admin:
+            status, priority, source, tag, assigned-to, from/to date)
+            specifically so the search box sits as a normal 8th cell in
+            that same row instead of on its own line. A non-admin (no
+            assigned-to filter) leaves one cell empty at this breakpoint
+            instead — same asymmetric-fill behavior this grid already had
+            before the Tags filter was added. size="sm" matches Flux's own
+            input height (h-10 by default) to x-dropdown-select/x-date-
+            picker's button height (py-1.5, no fixed h-*). --}}
             <flux:input
                 wire:model.live.debounce.400ms="search"
                 icon="magnifying-glass"
@@ -156,6 +173,28 @@
                         </flux:link>
                     @endif
                 </div>
+
+                <div class="flex items-center gap-2">
+                    <flux:switch :checked="auth()->user()->tenant->task_alert_enabled" wire:click="toggleTaskAlert" />
+                    <flux:text>{{ __('Task due-date alerts') }}</flux:text>
+                    @if (auth()->user()->tenant->task_alert_enabled)
+                        <flux:link as="button" type="button" variant="subtle" wire:click="openTaskAlertDaysEditor">
+                            {{ trans_choice('(:count day before)|(:count days before)', auth()->user()->tenant->task_alert_days_before, ['count' => auth()->user()->tenant->task_alert_days_before]) }}
+                        </flux:link>
+                    @endif
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <flux:switch :checked="auth()->user()->tenant->lead_nurturing_notify_enabled" wire:click="toggleNurturingNotify" />
+                    <flux:text>{{ __('Inactivity notification') }}</flux:text>
+                    <flux:switch :checked="auth()->user()->tenant->lead_nurturing_task_enabled" wire:click="toggleNurturingTask" />
+                    <flux:text>{{ __('Inactivity follow-up task') }}</flux:text>
+                    @if (auth()->user()->tenant->lead_nurturing_notify_enabled || auth()->user()->tenant->lead_nurturing_task_enabled)
+                        <flux:link as="button" type="button" variant="subtle" wire:click="openNurturingDaysEditor">
+                            {{ trans_choice('(inactive after :count day)|(inactive after :count days)', auth()->user()->tenant->lead_nurturing_inactive_days, ['count' => auth()->user()->tenant->lead_nurturing_inactive_days]) }}
+                        </flux:link>
+                    @endif
+                </div>
             </div>
         @endif
     </div>
@@ -184,6 +223,34 @@
                 <flux:input wire:model="followUpAlertDaysInput" type="number" min="0" :label="__('Days before')" />
                 <div class="flex justify-end gap-2">
                     <flux:button type="button" wire:click="$set('showFollowUpAlertModal', false)">{{ __('Cancel') }}</flux:button>
+                    <flux:button type="submit" variant="primary">{{ __('Save') }}</flux:button>
+                </div>
+            </form>
+        </flux:modal>
+
+        <flux:modal wire:model.self="showTaskAlertModal" class="md:w-96">
+            <form wire:submit="saveTaskAlertDays" class="flex flex-col gap-4">
+                <div>
+                    <flux:heading size="lg">{{ __('Task Due-Date Alerts') }}</flux:heading>
+                    <flux:text class="mt-1">{{ __('How many days before a task\'s due date should it start alerting the assigned user? 0 means alert only on the exact day.') }}</flux:text>
+                </div>
+                <flux:input wire:model="taskAlertDaysInput" type="number" min="0" :label="__('Days before')" />
+                <div class="flex justify-end gap-2">
+                    <flux:button type="button" wire:click="$set('showTaskAlertModal', false)">{{ __('Cancel') }}</flux:button>
+                    <flux:button type="submit" variant="primary">{{ __('Save') }}</flux:button>
+                </div>
+            </form>
+        </flux:modal>
+
+        <flux:modal wire:model.self="showNurturingDaysModal" class="md:w-96">
+            <form wire:submit="saveNurturingDays" class="flex flex-col gap-4">
+                <div>
+                    <flux:heading size="lg">{{ __('Lead Inactivity Nurturing') }}</flux:heading>
+                    <flux:text class="mt-1">{{ __('After how many days with no status change should a lead be considered inactive? Shared by both the notification and follow-up-task actions above.') }}</flux:text>
+                </div>
+                <flux:input wire:model="nurturingDaysInput" type="number" min="0" max="365" :label="__('Days inactive')" />
+                <div class="flex justify-end gap-2">
+                    <flux:button type="button" wire:click="$set('showNurturingDaysModal', false)">{{ __('Cancel') }}</flux:button>
                     <flux:button type="submit" variant="primary">{{ __('Save') }}</flux:button>
                 </div>
             </form>
@@ -493,23 +560,44 @@
                     (the "first row" table-fixed always uses to lock column
                     tracks), which is also spec-legal and the more
                     universally-supported technique on its own. Keep both in
-                    sync if column count/proportions ever change. --}}
+                    sync if column count/proportions ever change — a 9th
+                    column (bulk-select checkbox, Feature #6) was added
+                    first, ahead of Lead ID, so every row shape below (the
+                    Facebook Lead Ads aggregate row, real lead rows, both
+                    @empty branches' colspan, and the skeleton row) needed
+                    one more cell too. --}}
                     <colgroup>
-                        <col class="w-[10%]">
-                        <col class="w-[22%]">
-                        <col class="w-[15%]">
-                        <col class="w-[13%]">
+                        <col class="w-[4%]">
+                        <col class="w-[7%]">
+                        <col class="w-[17%]">
+                        <col class="w-[12%]">
                         <col class="w-[11%]">
-                        <col class="w-[15%]">
+                        <col class="w-[9%]">
+                        <col class="w-[13%]">
+                        <col class="w-[13%]">
                         <col class="w-[14%]">
                     </colgroup>
                     <flux:table.columns>
-                        <flux:table.column class="w-[10%]">{{ __('Lead ID') }}</flux:table.column>
-                        <flux:table.column class="w-[22%]">{{ __('Name') }}</flux:table.column>
-                        <flux:table.column class="w-[15%]">{{ __('Source') }}</flux:table.column>
-                        <flux:table.column class="w-[13%]">{{ __('Status') }}</flux:table.column>
-                        <flux:table.column class="w-[11%]">{{ __('Priority') }}</flux:table.column>
-                        <flux:table.column class="w-[15%]">{{ __('Assigned To') }}</flux:table.column>
+                        <flux:table.column class="w-[4%]">
+                            {{-- Tri-state-ish "select all on this page" checkbox: checked
+                            when every row currently on screen is selected, unchecked
+                            (indeterminate reads as unchecked here) otherwise. Toggling
+                            adds every not-yet-selected row on the page, or clears the
+                            whole page's worth if all are already selected — see
+                            Index::toggleSelectAllOnPage(). --}}
+                            @php
+                                $pageLeadIds = $this->leads->pluck('id')->all();
+                                $allPageLeadsSelected = $pageLeadIds !== [] && array_diff($pageLeadIds, $selectedLeadIds) === [];
+                            @endphp
+                            <flux:checkbox wire:click="toggleSelectAllOnPage" :checked="$allPageLeadsSelected" :disabled="$pageLeadIds === []" aria-label="{{ __('Select all leads on this page') }}" />
+                        </flux:table.column>
+                        <flux:table.column class="w-[7%]">{{ __('Lead ID') }}</flux:table.column>
+                        <flux:table.column class="w-[17%]">{{ __('Name') }}</flux:table.column>
+                        <flux:table.column class="w-[12%]">{{ __('Source') }}</flux:table.column>
+                        <flux:table.column class="w-[11%]">{{ __('Status') }}</flux:table.column>
+                        <flux:table.column class="w-[9%]">{{ __('Priority') }}</flux:table.column>
+                        <flux:table.column class="w-[13%]">{{ __('Tags') }}</flux:table.column>
+                        <flux:table.column class="w-[13%]">{{ __('Assigned To') }}</flux:table.column>
                         <flux:table.column class="w-[14%]"></flux:table.column>
                     </flux:table.columns>
                     <flux:table.rows>
@@ -530,6 +618,11 @@
                                 wire:target="{{ $listLoadingTargets }}"
                                 class="bg-zinc-50/50 dark:bg-zinc-900/40"
                             >
+                                {{-- Facebook Lead Ads aggregate rows represent many
+                                leads at once — never individually bulk-selectable,
+                                same reasoning as why the status/priority/assigned-to
+                                dropdown filters above don't apply to them either. --}}
+                                <flux:table.cell>—</flux:table.cell>
                                 <flux:table.cell>—</flux:table.cell>
                                 <flux:table.cell>
                                     <div class="flex flex-col">
@@ -541,6 +634,7 @@
                                 </flux:table.cell>
                                 <flux:table.cell><flux:badge size="sm" icon="{{ $source->type->icon() }}">{{ $source->type->label() }}</flux:badge></flux:table.cell>
                                 <flux:table.cell><flux:badge size="sm" color="zinc">{{ trans_choice(':count lead|:count leads', $source->leads_count, ['count' => $source->leads_count]) }}</flux:badge></flux:table.cell>
+                                <flux:table.cell>—</flux:table.cell>
                                 <flux:table.cell>—</flux:table.cell>
                                 <flux:table.cell>—</flux:table.cell>
                                 <flux:table.cell>
@@ -580,6 +674,13 @@
                                     '!hidden' => $showSkeletonByDefault,
                                 ])
                             >
+                                <flux:table.cell>
+                                    <flux:checkbox
+                                        wire:click="toggleLeadSelection('{{ $lead->id }}')"
+                                        :checked="in_array($lead->id, $selectedLeadIds, true)"
+                                        aria-label="{{ __('Select :name', ['name' => $lead->name]) }}"
+                                    />
+                                </flux:table.cell>
                                 <flux:table.cell>
                                     @if ($rowHasActiveAlert)
                                         {{-- Text itself shimmers (background-clip: text sweep,
@@ -628,6 +729,9 @@
                                     </span>
                                 </flux:table.cell>
                                 <flux:table.cell>
+                                    @include('livewire.tenant.leads.partials.tag-chips', ['tags' => $lead->tags, 'emptyDash' => true])
+                                </flux:table.cell>
+                                <flux:table.cell>
                                     <span @class(['font-bold text-zinc-900 dark:text-white' => $isRecentlyUpdated])>
                                         {{ $lead->assignedUser?->name ?? __('Unassigned') }}
                                     </span>
@@ -646,7 +750,7 @@
                         @empty
                             @if ($hasActiveFilters)
                                 <flux:table.row wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" @class(['!hidden' => $showSkeletonByDefault])>
-                                    <flux:table.cell colspan="7">
+                                    <flux:table.cell colspan="9">
                                         <div class="flex flex-col items-center justify-center gap-3 py-16 text-center">
                                             <flux:icon.magnifying-glass class="size-8 text-zinc-300 dark:text-zinc-600" />
                                             <flux:text variant="strong">{{ __('No leads match your search or filters.') }}</flux:text>
@@ -656,7 +760,7 @@
                                 </flux:table.row>
                             @elseif ($this->facebookLeadAdsSources->isEmpty())
                                 <flux:table.row wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" @class(['!hidden' => $showSkeletonByDefault])>
-                                    <flux:table.cell colspan="7">
+                                    <flux:table.cell colspan="9">
                                         <div class="flex flex-col items-center justify-center gap-3 py-16 text-center">
                                             <flux:icon.inbox class="size-8 text-zinc-300 dark:text-zinc-600" />
                                             <flux:text variant="strong">{{ __('No leads yet') }}</flux:text>
@@ -696,11 +800,18 @@
                     <flux:table.rows @class(['!hidden' => ! $showSkeletonByDefault]) wire:loading.remove.class="!hidden" wire:target="{{ $listLoadingTargets }}">
                         @for ($i = 0; $i < $perPage; $i++)
                             <flux:table.row wire:key="lead-row-skeleton-{{ $i }}">
+                                <flux:table.cell><div class="size-[1.125rem] skeleton-shimmer rounded-[.3rem]"></div></flux:table.cell>
                                 <flux:table.cell><div class="h-3 w-16 skeleton-shimmer rounded"></div></flux:table.cell>
                                 <flux:table.cell><div class="h-3 w-32 skeleton-shimmer rounded"></div></flux:table.cell>
                                 <flux:table.cell><div class="h-5 w-20 skeleton-shimmer rounded-full"></div></flux:table.cell>
                                 <flux:table.cell><div class="h-5 w-16 skeleton-shimmer rounded-full"></div></flux:table.cell>
                                 <flux:table.cell><div class="h-3 w-14 skeleton-shimmer rounded"></div></flux:table.cell>
+                                <flux:table.cell>
+                                    <div class="flex gap-1">
+                                        <div class="h-4 w-10 skeleton-shimmer rounded-full"></div>
+                                        <div class="h-4 w-10 skeleton-shimmer rounded-full"></div>
+                                    </div>
+                                </flux:table.cell>
                                 <flux:table.cell><div class="h-3 w-20 skeleton-shimmer rounded"></div></flux:table.cell>
                                 <flux:table.cell>
                                     <div class="flex justify-end gap-2">
@@ -716,6 +827,8 @@
             {{ $this->leads->links() }}
         </div>
     </div>
+
+    @include('livewire.tenant.leads.partials.bulk-actions-toolbar')
 
     @if ($this->canCreateLead)
         <flux:modal wire:model.self="showCreateLeadModal" :dismissible="false" scroll="body" class="w-full md:max-w-[46rem] lg:max-w-[80rem]">
@@ -828,6 +941,20 @@
                                 @endif
                             </div>
                         </div>
+
+                        @if ($this->activeCustomFieldDefinitions->isNotEmpty())
+                            <flux:separator />
+
+                            <div class="flex flex-col gap-4">
+                                <div class="flex items-center gap-2">
+                                    <flux:icon.squares-plus variant="micro" class="text-zinc-400 dark:text-zinc-500" />
+                                    <flux:heading size="sm">{{ __('Custom Fields') }}</flux:heading>
+                                </div>
+                                <div class="grid gap-4 sm:grid-cols-2">
+                                    @include('livewire.tenant.leads.partials.custom-fields-form-fields', ['definitions' => $this->activeCustomFieldDefinitions])
+                                </div>
+                            </div>
+                        @endif
                     </div>
                 </div>
 
@@ -841,8 +968,14 @@
         </flux:modal>
     @endif
 
+    {{-- Reused for bulk delete too (Feature #6) — see Index::confirmBulkDelete()/
+    $bulkDeleteMode — rather than a second copy of this modal, which would
+    otherwise put two flux:input wire:model="deletePassword" fields (same
+    DOM id) on the page at once. --}}
     <x-confirm-password-delete-modal
         wire:model.self="showDeleteLeadModal"
+        :title="$bulkDeleteMode ? __('Delete selected leads?') : __('Delete this lead?')"
+        :description="$bulkDeleteMode ? __('This permanently deletes :count selected leads and their history. Enter your password to confirm.', ['count' => $this->selectedCount]) : null"
         confirm-action="deleteLeadConfirmed"
         close-action="closeDeleteLeadModal"
     />

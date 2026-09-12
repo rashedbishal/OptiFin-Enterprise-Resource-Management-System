@@ -5,6 +5,7 @@ namespace App\Livewire\Tenant\Leads\Concerns;
 use App\Enums\LeadPriority;
 use App\Models\Lead;
 use App\Models\LeadStatus;
+use App\Models\LeadTag;
 use App\Models\TenantUser;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -25,6 +26,13 @@ trait FiltersLeadsQuery
     public string $priority = '';
 
     public string $assignedTo = '';
+
+    /**
+     * V1 is single-select "has this tag" — the same shape as $status/
+     * $priority above, not a multi-tag AND/OR filter (deferred to a later
+     * phase by explicit decision).
+     */
+    public string $tag = '';
 
     public string $fromDate = '';
 
@@ -96,6 +104,24 @@ trait FiltersLeadsQuery
     }
 
     /**
+     * This tenant's own tag catalog (see App\Models\LeadTag's docblock for
+     * why it's tenant self-service, not a Platform-Admin-managed shared
+     * catalog like LeadStatus) — explicitly filtered by tenant_id rather
+     * than relying on a global scope, same discipline as every other query
+     * in this module.
+     *
+     * @return array<int, LeadTag>
+     */
+    public function tagOptions(): array
+    {
+        return LeadTag::query()
+            ->where('tenant_id', Auth::user()->tenant_id)
+            ->orderBy('name')
+            ->get()
+            ->all();
+    }
+
+    /**
      * @param  Builder<Lead>  $query
      * @return Builder<Lead>
      */
@@ -120,6 +146,15 @@ trait FiltersLeadsQuery
 
         if ($this->priority !== '') {
             $query->byPriority(LeadPriority::from($this->priority));
+        }
+
+        if ($this->tag !== '') {
+            // whereHas rather than a join: a lead can carry several tags,
+            // and this must match "has this tag among possibly several",
+            // never multiply a row per matching pivot entry the way a plain
+            // join would risk if this query were ever combined with
+            // ->get()'s row count assumptions elsewhere.
+            $query->whereHas('tags', fn (Builder $q) => $q->where('lead_tags.id', $this->tag));
         }
 
         if ($this->isClientAdmin && $this->assignedTo !== '') {

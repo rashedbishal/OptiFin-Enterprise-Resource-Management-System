@@ -2,6 +2,11 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Actions\Tenant\RecordLeadConsent;
+use App\Actions\Tenant\SaveLeadCustomFieldValues;
+use App\Actions\Tenant\ValidateWebsiteFormSubmission;
+use App\Enums\ConsentSource;
+use App\Enums\ConsentStatus;
 use App\Enums\LeadAttachmentStatus;
 use App\Enums\LeadSourceType;
 use App\Enums\TenantStatus;
@@ -12,6 +17,7 @@ use App\Jobs\DownloadLeadAttachment;
 use App\Models\Lead;
 use App\Models\LeadSource;
 use App\Models\Tenant;
+use App\Models\WebsiteForm;
 use Carbon\CarbonInterface;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
@@ -309,6 +315,89 @@ class LeadWebhookController extends Controller
     }
 
     /**
+     * Feature #13 — handle a submission from a tenant-designed Website
+     * Form, authenticated by its own public token rather than a source-wide
+     * API key. Deliberately a separate method from websiteForm() above,
+     * calling a different resolution path — the legacy method and its
+     * whole behavior contract are untouched by this addition. See
+     * App\Actions\Tenant\ValidateWebsiteFormSubmission for why unconfigured
+     * fields are discarded here, unlike the legacy path's "keep everything
+     * extra" behavior.
+     */
+    public function websiteFormSubmit(Request $request, string $tenant_code, string $form_token): JsonResponse
+    {
+        $form = $this->resolveWebsiteForm($tenant_code, $form_token);
+
+        $result = app(ValidateWebsiteFormSubmission::class)->handle($form, $request->all());
+
+        // A honeypot hit returns the same success response a real
+        // submission would — never tipping off whatever filled it in that
+        // anything was detected — but creates nothing.
+        if ($result['honeypot']) {
+            return response()->json(['status' => 'ok']);
+        }
+
+        $lead = $this->createLead(
+            $form->leadSource,
+            array_merge($result['attributes'], [
+                // A point-in-time snapshot, never a hard FK from Lead to
+                // WebsiteForm — see WebsiteForm's own docblock for why:
+                // deleting a form must never touch any existing Lead.
+                'source_data' => [
+                    'website_form_id' => $form->id,
+                    'website_form_name' => $form->name,
+                ],
+            ]),
+            $result['customFieldValues'],
+        );
+
+        // Feature #14 — recorded AFTER the Lead exists, once per configured
+        // and explicitly-granted consent type. $result['consentGrants'] only
+        // ever contains types ValidateWebsiteFormSubmission derived from
+        // this specific form's own server-stored field configuration and
+        // validated as an explicit true — never anything client-controlled.
+        foreach ($result['consentGrants'] as $grant) {
+            app(RecordLeadConsent::class)->handle(
+                lead: $lead,
+                type: $grant['type'],
+                status: ConsentStatus::Granted,
+                source: ConsentSource::WebsiteForm,
+                websiteFormId: $form->id,
+                websiteFormName: $form->name,
+                policyVersion: $grant['policyVersion'],
+                policyUrl: $grant['policyUrl'],
+                ipAddress: $request->ip(),
+                userAgent: $request->userAgent(),
+            );
+        }
+
+        return response()->json(['status' => 'ok']);
+    }
+
+    /**
+     * Resolve a specific Website Form by its public token — never by type,
+     * unlike resolveSource() above, since a tenant may have any number of
+     * these. The token itself is the sole credential; a mismatched
+     * tenant_code/token pairing (or an inactive form, or an unknown token)
+     * all fail identically via a 404, so a probing request never learns
+     * which part of the pair was wrong.
+     */
+    private function resolveWebsiteForm(string $tenantCode, string $formToken): WebsiteForm
+    {
+        $tenant = Tenant::where('tenant_code', $tenantCode)
+            ->where('status', TenantStatus::Active)
+            ->firstOrFail();
+
+        $form = WebsiteForm::where('token_hash', hash('sha256', $formToken))
+            ->where('is_active', true)
+            ->firstOrFail();
+
+        abort_unless($form->tenant_id === $tenant->id, 404);
+
+        return $form;
+    }
+
+    /**
      * Restricts a website form submission to the source's own
      * `allowed_domains` list, when one is configured. Deliberately opt-in
      * (same reasoning as VerifyMetaWebhookSignature's app_secret check):
@@ -440,15 +529,29 @@ class LeadWebhookController extends Controller
     /**
      * Create a new lead from webhook data and fire the LeadReceived event.
      *
+     * $customFieldValues (Feature #13) is empty for every existing caller
+     * — only websiteFormSubmit() ever passes anything here, keyed by
+     * lead_custom_field_definition_id (already resolved server-side by
+     * ValidateWebsiteFormSubmission, never trusted from the request).
+     * SaveLeadCustomFieldValues is the same, unmodified action Feature #11
+     * already uses for the authenticated create/edit paths. Every existing
+     * call site's behavior is unchanged: none of them pass this argument,
+     * so the new step is simply never reached for them.
+     *
      * @param  array<string, mixed>  $attributes
+     * @param  array<string, mixed>  $customFieldValues
      */
-    private function createLead(LeadSource $source, array $attributes): Lead
+    private function createLead(LeadSource $source, array $attributes, array $customFieldValues = []): Lead
     {
         $lead = Lead::create(array_merge([
             'tenant_id' => $source->tenant_id,
             'source_id' => $source->id,
             'status_id' => $source->tenant->initialLeadStatus()?->id,
         ], $attributes));
+
+        if ($customFieldValues !== []) {
+            app(SaveLeadCustomFieldValues::class)->handle($lead, $source->tenant_id, $customFieldValues);
+        }
 
         $source->update(['last_synced_at' => now()]);
 
