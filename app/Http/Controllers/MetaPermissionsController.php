@@ -24,6 +24,13 @@ class MetaPermissionsController extends Controller
     private const REQUIRED_SCOPES = [
         'pages_messaging',
         'instagram_manage_messages',
+        // Feature #15 — the WhatsApp Cloud API's own equivalent permission
+        // scope, governing both receiving AND sending; confirmed via the
+        // Final Architecture Validation Report's live documentation
+        // check — WhatsApp is checkable through this exact same
+        // debug_token mechanism, contrary to an earlier draft assumption
+        // that it had no OAuth-scope-equivalent model.
+        'whatsapp_business_messaging',
         'leads_retrieval',
         'pages_manage_metadata',
     ];

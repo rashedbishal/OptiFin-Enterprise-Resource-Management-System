@@ -11,11 +11,17 @@ use App\Enums\DealStatus;
 use App\Enums\LeadDuplicateLinkStatus;
 use App\Enums\LeadPriority;
 use App\Enums\LeadSourceType;
+use App\Enums\MessageChannel;
+use App\Enums\MessageDirection;
+use App\Enums\MessageStatus;
+use App\Enums\MessageType;
 use App\Enums\TaskStatus;
 use App\Events\LeadStatusChanged;
 use App\Events\LeadUpdated;
 use App\Exceptions\LeadMergeException;
+use App\Jobs\SendOutboundMessage;
 use App\Livewire\Tenant\Leads\Concerns\ConfirmsLeadDeletionPassword;
+use App\Models\Conversation;
 use App\Models\Currency;
 use App\Models\Deal;
 use App\Models\DealStatusLog;
@@ -31,6 +37,7 @@ use App\Models\LeadScoreLog;
 use App\Models\LeadStatus;
 use App\Models\LeadStatusLog;
 use App\Models\LeadTag;
+use App\Models\Message;
 use App\Models\Task;
 use App\Models\TaskStatusLog;
 use App\Models\TenantUser;
@@ -44,13 +51,17 @@ use App\Services\LeadAssignmentService;
 use App\Services\LeadDuplicateDetectionService;
 use App\Services\LeadMergeService;
 use App\Services\LeadScoringService;
+use App\Services\OutboundEligibilityService;
+use App\Support\EligibilityResult;
 use Carbon\CarbonInterface;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
@@ -101,6 +112,12 @@ class Show extends Component
     public ?string $assigneeId = null;
 
     public string $newNote = '';
+
+    /**
+     * Feature #15 — the composer's draft text, reset after each successful
+     * sendMessage() call, same pattern as $newNote after addNote().
+     */
+    public string $newMessageBody = '';
 
     /**
      * The "Add tag" picker's currently-selected tag, bound to a dropdown
@@ -704,6 +721,68 @@ class Show extends Component
     public function consentHistory(): Collection
     {
         return $this->lead->consentEvents()->with('changedBy')->orderByDesc('occurred_at')->get();
+    }
+
+    /**
+     * Feature #15 — whether this lead's own source is even a conversational
+     * channel at all (WhatsApp/Messenger/Instagram) — a Lead from any other
+     * channel (Website Form, Email, Manual, CSV Import, LinkedIn, Facebook
+     * Lead Ads) has no composer at all, by design (see the Architecture
+     * Brief's UI/UX section — no unified inbox, no cross-channel composer).
+     */
+    #[Computed]
+    public function messagingChannel(): ?MessageChannel
+    {
+        return MessageChannel::fromLeadSourceType($this->lead->source->type);
+    }
+
+    /**
+     * The conversation this lead's composer sends through — the most
+     * recently active one on this lead's own channel, if any exists yet.
+     * No Conversation row exists for a lead that has never received a
+     * dual-written inbound message (e.g. one created before this feature
+     * shipped, with no subsequent inbound activity) — the composer treats
+     * that as ineligible with its own explicit reason, never as an error.
+     */
+    #[Computed]
+    public function activeConversation(): ?Conversation
+    {
+        if ($this->messagingChannel === null) {
+            return null;
+        }
+
+        return $this->lead->conversations()->where('channel', $this->messagingChannel)->orderByDesc('last_inbound_at')->first();
+    }
+
+    /**
+     * Re-evaluated on every render (never cached beyond the request) so a
+     * status/consent/window change elsewhere is always reflected — cheap,
+     * since OutboundEligibilityService issues at most a couple of indexed
+     * queries.
+     */
+    #[Computed]
+    public function messagingEligibility(): ?EligibilityResult
+    {
+        if ($this->activeConversation === null) {
+            return $this->messagingChannel === null
+                ? null
+                : EligibilityResult::ineligible(__('No conversation history yet for this channel.'));
+        }
+
+        return app(OutboundEligibilityService::class)->evaluate($this->activeConversation);
+    }
+
+    /**
+     * This lead's outbound messages only, newest first — surfaced on the
+     * composer card so a rep can see prior replies and their delivery
+     * status without needing the full Activity tab.
+     *
+     * @return Collection<int, Message>
+     */
+    #[Computed]
+    public function outboundMessages(): Collection
+    {
+        return $this->lead->messages()->where('direction', MessageDirection::Outbound)->orderByDesc('created_at')->get();
     }
 
     #[Computed]
@@ -1916,6 +1995,184 @@ class Show extends Component
                 ? __(':type consent granted.', ['type' => $consentType->label()])
                 : __(':type consent withdrawn.', ['type' => $consentType->label()]),
         );
+    }
+
+    /**
+     * Feature #15 — sends a free-form within-window reply. Same
+     * LeadPolicy::update() authorization bar as every other lightweight
+     * lead-child action — no new PermissionSlug. Eligibility is
+     * re-verified here (never trusted from whatever the disabled/enabled
+     * button state already showed) and again, redundantly, inside
+     * SendOutboundMessage itself once the queued job actually runs.
+     *
+     * The Message row is created SYNCHRONOUSLY, status=pending, before the
+     * job is dispatched — this is what makes a job retry safe (it only
+     * ever updates this one row, never creates a second) and what lets the
+     * UI show immediate "Pending" feedback. A short Cache::lock (the same
+     * dedupe-lock idiom LeadWebhookController::withDedupeLock() already
+     * establishes elsewhere in this codebase), keyed by conversation +
+     * a hash of the exact body, guards against a double-click/duplicate
+     * submission racing this same action twice.
+     */
+    /**
+     * Approved Phase 1 defaults (see the Architecture Brief's Rate Limiting
+     * section) — a safety rail against an accidental loop or a staff
+     * member repeatedly hammering Send, NOT a claim about Meta's own,
+     * separately and independently enforced platform-side limits, which
+     * this app cannot see or control. Checked manually here (via the same
+     * underlying Illuminate\Cache\RateLimiter Feature #13's `throttle:`
+     * middleware pair already uses) rather than through route-level
+     * `throttle:` middleware, since this is a Livewire component action,
+     * not a dedicated HTTP route Feature #13's mechanism was built for.
+     */
+    private const int OUTBOUND_MESSAGES_PER_USER_PER_MINUTE = 30;
+
+    private const int OUTBOUND_MESSAGES_PER_TENANT_PER_MINUTE = 100;
+
+    public function sendMessage(): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        if (! $this->passesOutboundRateLimits()) {
+            return;
+        }
+
+        $conversation = $this->activeConversation;
+
+        if ($conversation === null) {
+            return;
+        }
+
+        $eligibility = app(OutboundEligibilityService::class)->evaluate($conversation);
+
+        if (! $eligibility->eligible) {
+            Flux::toast(variant: 'danger', text: $eligibility->reason);
+
+            return;
+        }
+
+        $validated = $this->validate([
+            'newMessageBody' => ['required', 'string', 'max:4096'],
+        ]);
+
+        $lockKey = 'outbound-message:'.$conversation->id.':'.md5($validated['newMessageBody']);
+        $created = Cache::lock($lockKey, 10)->get(fn (): Message => Message::create([
+            'tenant_id' => $conversation->tenant_id,
+            'conversation_id' => $conversation->id,
+            'lead_id' => $conversation->lead_id,
+            'channel' => $conversation->channel,
+            'direction' => MessageDirection::Outbound,
+            'message_type' => MessageType::Text,
+            'body' => $validated['newMessageBody'],
+            'status' => MessageStatus::Pending,
+            'status_updated_at' => now(),
+            'sent_by' => Auth::id(),
+        ]));
+
+        if (! $created instanceof Message) {
+            Flux::toast(variant: 'warning', text: __('This message is already being sent.'));
+
+            return;
+        }
+
+        SendOutboundMessage::dispatch($created);
+
+        $this->reset('newMessageBody');
+        unset($this->activeConversation, $this->messagingEligibility, $this->outboundMessages);
+        Flux::toast(variant: 'success', text: __('Message queued for sending.'));
+    }
+
+    /**
+     * Feature #15 — manual resend after a CONFIRMED platform send failure
+     * only (never automatic — see SendOutboundMessage's own retry-policy
+     * docblock). Always creates a brand-new Message row; the original
+     * failed row is left exactly as it is, a permanent record of that
+     * attempt, never mutated or reused for the new attempt.
+     */
+    public function resendMessage(string $messageId): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        if (! $this->passesOutboundRateLimits()) {
+            return;
+        }
+
+        $failedMessage = $this->lead->messages()
+            ->where('id', $messageId)
+            ->where('direction', MessageDirection::Outbound)
+            ->where('status', MessageStatus::Failed)
+            ->first();
+
+        if ($failedMessage === null) {
+            return;
+        }
+
+        $conversation = $failedMessage->conversation;
+        $eligibility = app(OutboundEligibilityService::class)->evaluate($conversation);
+
+        if (! $eligibility->eligible) {
+            Flux::toast(variant: 'danger', text: $eligibility->reason);
+
+            return;
+        }
+
+        $resend = Message::create([
+            'tenant_id' => $conversation->tenant_id,
+            'conversation_id' => $conversation->id,
+            'lead_id' => $conversation->lead_id,
+            'channel' => $conversation->channel,
+            'direction' => MessageDirection::Outbound,
+            'message_type' => MessageType::Text,
+            'body' => $failedMessage->body,
+            'status' => MessageStatus::Pending,
+            'status_updated_at' => now(),
+            'sent_by' => Auth::id(),
+        ]);
+
+        SendOutboundMessage::dispatch($resend);
+
+        unset($this->activeConversation, $this->messagingEligibility, $this->outboundMessages);
+        Flux::toast(variant: 'success', text: __('Message re-queued for sending.'));
+    }
+
+    /**
+     * Checked before either sendMessage() or resendMessage() creates a
+     * Message row — a rejected attempt here never touches the database at
+     * all. Both limiters are checked independently so one abusive user
+     * can't exhaust the whole tenant's ceiling for every other rep, and
+     * one very active tenant can't silently starve a single user's own
+     * per-minute allowance meant for someone else.
+     */
+    private function passesOutboundRateLimits(): bool
+    {
+        $userKey = 'outbound-message-per-user:'.Auth::id();
+
+        if (RateLimiter::tooManyAttempts($userKey, self::OUTBOUND_MESSAGES_PER_USER_PER_MINUTE)) {
+            Flux::toast(variant: 'danger', text: __('Too many messages sent recently — please wait a moment and try again.'));
+
+            return false;
+        }
+
+        $tenantKey = 'outbound-message-per-tenant:'.$this->lead->tenant_id;
+
+        if (RateLimiter::tooManyAttempts($tenantKey, self::OUTBOUND_MESSAGES_PER_TENANT_PER_MINUTE)) {
+            Flux::toast(variant: 'danger', text: __('Too many messages sent recently for this account — please wait a moment and try again.'));
+
+            return false;
+        }
+
+        RateLimiter::hit($userKey, 60);
+        RateLimiter::hit($tenantKey, 60);
+
+        return true;
     }
 
     public function createDeal(): void

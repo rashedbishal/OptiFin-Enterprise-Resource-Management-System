@@ -141,6 +141,8 @@
 
             @include('livewire.tenant.leads.partials.consent-card', ['lead' => $lead])
 
+            @include('livewire.tenant.leads.partials.message-composer-card')
+
             @include('livewire.tenant.leads.partials.notes-card')
 
             @include('livewire.tenant.leads.partials.detail-card', ['lead' => $lead, 'timeline' => $this->timeline, 'bodyView' => $bodyView])

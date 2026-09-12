@@ -13,6 +13,8 @@
 
     @include('livewire.tenant.leads.partials.consent-card', ['lead' => $lead])
 
+    @include('livewire.tenant.leads.partials.message-composer-card')
+
     @include('livewire.tenant.leads.partials.notes-card')
 
     {{-- Left column is fixed-width and stacks Details/Activity on their

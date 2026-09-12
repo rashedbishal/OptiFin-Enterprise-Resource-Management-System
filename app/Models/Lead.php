@@ -6,6 +6,8 @@ use App\Concerns\BelongsToTenant;
 use App\Enums\DealStatus;
 use App\Enums\LeadPriority;
 use App\Enums\LeadSourceType;
+use App\Enums\MessageDirection;
+use App\Enums\MessageType;
 use Carbon\CarbonInterface;
 use Database\Factories\LeadFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -286,25 +288,67 @@ class Lead extends Model
      * notifications). Used to interleave text with attachments on the lead
      * detail page, since a thread can carry several of each over time.
      *
-     * @return array<int, array{text: string, at: CarbonInterface}>
+     * Feature #15 introduces a normalized `messages` table that every
+     * inbound handler now dual-writes to (see App\Actions\Tenant\
+     * RecordInboundMessage) alongside the legacy JSON write above, and that
+     * every outbound reply is recorded in exclusively.
+     *
+     * An earlier version of this method used ALL normalized rows once ANY
+     * existed and ignored legacy JSON entirely otherwise — that silently
+     * hid every pre-existing legacy message the instant a single lead
+     * received its first post-cutover inbound message (found and fixed
+     * during Feature #15's Final Verification audit; a real regression,
+     * not a hypothetical one — reproduced with a lead carrying legacy
+     * history that received one new inbound message). The correct
+     * boundary is per-ENTRY, not per-LEAD: a legacy JSON entry is only
+     * ever a duplicate of a normalized row when dual-write produced both
+     * for the SAME inbound message — which only ever started happening at
+     * this specific lead's very first dual-written inbound message. Every
+     * legacy entry strictly OLDER than that moment has no normalized
+     * counterpart at all and must still be shown; every normalized row
+     * (inbound after cutover, plus every outbound reply, which never has
+     * a legacy counterpart in the first place) is always shown in full.
+     * No historical backfill — a lead that never received a single
+     * dual-written message simply has no cutover point, so every legacy
+     * entry is kept. Each entry gains two new, always-present keys
+     * (`direction`, `status`) a caller can ignore entirely and get the
+     * exact old two-key shape it always returned.
+     *
+     * @return array<int, array{text: string, at: CarbonInterface, direction: MessageDirection, status: mixed}>
      */
     public function messageTimeline(): array
     {
+        $normalized = $this->messages()
+            ->where('message_type', MessageType::Text)
+            ->whereNotNull('body')
+            ->orderBy('created_at')
+            ->get();
+
+        $normalizedEntries = $normalized->map(fn (Message $message): array => [
+            'text' => $message->body,
+            'at' => $message->created_at ?? now(),
+            'direction' => $message->direction,
+            'status' => $message->status,
+        ]);
+
+        $earliestDualWriteAt = $normalized
+            ->firstWhere('direction', MessageDirection::Inbound)
+            ?->created_at;
+
         $entries = $this->source_data['messages'] ?? null;
-
-        if (! is_array($entries)) {
-            return [];
-        }
-
         $isWhatsapp = $this->source->type === LeadSourceType::Whatsapp;
 
-        return collect($entries)
-            ->map(fn (array $entry): array => $isWhatsapp
-                ? $this->parseWhatsappTimelineEntry($entry)
-                : $this->parseMessagingTimelineEntry($entry))
-            ->filter(fn (array $entry): bool => $entry['text'] !== null)
-            ->values()
-            ->all();
+        $legacyEntries = is_array($entries)
+            ? collect($entries)
+                ->map(fn (array $entry): array => $isWhatsapp
+                    ? $this->parseWhatsappTimelineEntry($entry)
+                    : $this->parseMessagingTimelineEntry($entry))
+                ->filter(fn (array $entry): bool => $entry['text'] !== null)
+                ->filter(fn (array $entry): bool => $earliestDualWriteAt === null || $entry['at']->lt($earliestDualWriteAt))
+                ->map(fn (array $entry): array => array_merge($entry, ['direction' => MessageDirection::Inbound, 'status' => null]))
+            : collect();
+
+        return $legacyEntries->concat($normalizedEntries)->sortBy('at')->values()->all();
     }
 
     /**
@@ -601,6 +645,29 @@ class Lead extends Model
     public function consentEvents(): HasMany
     {
         return $this->hasMany(LeadConsentEvent::class);
+    }
+
+    /**
+     * Feature #15 — this lead's conversational threads (WhatsApp/Messenger/
+     * Instagram). A Lead created via any other channel simply has none.
+     *
+     * @return HasMany<Conversation, $this>
+     */
+    public function conversations(): HasMany
+    {
+        return $this->hasMany(Conversation::class);
+    }
+
+    /**
+     * Feature #15 — every inbound and outbound Message across all of this
+     * lead's conversations, denormalized directly onto lead_id so this
+     * doesn't require joining through conversations.
+     *
+     * @return HasMany<Message, $this>
+     */
+    public function messages(): HasMany
+    {
+        return $this->hasMany(Message::class);
     }
 
     /**

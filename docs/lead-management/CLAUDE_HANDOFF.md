@@ -62,64 +62,39 @@ Exact current state, per `docs/lead-management/PROGRESS.md` §3 (authoritative �
 
 | # | Feature | Status |
 |---|---|---|
-| 1 | Duplicate Detection + Lead Merge | COMPLETE / APPROVED |
+| 1 | Duplicate Detection + Lead Merge | COMPLETE / APPROVED / CLOSED |
 | 2 | Lead Scoring Phase 2a | COMPLETE / APPROVED / CLOSED |
-| 3 | Lead Tagging | COMPLETE / APPROVED |
-| 4 | Deal / Opportunity | COMPLETE / APPROVED (Phase 1) |
-| 5 | General Tasks / Reminders | COMPLETE / APPROVED (Phase 1) |
+| 3 | Lead Tagging | COMPLETE / APPROVED / CLOSED |
+| 4 | Deal / Opportunity | COMPLETE / APPROVED / CLOSED (Phase 1) |
+| 5 | General Tasks / Reminders | COMPLETE / APPROVED / CLOSED (Phase 1) |
 | 6 | Bulk Actions | COMPLETE / APPROVED / CLOSED (Phase 1) |
 | 7 | CSV Import (+ Reverb Integration) | COMPLETE / APPROVED / CLOSED |
 | 8 | Reporting & Analytics | COMPLETE / APPROVED / CLOSED (Phase 1) |
 | 9 | Workflow / Nurturing | COMPLETE / APPROVED / CLOSED (Phase 1) |
-| 10 | SLA / Response Tracking | **COMPLETE / APPROVED / CLOSED (Phase 1)** |
-| 11 | Custom Fields | **NEXT / NOT STARTED** |
-| 12 | Source Cost / ROI | Future |
-| 13 | Website Form Builder | Future |
-| 14 | Consent / GDPR | Future |
-| 15 | In-App Communication | Intentionally deferred — do not build until explicitly requested |
+| 10 | SLA / Response Tracking | COMPLETE / APPROVED / CLOSED (Phase 1) |
+| 11 | Custom Fields | COMPLETE / APPROVED / CLOSED (Phase 1) |
+| 12 | Source Cost / ROI | COMPLETE / APPROVED / CLOSED (Phase 1) |
+| 13 | Website Form Builder | COMPLETE / APPROVED / CLOSED (Phase 1) |
+| 14 | Consent / GDPR | COMPLETE / APPROVED / CLOSED (Phase 1) |
+| 15 | In-App Communication | **COMPLETE / APPROVED / CLOSED (Phase 1)** |
 
-Features #1, #3, #4, #5, #6 show slightly different exact wording in `PROGRESS.md` than a plain "CLOSED" (e.g. "COMPLETE / APPROVED" without "CLOSED" for #1/#3, "(Phase 1)" qualifiers for #4/#5/#6) — that wording is intentional and authoritative; don't normalize it away.
+**There is no Feature #16 on the approved roadmap.** All 15 features are closed. Do not invent or begin one without an explicit user request, and do not skip the mandatory Inspect → Architecture → Approval sequence in §2 even for a request that "sounds obviously useful."
 
-## 4. Feature #10 — Final Closed State
+## 4. Feature #15 — Final Closed State (last completed feature)
 
-**Feature #10 — SLA / Response Tracking Phase 1** — CLOSED. Full detail in `PROGRESS.md` §14.
+**Feature #15 — In-App Communication Phase 1** — CLOSED. Full detail in `PROGRESS.md` §19; do not duplicate that prose here — this is a pointer, not a replacement.
 
-**Scope**: first-response-time measurement only, read-only reporting, live-computed, added to the existing `/leads/reports` page (Feature #8). Explicitly excludes: SLA targets, deadlines, breach tracking/persistence/alerts, any new scheduler or queue job, a new response-capture event, assignment-response metric, stage-duration metric.
+**Scope**: normalized `conversations`/`messages` tables with additive inbound dual-write (legacy `Lead.source_data` JSON untouched); WhatsApp/Messenger/Instagram outbound sending via a per-channel `MessageSenderInterface` implementation; 24-hour messaging-window + Privacy-consent (Feature #14) eligibility gate; queued sending (`SendOutboundMessage`) with same-row status updates and manual-resend-only on confirmed failure; webhook-driven, monotonic status reconciliation (`ReconcileOutboundMessageStatus`) added to the existing always-200 webhook handlers; a lead-detail/Kanban-flyout composer card; 30/user/min + 100/tenant/min rate limiting via `Illuminate\Cache\RateLimiter` inside the Livewire component (an accepted, explicitly-approved deviation from route-level throttle middleware). Templates, proactive/marketing messaging, and a unified inbox are explicitly deferred (full list in `PROGRESS.md` §19).
 
-**Response signal**: the existing `Lead.first_contacted_at` column, used exactly as it already behaves — set the first time a lead transitions away from the tenant's initial status (in `Leads\Show::updateStatus()` and its two bulk-action equivalents in `Leads\Index.php`). Feature #10 does not write to this column and does not invent a second definition of "first response."
+**Two real issues were found and fixed during the Final Verification Audit** (before closure): (1) `Lead::messageTimeline()` could silently hide pre-existing legacy message history once a lead received its first post-cutover dual-written message — fixed with a per-entry legacy/normalized timestamp boundary. (2) `ReconcileOutboundMessageStatus::applyStatus()` had a concurrent-write race that could downgrade an already-more-advanced status — fixed with `DB::transaction()` + `lockForUpdate()`. A **third**, same-category issue (`App\Support\SendResult`'s `$rawResponse` param missing a PHPDoc value type) was found post-closure during the 2026-09-12 end-of-day handoff's pre-commit PHPStan validation and fixed the same way — see `PROGRESS.md` §19's post-closure note.
 
-**Metrics** (four stat tiles): Responded, Not Responded, Average First Response Time, Median First Response Time — durations in hours.
+**Final verification baseline** (after all three fixes): 1053 tests, 1050 passed, 2 pre-existing `LeadsIndexListenerTest` failures (unrelated — see §5 below), 1 pre-existing skip, zero new failures. Pint: clean. PHPStan: 425 project-wide, zero attributable to any Feature #15 file.
 
-**Key semantics**:
-- Reporting window = lead `created_at`, matching Feature #8's exact boundaries: `created_at >= startOfDay(from)`, `created_at < startOfDay(to + 1 day)`.
-- A response landing after the window closes still counts, with its full actual duration — never clipped to the window boundary.
-- Closed leads are **included**, not excluded.
-- A lead with no `first_contacted_at` is Not Responded, regardless of closed status.
-- Not-Responded leads are excluded from average/median.
-- Merged-away leads (`merged_into_lead_id` not null) are excluded.
-- Tenant isolation is explicit (`tenant_id` filter), not relied on via `BelongsToTenant` alone.
-- Client Admin only — same gate as the rest of the reports page (`Gate::authorize('viewAny', Lead::class)` + `isClientAdmin()`), no new `PermissionSlug`.
-- Average/median are `null` — never `0` — when no lead in the window has a response; the UI renders "No data," never "0 hours."
-
-**Implementation files** (exactly these four, plus this closure's `PROGRESS.md` update):
-- `app/Services/LeadReportingService.php` — `firstResponseSummary()` method added (one query, `whereNotNull('first_contacted_at')` on the existing `baseQuery()`, `get(['created_at', 'first_contacted_at'])`, average/median computed in PHP).
-- `app/Livewire/Tenant/LeadReports/Index.php` — `#[Computed] firstResponseSummary()` wrapper; derives `not_responded_count` from the already-computed `volumeCount()` rather than a second query.
-- `resources/views/livewire/tenant/lead-reports.blade.php` — 4-tile stat block inserted after "Lead Volume," before "Daily Lead Volume," plus a one-line note on the creation-date-window semantics.
-- `tests/Feature/Leads/LeadResponseTimeReportingTest.php` — 14 new tests.
-
-**Test/quality results** (final verification pass):
-- `LeadResponseTimeReportingTest`: 14/14 passed.
-- `LeadReportingTest` (Feature #8, re-run unmodified): 17/17 passed.
-- `tests/Feature/Leads` + `Notifications` + `Broadcasting`: 765/768 passed.
-- Full application suite: 877/880 passed.
-- 2 known pre-existing `LeadsIndexListenerTest` failures (broadcasting listener name mismatch — `'$refresh'` expected vs. actual `onLeadReceived`/`onLeadUpdated`), confirmed unrelated (that test targets `Leads\Index.php`, a file Feature #10 never touches).
-- 1 known pre-existing skip.
-- Pint: clean.
-- PHPStan: 356 vs. the Feature #9 baseline of 352 — the +4 traced individually to already-accepted categories already present throughout `LeadReports\Index.php` (Livewire `#[Computed]` magic-property access, `Auth::user(): PlatformUser|TenantUser|null` union-type noise). No new error category, no suppressions, no `@phpstan-ignore` comments.
+**Five documented residual risks, carried forward as technical debt, not blockers** (full detail in `PROGRESS.md` §19): timeout-after-platform-acceptance ambiguity (no idempotency key exposed by any of the three platforms); per-tenant Meta permission readiness is checked manually via `MetaPermissionsController`, not automated; Instagram's delivery/read-receipt reliability is platform-documented as weaker than Messenger's; no real browser/manual QA pass was performed (Livewire full-component-render tests only); a narrow, payload-malformation-only timestamp edge case in `messageTimeline()`'s legacy/normalized boundary.
 
 `PROGRESS.md` was updated **only after** final verification passed and the user gave explicit closure approval — not before.
 
-## 5. Feature #7–#10 Important Technical Context
+## 5. Feature #7–#10 Important Technical Context (historical — still accurate, not restated per-feature below)
 
 **Feature #7 — CSV Import (+ Reverb Integration)**: max 10 MB / 10,000 rows, rejected outright (never truncated) before queuing. Row-level partial success. Duplicate detection (existing-Lead + in-file) never merges/overwrites. Queued + chunked via Laravel Excel's `ShouldQueue`/`WithChunkReading` (real job chaining, not `Bus::batch()`). `LeadReceived`/`LeadUpdated` never fire for an imported row. Real-time import status uses **Reverb as primary** (`App\Events\LeadImportStatusChanged`, `PrivateChannel('lead-import.{id}')`) plus a **single one-time** Alpine `setTimeout` reconciliation at 5s (not `wire:poll`, which was found during browser QA to throttle heavily in a backgrounded tab). Full detail in `docs/lead-management/FEATURE-07-CSV-IMPORT-HANDOFF.md`.
 
@@ -137,75 +112,32 @@ Features #1, #3, #4, #5, #6 show slightly different exact wording in `PROGRESS.m
 - PHPStan baseline has grown feature-by-feature (258 → … → 352 → 356) — every increment individually traced to already-accepted categories (`Auth::user()` union type, Livewire `#[Computed]` magic-property access, pre-existing generics gaps). This is documented, accepted debt, not something to "clean up" incidentally while building a new feature.
 - The 2 `LeadsIndexListenerTest` broadcasting failures and 1 skip have been present and unchanged since Feature #2's closure — always re-verify they're still exactly these 2/1 before attributing any new failure to a new feature.
 
-## 6. Feature #11 — Custom Fields
+## 6. No Active Feature — Wait for Explicit Instruction
 
-**Status: NEXT / NOT STARTED.**
+**Features #1–#15 are all COMPLETE / APPROVED / CLOSED.** There is no Feature #16 and no other roadmap item currently approved or defined. Do not:
+- Start any new feature, including a hypothetical "Feature #16," without it first being explicitly requested.
+- Reopen Feature #15 (or any earlier closed feature) without a demonstrated real defect/regression — a residual risk documented in `PROGRESS.md` §19 is not itself grounds to reopen.
+- Assume a feature should be built merely because it sounds useful or a natural extension.
 
-**No Feature #11 implementation has been approved.** No code, migration, model, Livewire component, or test for Custom Fields exists anywhere in this repository as of this handoff.
-
-The next session must begin with **INSPECTION ONLY** — do not choose a data model before repository inspection, do not write any code.
-
-The inspection should investigate:
-- Lead schema (existing columns, what's already flexible vs. rigid)
-- JSON/JSONB/dynamic-metadata precedent anywhere in this codebase
-- Existing custom-attribute or configurable-field patterns elsewhere in the app (e.g. how `LeadStatus`/`Currency`/`LeadTag` catalogs are modeled — shared catalog vs. tenant-owned — is directly relevant prior art)
-- Lead creation/update paths (manual creation, webhook capture, CSV import, merge)
-- Livewire forms currently used for Lead create/edit
-- Validation architecture
-- Bulk Actions (Feature #6) — would custom fields need a bulk-edit path?
-- CSV Import (Feature #7) — would custom fields need import-column support?
-- Duplicate merge (Feature #1) — how would a custom field value be resolved on merge?
-- Reporting/filtering (Feature #8) — would custom fields need to be filterable/reportable?
-- Tenant isolation requirements
-- Client Admin vs. Client User permission boundaries for defining vs. filling in custom fields
-- Possible data-model approaches (EAV table, JSON/JSONB column, per-tenant dynamic schema, etc.) and their tradeoffs specifically in this repository's context (Postgres in production, SQLite in tests — JSONB portability is a real concern, same class of issue Feature #8/#9/#10 already had to navigate)
-- Field types to support, validation architecture per type
-- Performance/index implications
-- Audit/history requirements
-- UI placement
-- Existing testing patterns to follow
-- Future reporting/import implications
-
-The inspection must produce a Decision Brief covering:
-
-```
-A. Existing infrastructure
-B. Reusable patterns
-C. Missing infrastructure
-D. Data-model options
-E. Pros/cons based on this repository
-F. Tenant isolation
-G. Authorization
-H. Validation
-I. Create/edit/import/merge/reporting impact
-J. Performance/index considerations
-K. Audit/history
-L. Security risks
-M. Scope risks
-N. Recommended Phase 1 scope
-O. Deferred items
-P. Open product questions
-```
-
-Then **WAIT FOR EXPLICIT USER APPROVAL** before any Architecture Proposal, and wait again before any implementation — per the mandatory workflow in §2.
+If and when a new feature is explicitly requested, follow the exact same mandatory workflow every prior feature followed (§2 above): begin with **INSPECTION ONLY** of the actual current repository/schema/UI/permission state — do not choose a data model or approach before inspecting — then produce a Decision Brief, then **WAIT FOR EXPLICIT USER APPROVAL** before any Architecture Proposal, and wait again before any implementation.
 
 ## 7. How to Start the Next Session
 
-1. Read `docs/lead-management/PROGRESS.md` in full.
+1. Read `docs/lead-management/PROGRESS.md` in full — it is the authoritative, continuously-updated state.
 2. Read this file, `docs/lead-management/CLAUDE_HANDOFF.md`, in full.
-3. Run `git status` and `git log -5 --oneline` to confirm the actual current repository state.
+3. Run `git status` and `git log -5 --oneline` to confirm the actual current repository state (should be clean, `main` up to date with `origin/main`, immediately after the commit that closed Feature #15).
 4. Confirm current branch (`git branch --show-current`).
-5. Do **not** implement anything yet.
-6. Begin Feature #11 inspection only, per §6 above.
+5. Do **not** implement anything yet — there is no approved next feature (see §6).
+6. Wait for the user to explicitly name the next feature, then begin its inspection per §2/§6.
 
 **If this handoff document and `PROGRESS.md` ever conflict**: inspect the actual repository code and treat the real current code state plus the latest `PROGRESS.md` content as authoritative over this document. Do not guess which is right — report the conflict to the user before proceeding with any implementation.
 
 ## 8. Commit / Branch / Git Safety
 
-At the time this handoff was written:
-- **Branch**: `main`
-- **Remote**: `origin` → `git@github.com:rashedbishal/OptiFin-Enterprise-Resource-Management-System.git`, branch up to date with `origin/main`.
-- **Recent commits on `main`** (most recent first): `bbb9069` "Add Lead Management development progress handoff doc", `f9ae290` "Add Lead duplicate detection/merge and rule-based Lead Scoring", `6ffe4d5` "Document Exports and audit-logging conventions in CLAUDE.md", `fe55c9d` "Fix stale ?lead= URL after closing the Kanban lead detail flyout", `a3c9b3a` "Show a Website Form lead's arbitrary extra fields on its detail page".
-- **Working tree state**: substantial uncommitted work sits in the tree — the implementation for Features #3 through #10 (CSV Import, Reporting, Nurturing, SLA tracking, Deals, Tasks, Bulk Actions, Lead Tagging, and their supporting migrations/tests/docs) has **not yet been committed to git**, despite being functionally complete and closed per `PROGRESS.md`. This is a pre-existing condition of this repository as of this handoff, not something this handoff session introduced or resolved. A future session should not assume "closed in `PROGRESS.md`" means "committed" — verify with `git status` before doing anything that could discard uncommitted work (`git checkout`, `git reset --hard`, `git clean`, etc.), and do not run those commands without explicit user instruction.
+As of the 2026-09-12 end-of-day handoff commit (which closes Feature #15):
+- **Branch**: `main`.
+- **Remote**: `origin` → `git@github.com:rashedbishal/OptiFin-Enterprise-Resource-Management-System.git`.
+- **Working tree**: clean immediately after that commit was pushed — run `git log -1 --oneline` and `git status --short` to confirm the exact current commit hash and tree state, since this document is not updated per-commit.
+- That commit contains all of Feature #15's implementation, migrations, tests, the `PROGRESS.md` closure update, and this file's own update — nothing from any other in-progress or unrelated work.
 
-This handoff document's own commit was created as an isolated, minimal commit containing **only** `docs/lead-management/CLAUDE_HANDOFF.md` — it does not commit, stage, or otherwise touch any of the pre-existing uncommitted Feature #3–#10 work described above.
+Before running any command that could discard uncommitted work (`git checkout`, `git reset --hard`, `git clean`, etc.), always verify with `git status` first and never run those without explicit user instruction.

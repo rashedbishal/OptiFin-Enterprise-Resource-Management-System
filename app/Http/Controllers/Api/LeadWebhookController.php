@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Actions\Tenant\RecordInboundMessage;
 use App\Actions\Tenant\RecordLeadConsent;
 use App\Actions\Tenant\SaveLeadCustomFieldValues;
 use App\Actions\Tenant\ValidateWebsiteFormSubmission;
@@ -9,11 +10,14 @@ use App\Enums\ConsentSource;
 use App\Enums\ConsentStatus;
 use App\Enums\LeadAttachmentStatus;
 use App\Enums\LeadSourceType;
+use App\Enums\MessageChannel;
+use App\Enums\MessageStatus;
 use App\Enums\TenantStatus;
 use App\Events\LeadReceived;
 use App\Events\LeadUpdated;
 use App\Http\Controllers\Controller;
 use App\Jobs\DownloadLeadAttachment;
+use App\Jobs\ReconcileOutboundMessageStatus;
 use App\Models\Lead;
 use App\Models\LeadSource;
 use App\Models\Tenant;
@@ -73,6 +77,17 @@ class LeadWebhookController extends Controller
                 foreach (($entry['messaging'] ?? []) as $messaging) {
                     $source ??= $this->resolveSource($tenant_code, LeadSourceType::FacebookMessenger);
 
+                    // Feature #15 — a `messaging[]` entry is either a
+                    // message, a delivery receipt, or a read receipt, never
+                    // more than one — handled and dispatched for
+                    // reconciliation separately from message processing
+                    // below, then skipped.
+                    if (isset($messaging['delivery']) || isset($messaging['read'])) {
+                        $this->dispatchMessengerStatusReconciliation($source, MessageChannel::Messenger, $messaging);
+
+                        continue;
+                    }
+
                     $senderId = (string) ($messaging['sender']['id'] ?? 'unknown');
                     $messageText = $messaging['message']['text'] ?? null;
                     $attachments = $this->extractMessagingAttachments($messaging);
@@ -103,6 +118,8 @@ class LeadWebhookController extends Controller
                                 'messages' => [$messaging],
                             ],
                         ]);
+
+                        $this->recordInboundMessage($lead, $source, MessageChannel::Messenger, $senderId, $messageText, $messaging);
 
                         $this->logIfMultipleAttachments($attachments, $lead);
 
@@ -148,6 +165,15 @@ class LeadWebhookController extends Controller
 
             foreach ($request->array('entry') as $entry) {
                 foreach (($entry['messaging'] ?? []) as $messaging) {
+                    // Feature #15 — see facebookMessenger()'s identical
+                    // check; Instagram Messaging shares the same
+                    // entry[].messaging[] delivery/read shape.
+                    if (isset($messaging['delivery']) || isset($messaging['read'])) {
+                        $this->dispatchMessengerStatusReconciliation($source, MessageChannel::Instagram, $messaging);
+
+                        continue;
+                    }
+
                     $senderId = (string) ($messaging['sender']['id'] ?? 'unknown');
                     $messageText = $messaging['message']['text'] ?? null;
                     $attachments = $this->extractMessagingAttachments($messaging);
@@ -178,6 +204,8 @@ class LeadWebhookController extends Controller
                                 'messages' => [$messaging],
                             ],
                         ]);
+
+                        $this->recordInboundMessage($lead, $source, MessageChannel::Instagram, $senderId, $messageText, $messaging);
 
                         $this->logIfMultipleAttachments($attachments, $lead);
 
@@ -228,6 +256,15 @@ class LeadWebhookController extends Controller
 
             foreach ($request->array('entry') as $entry) {
                 foreach (($entry['changes'] ?? []) as $change) {
+                    // Feature #15 — the Cloud API's own delivery/read/failed
+                    // status callback for a message THIS app sent, keyed
+                    // reliably by wamid — additive, alongside the existing
+                    // inbound `messages[]` handling below, never replacing
+                    // it. Not previously parsed by this method at all.
+                    foreach (($change['value']['statuses'] ?? []) as $status) {
+                        $this->dispatchWhatsappStatusReconciliation($source, $status);
+                    }
+
                     foreach (($change['value']['messages'] ?? []) as $message) {
                         $attachment = $this->extractWhatsappAttachment($message);
                         $senderId = (string) ($message['from'] ?? 'unknown');
@@ -258,6 +295,8 @@ class LeadWebhookController extends Controller
                                 'message' => $messageText,
                                 'source_data' => ['messages' => [$message]],
                             ]);
+
+                            $this->recordInboundMessage($lead, $source, MessageChannel::Whatsapp, $senderPhone, $messageText, $message);
 
                             if ($attachment !== null) {
                                 $this->createPendingAttachmentAndDispatch($lead, LeadSourceType::Whatsapp, $attachment, $senderId, $source, $sentAt);
@@ -609,6 +648,8 @@ class LeadWebhookController extends Controller
 
         $lead->save();
 
+        $this->recordInboundMessage($lead, $source, MessageChannel::Messenger, $senderId, $messageText, $messaging);
+
         $this->logIfMultipleAttachments($attachments, $lead);
 
         foreach ($attachments as $attachment) {
@@ -715,6 +756,8 @@ class LeadWebhookController extends Controller
 
         $lead->save();
 
+        $this->recordInboundMessage($lead, $source, MessageChannel::Instagram, $senderId, $messageText, $messaging);
+
         $this->logIfMultipleAttachments($attachments, $lead);
 
         foreach ($attachments as $attachment) {
@@ -744,6 +787,8 @@ class LeadWebhookController extends Controller
         $lead->source_data = $sourceData;
 
         $lead->save();
+
+        $this->recordInboundMessage($lead, $source, MessageChannel::Whatsapp, $senderId, $messageText, $message);
 
         if ($attachment !== null) {
             $this->createPendingAttachmentAndDispatch($lead, LeadSourceType::Whatsapp, $attachment, $senderId, $source, $sentAt);
@@ -934,6 +979,143 @@ class LeadWebhookController extends Controller
             remoteUrl: $attachment['url'] ?? null,
             mediaId: $attachment['media_id'] ?? null,
             whatsappPhoneNumberId: $type === LeadSourceType::Whatsapp ? ($source->config['phone_number_id'] ?? null) : null,
+        );
+    }
+
+    /**
+     * Feature #15 — the single additive dual-write call site every inbound
+     * handler above goes through, alongside its own EXISTING, unmodified
+     * Lead.source_data JSON append. Never replaces or removes that write —
+     * see App\Actions\Tenant\RecordInboundMessage's own docblock. Swallows
+     * its own failure without rethrowing: a normalized-message-store hiccup
+     * must never take down inbound lead/message capture, which has already
+     * fully succeeded (via the pre-existing source_data write) by the time
+     * this runs.
+     *
+     * @param  mixed  $rawPayload
+     */
+    private function recordInboundMessage(Lead $lead, LeadSource $source, MessageChannel $channel, ?string $externalThreadId, ?string $body, $rawPayload): void
+    {
+        if (! is_string($externalThreadId) || $externalThreadId === '' || $externalThreadId === 'unknown') {
+            return;
+        }
+
+        try {
+            app(RecordInboundMessage::class)->handle(
+                lead: $lead,
+                source: $source,
+                channel: $channel,
+                externalThreadId: $externalThreadId,
+                body: $body,
+                externalMessageId: $this->extractInboundMessageId($rawPayload),
+                metadata: is_array($rawPayload) ? $rawPayload : null,
+            );
+        } catch (Throwable $e) {
+            Log::warning("Feature #15 normalized message write failed for lead [{$lead->id}]: {$e->getMessage()}");
+        }
+    }
+
+    /**
+     * Messenger/Instagram carry the inbound message's own id at
+     * `message.mid`; WhatsApp carries it at the top-level `id`. Purely
+     * opportunistic — a missing id here only means this specific inbound
+     * row has no external_message_id, never a processing failure.
+     *
+     * @param  mixed  $rawPayload
+     */
+    private function extractInboundMessageId($rawPayload): ?string
+    {
+        if (! is_array($rawPayload)) {
+            return null;
+        }
+
+        $id = $rawPayload['message']['mid'] ?? $rawPayload['id'] ?? null;
+
+        return is_string($id) && $id !== '' ? $id : null;
+    }
+
+    /**
+     * Feature #15 — dispatched for a single `statuses[]` entry from the
+     * Cloud API's own delivery/read/failed callback. WhatsApp's own status
+     * values (sent/delivered/read/failed) map directly onto
+     * App\Enums\MessageStatus's values, so no translation table is needed
+     * beyond a plain tryFrom(). Reconciliation itself is queued, never
+     * applied inline here — see ReconcileOutboundMessageStatus's own
+     * docblock for why.
+     *
+     * @param  array<string, mixed>  $status
+     */
+    private function dispatchWhatsappStatusReconciliation(LeadSource $source, array $status): void
+    {
+        $wamid = $status['id'] ?? null;
+        $rawStatus = $status['status'] ?? null;
+        $messageStatus = is_string($rawStatus) ? MessageStatus::tryFrom($rawStatus) : null;
+
+        if (! is_string($wamid) || $wamid === '' || $messageStatus === null) {
+            return;
+        }
+
+        $failureReason = $messageStatus === MessageStatus::Failed
+            ? ($status['errors'][0]['title'] ?? $status['errors'][0]['message'] ?? 'WhatsApp reported a delivery failure.')
+            : null;
+
+        ReconcileOutboundMessageStatus::dispatch(
+            tenantId: $source->tenant_id,
+            channel: MessageChannel::Whatsapp,
+            status: $messageStatus,
+            externalMessageId: $wamid,
+            failureReason: is_string($failureReason) ? $failureReason : null,
+        );
+    }
+
+    /**
+     * Feature #15 — dispatched for a single `messaging[]` delivery/read
+     * entry (Messenger and Instagram share this exact shape). For a
+     * delivery/read receipt ABOUT a message this app sent, `recipient.id`
+     * is the CUSTOMER's PSID/IGSID (Meta's convention: `sender` is the Page
+     * for this specific event type) — the same identifier this app's own
+     * Conversation.external_thread_id already uses. `mids` is used
+     * opportunistically when present; `watermark` (milliseconds — converted
+     * to seconds here, since ReconcileOutboundMessageStatus's own
+     * Carbon::createFromTimestamp() expects seconds, matching WhatsApp's
+     * own convention) is the primary, always-present mechanism — see
+     * ReconcileOutboundMessageStatus's own docblock for why mids alone
+     * cannot be relied on.
+     *
+     * @param  array<string, mixed>  $messaging
+     */
+    private function dispatchMessengerStatusReconciliation(LeadSource $source, MessageChannel $channel, array $messaging): void
+    {
+        $customerId = (string) ($messaging['recipient']['id'] ?? '');
+
+        if ($customerId === '') {
+            return;
+        }
+
+        $isDelivery = isset($messaging['delivery']);
+        $event = $messaging['delivery'] ?? $messaging['read'] ?? null;
+
+        if (! is_array($event)) {
+            return;
+        }
+
+        $watermark = $event['watermark'] ?? null;
+        $mids = is_array($event['mids'] ?? null)
+            ? array_values(array_filter($event['mids'], 'is_string'))
+            : [];
+
+        if ($watermark === null && $mids === []) {
+            return;
+        }
+
+        ReconcileOutboundMessageStatus::dispatch(
+            tenantId: $source->tenant_id,
+            channel: $channel,
+            status: $isDelivery ? MessageStatus::Delivered : MessageStatus::Read,
+            externalMessageIds: $mids,
+            leadSourceId: $source->id,
+            conversationExternalThreadId: $customerId,
+            watermarkTimestamp: is_numeric($watermark) ? (int) ((float) $watermark / 1000) : null,
         );
     }
 
