@@ -3,6 +3,7 @@
 namespace App\Observers;
 
 use App\Models\Lead;
+use App\Services\LeadDuplicateDetectionService;
 use Illuminate\Support\Facades\Storage;
 
 class LeadObserver
@@ -19,5 +20,26 @@ class LeadObserver
         $paths = $lead->attachments()->whereNotNull('path')->pluck('path');
 
         Storage::disk('local')->delete($paths->all());
+    }
+
+    /**
+     * Keeps email_normalized/phone_normalized (see
+     * App\Services\LeadDuplicateDetectionService::detectFor()) in sync with
+     * email/phone on every create and update, using the exact same
+     * normalizeEmail()/normalizePhone() static methods the detection
+     * service itself uses — a single source of truth for normalization,
+     * not a second implementation. Only recomputes when the source column
+     * is actually dirty, so this is a no-op on every save that doesn't
+     * touch email/phone (the common case).
+     */
+    public function saving(Lead $lead): void
+    {
+        if ($lead->isDirty('email')) {
+            $lead->email_normalized = LeadDuplicateDetectionService::normalizeEmail($lead->email);
+        }
+
+        if ($lead->isDirty('phone')) {
+            $lead->phone_normalized = LeadDuplicateDetectionService::normalizePhone($lead->phone);
+        }
     }
 }

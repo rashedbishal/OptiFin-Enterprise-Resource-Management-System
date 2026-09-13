@@ -39,7 +39,9 @@ use Illuminate\Support\Facades\DB;
  * @property string|null $service_interest
  * @property string|null $lead_source
  * @property string|null $email
+ * @property string|null $email_normalized
  * @property string|null $phone
+ * @property string|null $phone_normalized
  * @property string|null $message
  * @property string|null $html_body
  * @property array<string, mixed>|null $source_data
@@ -75,7 +77,11 @@ use Illuminate\Support\Facades\DB;
 // query builder update, never $lead->update(), so it never spuriously
 // bumps updated_at (see Lead::markUpdateSeen()'s docblock for why that
 // matters — it would trip hasUnseenUpdate()'s "recently updated" highlight
-// for every viewer).
+// for every viewer). email_normalized/phone_normalized are the same
+// category again: system-computed derived values, never meant to be
+// mass-assigned from a create()/update() payload — see
+// App\Observers\LeadObserver::saving(), the only place that ever sets them
+// (via direct attribute assignment, not fill()/update()).
 #[Fillable([
     'tenant_id', 'source_id', 'assigned_to', 'name', 'company', 'website', 'industry', 'location',
     'service_interest', 'lead_source', 'email', 'phone', 'message', 'html_body', 'source_data', 'status_id', 'priority',

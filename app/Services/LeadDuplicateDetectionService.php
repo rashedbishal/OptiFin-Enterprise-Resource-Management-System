@@ -20,11 +20,18 @@ use Illuminate\Support\Str;
  * dedupe, email append-by-address) is touched.
  *
  * Matching is exact-after-normalization, not fuzzy: email is
- * lowercased/trimmed, phone has non-digits stripped. Comparison happens in
- * PHP (see matches()) rather than in SQL, so it works identically regardless
- * of the app's DB driver — acceptable at typical per-tenant lead volumes; if
- * a tenant's lead table ever gets large enough for this to matter, a future
- * revision could push normalization into generated/indexed columns instead.
+ * lowercased/trimmed, phone has non-digits stripped. Normalization happens
+ * exactly once, in normalizeEmail()/normalizePhone() below — never
+ * reimplemented in SQL. The candidate query (see detectFor()) compares
+ * against leads.email_normalized/phone_normalized, two application-computed
+ * columns App\Observers\LeadObserver::saving() keeps in sync with
+ * email/phone on every write using these exact same two methods, so a
+ * targeted indexed lookup and this class's own PHP normalization can never
+ * disagree — deliberately NOT database-generated columns or expression
+ * indexes, since SQLite (this app's test driver) has no regex-replace
+ * equivalent for normalizePhone()'s digit-stripping, and a database's own
+ * LOWER() can disagree with normalizeEmail()'s multibyte-aware Str::lower()
+ * on Unicode edge cases.
  */
 class LeadDuplicateDetectionService
 {
@@ -34,6 +41,14 @@ class LeadDuplicateDetectionService
      * known (never re-creates one that's already pending/dismissed/merged —
      * see LeadDuplicateLink::pairKeys()), and returns every pending link now
      * involving $lead.
+     *
+     * M4 fix: candidates are found via a targeted, indexed lookup against
+     * leads.email_normalized/phone_normalized (backed by
+     * (tenant_id, email_normalized)/(tenant_id, phone_normalized) indexes)
+     * instead of fetching every one of the tenant's leads and comparing in
+     * PHP — this previously scaled linearly with tenant size on every call
+     * (and every lead detail page view triggers one), quadratically across
+     * DetectDuplicateLeads's sweep.
      *
      * @return Collection<int, LeadDuplicateLink>
      */
@@ -51,10 +66,16 @@ class LeadDuplicateDetectionService
                 ->where('tenant_id', $lead->tenant_id)
                 ->where('id', '!=', $lead->id)
                 ->whereNull('merged_into_lead_id')
-                ->where(function (Builder $query): void {
-                    $query->whereNotNull('email')->orWhereNotNull('phone');
+                ->where(function (Builder $query) use ($normalizedEmail, $normalizedPhone): void {
+                    if ($normalizedEmail !== null) {
+                        $query->orWhere('email_normalized', $normalizedEmail);
+                    }
+
+                    if ($normalizedPhone !== null) {
+                        $query->orWhere('phone_normalized', $normalizedPhone);
+                    }
                 })
-                ->get(['id', 'tenant_id', 'email', 'phone']);
+                ->get(['id', 'tenant_id', 'email_normalized', 'phone_normalized']);
 
             foreach ($candidates as $candidate) {
                 $matchedFields = $this->matchedFields($normalizedEmail, $normalizedPhone, $candidate);
@@ -88,17 +109,23 @@ class LeadDuplicateDetectionService
     }
 
     /**
+     * Compares against the candidate's already-normalized columns directly
+     * — not self::normalizeEmail($candidate->email) — since
+     * App\Observers\LeadObserver::saving() guarantees email_normalized/
+     * phone_normalized already equal what re-normalizing the raw columns
+     * would produce, for every lead in the table.
+     *
      * @return array<int, string>
      */
     private function matchedFields(?string $normalizedEmail, ?string $normalizedPhone, Lead $candidate): array
     {
         $matched = [];
 
-        if ($normalizedEmail !== null && self::normalizeEmail($candidate->email) === $normalizedEmail) {
+        if ($normalizedEmail !== null && $candidate->email_normalized === $normalizedEmail) {
             $matched[] = 'email';
         }
 
-        if ($normalizedPhone !== null && self::normalizePhone($candidate->phone) === $normalizedPhone) {
+        if ($normalizedPhone !== null && $candidate->phone_normalized === $normalizedPhone) {
             $matched[] = 'phone';
         }
 
