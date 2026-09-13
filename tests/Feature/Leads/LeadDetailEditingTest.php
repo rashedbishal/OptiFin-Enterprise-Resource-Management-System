@@ -8,6 +8,7 @@ use App\Models\LeadSource;
 use App\Models\TenantUser;
 use App\Notifications\FollowUpUpdatedNotification;
 use App\Notifications\MeetingUpdatedNotification;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 
 test('the meeting date field is pre-filled as a single date+time value from the stored date and time', function () {
@@ -416,4 +417,46 @@ test('updating deal details from the panel notifies the board instead of redirec
         ->assertDispatched('lead-panel-updated');
 
     expect($lead->fresh()->win_probability)->toBe(75);
+});
+
+/**
+ * Show::applyDetailChanges() atomicity fix: proves $this->lead->save()
+ * and LeadDetailUpdateLog::create() are now atomic. applyDetailChanges()
+ * writes the lead first and the log second — the same order as
+ * Show::updateStatus()'s own already-fixed save-then-log pattern — so the
+ * established never-persisted-TenantUser FK-violation technique from
+ * LeadStatusTest.php/LeadMergeTest.php/LeadAssignmentTest.php applies
+ * directly: Gate::denies('update', $lead) passes (it only reads in-memory
+ * tenant_id/user_type/role attributes, never re-queries the acting user's
+ * own row), but LeadDetailUpdateLog.changed_by's foreign key to
+ * tenant_users then fails on the SECOND write, strictly after
+ * $this->lead->save() has already run in the same transaction.
+ */
+test('a failure partway through applyDetailChanges() rolls back the lead change and the detail log', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'name' => 'Original Name', 'phone' => '+10000000000', 'email' => 'original@example.com']);
+
+    $neverPersisted = TenantUser::factory()->make([
+        'id' => (string) Str::ulid(),
+        'tenant_id' => $clientAdmin->tenant_id,
+        'role_id' => $clientAdmin->role_id,
+        'user_type' => $clientAdmin->user_type,
+    ]);
+
+    expect(fn () => Livewire::actingAs($neverPersisted)
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
+        ->set('leadName', 'New Name')
+        ->set('leadPhone', '+29999999999')
+        ->set('leadEmail', 'new@example.com')
+        ->call('updateContact'))
+        ->toThrow(Exception::class);
+
+    // Nothing persisted: the contact-detail change made by the earlier
+    // $this->lead->save() call inside the same transaction was rolled
+    // back along with it, and no LeadDetailUpdateLog row exists.
+    $lead->refresh();
+    expect($lead->name)->toBe('Original Name');
+    expect($lead->phone)->toBe('+10000000000');
+    expect($lead->email)->toBe('original@example.com');
+    expect(LeadDetailUpdateLog::where('lead_id', $lead->id)->exists())->toBeFalse();
 });

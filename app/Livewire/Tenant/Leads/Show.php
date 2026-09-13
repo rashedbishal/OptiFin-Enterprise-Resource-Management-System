@@ -1555,6 +1555,23 @@ class Show extends Component
      * comparisons for decimal/int/date columns — Eloquent's casts already
      * normalize those correctly.
      *
+     * Atomicity fix (Show::applyDetailChanges() — Lead + LeadDetailUpdateLog
+     * atomicity finding): the lead save, its LeadDetailUpdateLog write, the
+     * conditional scoring recompute, and LeadUpdated are wrapped in one
+     * DB::transaction() so a failure partway through can't leave the lead's
+     * detail change persisted with no matching audit row — mirroring the
+     * identical boundary already shipped for this same shape in
+     * Show::updateStatus(). LeadScoringService::computeFor() already nests
+     * safely inside an open transaction (its own docblock, from its M3 fix,
+     * explicitly documents Show::updateStatus() doing exactly this), so no
+     * change to that service was needed. LeadUpdated is fired from inside
+     * the transaction, not deferred: it queues via the database queue
+     * driver, and a job row inserted on the same connection while a
+     * transaction is open is invisible to any other connection until that
+     * transaction actually commits, so a queued worker can never observe
+     * pre-commit data here — the same reasoning already relied on by
+     * Show::updateStatus()'s and Index::moveLead()'s own fixes.
+     *
      * @param  array<string, mixed>  $columns
      */
     private function applyDetailChanges(array $columns): void
@@ -1566,26 +1583,28 @@ class Show extends Component
             return;
         }
 
-        $this->lead->save();
+        DB::transaction(function () use ($changed): void {
+            $this->lead->save();
 
-        LeadDetailUpdateLog::create([
-            'lead_id' => $this->lead->id,
-            'changed_by' => Auth::id(),
-            'changed_fields' => $changed,
-        ]);
+            LeadDetailUpdateLog::create([
+                'lead_id' => $this->lead->id,
+                'changed_by' => Auth::id(),
+                'changed_fields' => $changed,
+            ]);
 
-        // Only recompute when $changed actually intersects the scoring-
-        // relevant subset (budget/deal/contact fields) — a Contact-card-only
-        // save (e.g. just the name) never touches this, so this deliberately
-        // does NOT fire on every applyDetailChanges() call. See
-        // LeadScoringService::SCORING_RELEVANT_DETAIL_FIELDS.
-        if (array_intersect($changed, LeadScoringService::SCORING_RELEVANT_DETAIL_FIELDS) !== []) {
-            app(LeadScoringService::class)->computeFor($this->lead, 'detail_updated');
-            $this->lead->refresh();
-            unset($this->latestScoreLog);
-        }
+            // Only recompute when $changed actually intersects the scoring-
+            // relevant subset (budget/deal/contact fields) — a Contact-card-only
+            // save (e.g. just the name) never touches this, so this deliberately
+            // does NOT fire on every applyDetailChanges() call. See
+            // LeadScoringService::SCORING_RELEVANT_DETAIL_FIELDS.
+            if (array_intersect($changed, LeadScoringService::SCORING_RELEVANT_DETAIL_FIELDS) !== []) {
+                app(LeadScoringService::class)->computeFor($this->lead, 'detail_updated');
+                $this->lead->refresh();
+                unset($this->latestScoreLog);
+            }
 
-        event(new LeadUpdated($this->lead));
+            event(new LeadUpdated($this->lead));
+        });
 
         unset($this->activity);
 
