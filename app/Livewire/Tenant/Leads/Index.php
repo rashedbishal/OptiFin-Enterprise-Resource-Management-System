@@ -1237,11 +1237,10 @@ class Index extends Component
     {
         Gate::authorize('viewAny', Lead::class);
 
-        $leads = $this->applyDropdownFilters($this->applyAssignmentScope($this->filteredQuery()))
-            ->with(['source', 'assignedUser', 'status', 'estimatedBudgetCurrency', 'dealValueCurrency'])
-            ->get();
+        $query = $this->applyDropdownFilters($this->applyAssignmentScope($this->filteredQuery()))
+            ->with(['source', 'assignedUser', 'status', 'estimatedBudgetCurrency', 'dealValueCurrency']);
 
-        return response()->streamDownload(function () use ($leads): void {
+        return response()->streamDownload(function () use ($query): void {
             $handle = fopen('php://output', 'w');
 
             if ($handle === false) {
@@ -1250,20 +1249,28 @@ class Index extends Component
 
             fputcsv($handle, ['Lead ID', 'Name', 'Email', 'Phone', 'Source', 'Status', 'Priority', 'Assigned To', 'Created At', 'Closed At']);
 
-            foreach ($leads as $lead) {
-                fputcsv($handle, [
-                    $lead->identifier,
-                    $lead->name,
-                    $lead->email,
-                    $lead->phone,
-                    $lead->source->type->label(),
-                    $lead->status->name,
-                    $lead->priority->value,
-                    $lead->assignedUser->name ?? 'Unassigned',
-                    $lead->created_at?->toDateTimeString(),
-                    $lead->closed_at?->toDateTimeString(),
-                ]);
-            }
+            // chunkById() keeps memory bounded to one 200-row page at a time
+            // regardless of how many leads match the current filters — the
+            // same pattern already used for tenant-wide Lead sweeps in
+            // RecalculateLeadScores/DetectDuplicateLeads. It re-applies this
+            // query's own with()/where() constraints per page, so every
+            // filter above still narrows the export exactly as before.
+            $query->chunkById(200, function ($leads) use ($handle): void {
+                foreach ($leads as $lead) {
+                    fputcsv($handle, [
+                        $lead->identifier,
+                        $lead->name,
+                        $lead->email,
+                        $lead->phone,
+                        $lead->source->type->label(),
+                        $lead->status->name,
+                        $lead->priority->value,
+                        $lead->assignedUser->name ?? 'Unassigned',
+                        $lead->created_at?->toDateTimeString(),
+                        $lead->closed_at?->toDateTimeString(),
+                    ]);
+                }
+            });
 
             fclose($handle);
         }, 'leads.csv', ['Content-Type' => 'text/csv']);
