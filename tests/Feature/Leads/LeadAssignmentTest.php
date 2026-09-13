@@ -8,9 +8,11 @@ use App\Livewire\Tenant\Leads\Show;
 use App\Models\Lead;
 use App\Models\LeadAssignment;
 use App\Models\LeadDetailUpdateLog;
+use App\Models\TenantUser;
 use App\Notifications\LeadAssignedNotification;
 use App\Services\LeadAssignmentService;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 
 test('manually assigning a lead updates it and records the assignment history', function () {
@@ -23,6 +25,31 @@ test('manually assigning a lead updates it and records the assignment history', 
     expect($lead->fresh()->assigned_to)->toBe($rep->id);
     expect(LeadAssignment::where('lead_id', $lead->id)->where('assigned_to', $rep->id)->exists())->toBeTrue();
     expect($rep->fresh()->last_assigned_at)->not->toBeNull();
+});
+
+test('a failure partway through assign() rolls back every write already made in that transaction', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $originalLastAssignedAt = $rep->last_assigned_at;
+
+    // A TenantUser that was built but never actually saved: LeadAssignment
+    // .assigned_by's foreign key to tenant_users then fails on the second
+    // write — AFTER $lead->update() has already run earlier in the SAME
+    // transaction — proving the whole operation is atomic, not just its
+    // individual steps.
+    $neverPersisted = TenantUser::factory()->make(['id' => (string) Str::ulid(), 'tenant_id' => $tenant->id]);
+
+    expect(fn () => app(LeadAssignmentService::class)->assign($lead, $rep, $neverPersisted, 'Please follow up today.'))
+        ->toThrow(Exception::class);
+
+    // Nothing persisted: the lead was never actually marked assigned, no
+    // LeadAssignment history row exists, and the assignee's last_assigned_at
+    // is untouched.
+    expect($lead->fresh()->assigned_to)->toBeNull();
+    expect($lead->fresh()->assigned_at)->toBeNull();
+    expect(LeadAssignment::where('lead_id', $lead->id)->exists())->toBeFalse();
+    expect($rep->fresh()->last_assigned_at)->toEqual($originalLastAssignedAt);
 });
 
 test('unassigning a lead clears its assignment without touching assignment history', function () {

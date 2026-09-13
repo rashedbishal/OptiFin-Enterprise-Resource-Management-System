@@ -11,27 +11,42 @@ use App\Models\LeadAssignment;
 use App\Models\Tenant;
 use App\Models\TenantUser;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 
 class LeadAssignmentService
 {
     /**
      * Assign a lead to a tenant user, recording the assignment history.
+     *
+     * M1 fix: the three writes below are wrapped in one transaction so a
+     * failure partway through (e.g. the LeadAssignment insert) can never
+     * leave the lead marked assigned with no matching history row. The
+     * LeadAssigned event is deliberately fired AFTER the transaction
+     * commits, not from inside it — SendLeadAssignedNotification is a
+     * queued listener, and firing the event only once the writes are
+     * durably committed preserves the exact guarantee the current
+     * (transaction-less) code already provides today: every write has
+     * already completed before the event fires. Firing it from inside an
+     * uncommitted transaction would risk a queued worker observing
+     * pre-write data before this transaction actually commits.
      */
     public function assign(Lead $lead, TenantUser $assignee, ?TenantUser $assignedBy, ?string $note = null): void
     {
-        $lead->update([
-            'assigned_to' => $assignee->id,
-            'assigned_at' => now(),
-        ]);
+        DB::transaction(function () use ($lead, $assignee, $assignedBy, $note): void {
+            $lead->update([
+                'assigned_to' => $assignee->id,
+                'assigned_at' => now(),
+            ]);
 
-        LeadAssignment::create([
-            'lead_id' => $lead->id,
-            'assigned_to' => $assignee->id,
-            'assigned_by' => $assignedBy?->id,
-            'assignment_note' => $note,
-        ]);
+            LeadAssignment::create([
+                'lead_id' => $lead->id,
+                'assigned_to' => $assignee->id,
+                'assigned_by' => $assignedBy?->id,
+                'assignment_note' => $note,
+            ]);
 
-        $assignee->update(['last_assigned_at' => now()]);
+            $assignee->update(['last_assigned_at' => now()]);
+        });
 
         event(new LeadAssigned($lead, $assignee, $assignedBy));
     }
