@@ -2,6 +2,7 @@
 
 use App\Enums\AutoDistributionMethod;
 use App\Enums\LeadDistributionMode;
+use App\Events\LeadAssigned;
 use App\Events\LeadUpdated;
 use App\Events\UserNotified;
 use App\Livewire\Tenant\Leads\Show;
@@ -11,6 +12,7 @@ use App\Models\LeadDetailUpdateLog;
 use App\Models\TenantUser;
 use App\Notifications\LeadAssignedNotification;
 use App\Services\LeadAssignmentService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
@@ -225,5 +227,129 @@ test('auto-assign does not consider inactive or unqualified users', function () 
 
     app(LeadAssignmentService::class)->autoAssign($lead);
 
+    expect($lead->fresh()->assigned_to)->toBeNull();
+});
+
+/**
+ * M1 fairness-race fix: proves pickRoundRobinUser() runs its candidate
+ * query twice per auto-assignment (LeadAssignmentService::
+ * selectWithFreshLock()'s lock-and-reselect pattern), not once — the
+ * structural signature of the fix, since a single execution is exactly
+ * what the pre-fix code already did. True row-level lock BLOCKING can't
+ * be observed under SQLite (the test driver) — Laravel's SQLite grammar
+ * drops FOR UPDATE entirely, the same documented limitation M8's
+ * lockForUpdate() test already established — so the literal `FOR UPDATE`
+ * clause is verified separately, as a one-off manual check against the
+ * real PostgreSQL connection (see the M1 architecture brief), not here.
+ */
+test('auto-assign round-robin runs its candidate query twice, matching the lock-and-reselect pattern', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $tenant->update(['lead_distribution_mode' => LeadDistributionMode::Automatic, 'auto_distribution_method' => AutoDistributionMethod::RoundRobin]);
+    $rep = clientUserWithLeadPermission($tenant);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    app(LeadAssignmentService::class)->autoAssign($lead);
+
+    $candidateQueries = collect(DB::getQueryLog())
+        ->pluck('query')
+        ->filter(fn (string $sql): bool => str_contains($sql, 'from "tenant_users"')
+            && str_contains($sql, 'order by last_assigned_at IS NOT NULL, "last_assigned_at" asc'));
+
+    DB::disableQueryLog();
+
+    expect($candidateQueries)->toHaveCount(2);
+    expect($lead->fresh()->assigned_to)->toBe($rep->id);
+});
+
+/**
+ * Same proof as above, for pickLeastLoadedUser()'s candidate query —
+ * see that test's docblock for why this only proves the query runs
+ * twice, not the FOR UPDATE clause itself.
+ */
+test('auto-assign least-loaded runs its candidate query twice, matching the lock-and-reselect pattern', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $tenant->update(['lead_distribution_mode' => LeadDistributionMode::Automatic, 'auto_distribution_method' => AutoDistributionMethod::LeastLoaded]);
+    $rep = clientUserWithLeadPermission($tenant);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    app(LeadAssignmentService::class)->autoAssign($lead);
+
+    $candidateQueries = collect(DB::getQueryLog())
+        ->pluck('query')
+        ->filter(fn (string $sql): bool => str_contains($sql, 'from "tenant_users"')
+            && str_contains($sql, '"assigned_leads_count"'));
+
+    DB::disableQueryLog();
+
+    expect($candidateQueries)->toHaveCount(2);
+    expect($lead->fresh()->assigned_to)->toBe($rep->id);
+});
+
+/**
+ * pickRandomUser() is deliberately never locked (see its own docblock) —
+ * proves it still runs exactly once per auto-assignment, unlike the two
+ * locked pickers above, and that random distribution's outcome is
+ * otherwise unaffected by the M1 fairness-race fix.
+ */
+test('auto-assign random distribution still runs its candidate query only once and is unaffected by the fairness fix', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $tenant->update(['lead_distribution_mode' => LeadDistributionMode::Automatic, 'auto_distribution_method' => AutoDistributionMethod::Random]);
+    $rep = clientUserWithLeadPermission($tenant);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    app(LeadAssignmentService::class)->autoAssign($lead);
+
+    $candidateQueries = collect(DB::getQueryLog())
+        ->pluck('query')
+        ->filter(fn (string $sql): bool => str_contains($sql, 'from "tenant_users"') && str_contains(strtolower($sql), 'random()'));
+
+    DB::disableQueryLog();
+
+    expect($candidateQueries)->toHaveCount(1);
+    expect($lead->fresh()->assigned_to)->toBe($rep->id);
+});
+
+/**
+ * M1 fairness-race fix: LeadAssigned (and therefore
+ * SendLeadAssignedNotification, a queued listener) must only fire once
+ * the transaction assign() ran inside has actually, durably committed —
+ * not merely once assign()'s own internal transaction/savepoint
+ * completes. Proven by wrapping assign() in an outer transaction that
+ * itself then fails and rolls back: under the previous (pre-M1-fairness)
+ * code, assign() fired the event immediately after its own inner
+ * transaction released — which, nested inside this test's outer
+ * transaction, would happen BEFORE the outer rollback, so the event
+ * would already have been dispatched into the fake despite the
+ * assignment itself never actually persisting. DB::afterCommit() (the
+ * fix) defers the callback until the outermost transaction commits, so
+ * when that never happens, the event must never fire either.
+ */
+test('LeadAssigned is not dispatched if the transaction assign() ran inside is rolled back', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
+
+    Event::fake([LeadAssigned::class]);
+
+    try {
+        DB::transaction(function () use ($lead, $rep, $clientAdmin): void {
+            app(LeadAssignmentService::class)->assign($lead, $rep, $clientAdmin);
+
+            throw new RuntimeException('Forcing the outer transaction to roll back after assign() completes.');
+        });
+    } catch (RuntimeException) {
+        // Expected — the point of this test is what happens (or doesn't) as a result.
+    }
+
+    Event::assertNotDispatched(LeadAssigned::class);
     expect($lead->fresh()->assigned_to)->toBeNull();
 });
