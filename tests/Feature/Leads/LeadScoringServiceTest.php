@@ -9,7 +9,9 @@ use App\Models\LeadScoreLog;
 use App\Models\LeadScoringRule;
 use App\Models\LeadSource;
 use App\Models\LeadStatusLog;
+use App\Models\TenantUser;
 use App\Services\LeadScoringService;
+use Illuminate\Support\Str;
 
 function makeScoringRule(string $tenantId, array $overrides = []): LeadScoringRule
 {
@@ -169,6 +171,35 @@ test('a meaningful score change writes a new log, but an unchanged recomputation
     $rule->update(['points' => 20]);
     $scoringService->computeFor($lead->fresh(), 'manual');
     expect(LeadScoreLog::query()->where('lead_id', $lead->id)->count())->toBe(2);
+});
+
+test('a failure partway through computeFor() rolls back both the score write and the score log', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    makeScoringRule($tenant->id, ['field' => LeadScoringField::HasEmail->value, 'operator' => '=', 'value' => true, 'points' => 10]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'email' => 'a@example.com']);
+
+    // A TenantUser that was built but never actually saved:
+    // lead_score_logs.triggered_by's foreign key to tenant_users then fails
+    // on the LeadScoreLog insert immediately after the score update — the
+    // same never-persisted-FK-reference technique already established in
+    // LeadMergeTest.php/LeadAssignmentTest.php/LeadStatusTest.php, passed
+    // here directly as computeFor()'s own $triggeredBy parameter (no
+    // Auth::actingAs() needed — computeFor() takes it as an explicit
+    // argument, not from Auth::id()).
+    $neverPersisted = TenantUser::factory()->make([
+        'id' => (string) Str::ulid(),
+        'tenant_id' => $tenant->id,
+    ]);
+
+    expect(fn () => app(LeadScoringService::class)->computeFor($lead, 'manual', $neverPersisted))
+        ->toThrow(Exception::class);
+
+    // Nothing persisted: the score write made earlier inside the same
+    // transaction was rolled back, and no LeadScoreLog row exists.
+    $lead->refresh();
+    expect($lead->lead_score)->toBeNull();
+    expect($lead->lead_score_computed_at)->toBeNull();
+    expect(LeadScoreLog::query()->where('lead_id', $lead->id)->exists())->toBeFalse();
 });
 
 test('the log breakdown is a full snapshot of every matched rule', function () {

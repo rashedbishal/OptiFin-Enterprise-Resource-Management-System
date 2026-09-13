@@ -102,17 +102,31 @@ class LeadScoringService
 
         $score = max(self::MIN_SCORE, min(self::MAX_SCORE, $rawTotal));
 
-        // Raw query builder update, not $lead->save()/update(): a score
-        // recompute must never touch updated_at, or every background sweep
-        // run would spuriously trip Lead::hasUnseenUpdate()'s "recently
-        // updated" highlight for every viewer — same reasoning as
-        // Lead::markUpdateSeen() and LeadMergeService's loser update.
-        DB::table('leads')->where('id', $lead->id)->update([
-            'lead_score' => $score,
-            'lead_score_computed_at' => now(),
-        ]);
+        // M3 fix: the score write and its conditional LeadScoreLog write
+        // are wrapped in one transaction so a failure partway through can't
+        // leave leads.lead_score updated with no matching audit row.
+        // DB::transaction() safely nests — a caller that already has its
+        // own open transaction (LeadMergeService::merge(), CreateManualLead,
+        // CreateLeadFromImport, Show::updateStatus(),
+        // Index::applyBulkStatusChange()/applyBulkPriorityChange()) simply
+        // has this participate in that same transaction; a standalone
+        // caller (Show::recalculateScore(), the queued
+        // RecomputeLeadScoreOnReceipt listener, the leads:recalculate-scores
+        // sweep) gets its own small transaction scoped to just this one
+        // lead's recompute.
+        DB::transaction(function () use ($lead, $score, $rawTotal, $breakdown, $trigger, $triggeredBy): void {
+            // Raw query builder update, not $lead->save()/update(): a score
+            // recompute must never touch updated_at, or every background sweep
+            // run would spuriously trip Lead::hasUnseenUpdate()'s "recently
+            // updated" highlight for every viewer — same reasoning as
+            // Lead::markUpdateSeen() and LeadMergeService's loser update.
+            DB::table('leads')->where('id', $lead->id)->update([
+                'lead_score' => $score,
+                'lead_score_computed_at' => now(),
+            ]);
 
-        $this->logIfChanged($lead, $score, $rawTotal, $breakdown, $trigger, $triggeredBy);
+            $this->logIfChanged($lead, $score, $rawTotal, $breakdown, $trigger, $triggeredBy);
+        });
 
         return $score;
     }
