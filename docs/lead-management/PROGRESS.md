@@ -624,9 +624,37 @@ Following Feature #15's closure, a full forensic audit of the entire Lead Manage
 
 **C2 is CLOSED.** Do not reopen unless a future change causes a real regression. The webhook lead-resolution gap, the `messageTimeline()` blended-cutover edge case, historical backfill, and M8 all remain separately deferred/open — none are resolved by C2's closure.
 
+### C3 — SendLeadAlertNotifications' PostgreSQL-incompatible notifications.data JSON-path query — **COMPLETE / APPROVED / CLOSED**
+
+**Finding**: `SendLeadAlertNotifications::alreadyNotifiedToday()` queried `->where('data->lead_id', $lead->id)` against `notifications.data`, a plain `text` column (Laravel's stock notifications migration), not `json`/`jsonb`. Laravel's `->` syntax compiles to a Postgres JSON operator, which Postgres rejects against a `text` column with `SQLSTATE[42883]: operator does not exist: text -> unknown` — confirmed to throw on every run against the real production database. SQLite (the test driver) enforces no such type check, which is why this was never caught by the existing test suite.
+
+**Fix**: Replaced the JSON-path condition with the exact portable pattern already established and proven in `NurtureInactiveLeads::alreadyNotifiedToday()`: `->where('data', 'like', '%"lead_id":"'.$lead->id.'"%')`. Verified directly against this app's real PostgreSQL connection (read-only `->toSql()` inspection, not just inferred) that the new query compiles to a valid `"data"::text like ?` expression. `notifications.data`'s column type was not changed — no migration, no schema change. Tenant and recipient scoping (`$recipient->notifications()`) is unchanged; only the match clause changed.
+
+### C4 — SendLeadAlertNotifications does not exclude merged-away leads — **COMPLETE / APPROVED / CLOSED**
+
+**Finding**: `sweep()`'s query (`$tenant->leads()->whereNotNull($dateColumn)`) had no `merged_into_lead_id` exclusion, unlike every sibling sweep in this module (`NurtureInactiveLeads`, `DetectDuplicateLeads`, `RecalculateLeadScores`, `LeadAssignmentService`). A merged-away (loser) lead that still carried a `meeting_date`/`next_follow_up_at` kept generating daily bell notifications pointing at a lead whose own detail page immediately redirects to its survivor.
+
+**Fix**: Added `->whereNull('merged_into_lead_id')` to the same query, matching the convention already used everywhere else in this module. Verified directly against the real PostgreSQL connection that the clause compiles correctly. Eligible survivor leads remain fully unaffected; tenant scoping (`$tenant->leads()`) is unchanged.
+
+**Implemented and closed together as one remediation unit** (both changes live in the same method chain of the same 127-line file, with no interaction risk between them), per the approved architecture/decision brief.
+
+**Explicitly out of scope, discovered but NOT fixed as part of C3/C4**: `SendTaskAlertNotifications::alreadyNotifiedToday()` (line 104) has the exact same JSON-path bug (`->where('data->task_id', $task->id)`) against the same `text` column — confirmed present, deliberately left untouched, tracked as a separate, unapproved finding for a future session.
+
+**Verification**:
+- `SendLeadAlertNotificationsTest.php`: **8/8 passed, 13 assertions** — the existing same-day-deduplication test continues to pass unmodified against the new C3 query; one new test proves a merged-away lead produces zero notifications while an eligible survivor still produces its expected one.
+- `SendTaskAlertNotificationsTest.php` (untouched file): **9/9 passed**.
+- Relevant Lead alert tests (`LeadAlertTest`, `LeadAlertSettingsTest`, `LeadAlertShimmerRenderTest`, `LeadMeetingFollowUpAlertActionsTest`): **38/38 passed**.
+- Full `tests/Feature/Leads/`: **901/902 passed, 1 pre-existing skip, 0 failures**.
+- Full application suite: **1068/1071 passed, 2 failures, 1 skip** — the 2 failures are the same pre-existing `tests/Feature/Broadcasting/LeadsIndexListenerTest.php` mismatches documented as pre-existing and unrelated since Feature #2; reproduced identically across two full-suite runs at final verification, zero new failures either time.
+- Pint: clean. PHPStan: **425 errors** — matching the pre-existing baseline exactly, zero attributable to this fix. `git diff --check`: no whitespace/check issues.
+
+**Explicitly confirmed at closure**: `notifications.data` remains a `text` column, no migration or schema change was made; tenant and recipient scoping unchanged; existing deduplication behavior intact; `SendTaskAlertNotifications.php`, `NurtureInactiveLeads.php`, `Lead.php`, `LeadMergeService.php`, and every other audit finding (C1, C2, DE1, M1–M10, L1–L4) were not touched.
+
+**C3 and C4 are CLOSED.** Do not reopen unless a future change causes a real regression. `SendTaskAlertNotifications.php`'s identical JSON-path bug remains open/deferred — not resolved by this closure.
+
 ---
 
 **Last completed feature: Feature #15 — In-App Communication (Phase 1)**
 **Next feature: None defined on the current roadmap.**
-**Audit remediation status: C5 (raw Meta access token in queued job payload) — CLOSED. C1 (Platform Admin LeadSource deletion dependency guard) — CLOSED. C2 (LeadMergeService Conversation/Message reparenting) — CLOSED (see §23). DE1 (permanently undeletable LeadSource with conversation history), the webhook lead-resolution continuity gap, the `messageTimeline()` blended-cutover edge case, and M8 (concurrent-merge locking) all remain explicitly deferred pending separate decisions — not implemented, not scheduled. No other audit finding (C3–C4, C6, M1–M10 except M8 as noted, L1–L4) has been approved for implementation.**
-**Next required action: None active. Wait for explicit instruction before starting C3 or any other audit finding, or any further work.**
+**Audit remediation status: C5 (raw Meta access token in queued job payload) — CLOSED. C1 (Platform Admin LeadSource deletion dependency guard) — CLOSED. C2 (LeadMergeService Conversation/Message reparenting) — CLOSED. C3 (SendLeadAlertNotifications PostgreSQL JSON-path query) — CLOSED. C4 (SendLeadAlertNotifications merged-lead exclusion) — CLOSED (see §23). DE1 (permanently undeletable LeadSource with conversation history), the webhook lead-resolution continuity gap, the `messageTimeline()` blended-cutover edge case, M8 (concurrent-merge locking), and `SendTaskAlertNotifications.php`'s identical JSON-path bug all remain explicitly deferred pending separate decisions — not implemented, not scheduled. No other audit finding (C6, M1–M10 except M8 as noted, L1–L4) has been approved for implementation.**
+**Next required action: None active. Wait for explicit instruction before starting C6 or any other audit finding, or any further work.**

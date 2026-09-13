@@ -83,3 +83,21 @@ test('a cancelled meeting (null meeting_date) is never alerted on', function () 
 
     expect($clientAdmin->notifications()->count())->toBe(0);
 });
+
+test('a merged-away lead\'s meeting alert never notifies anyone, while an eligible survivor still does', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $tenant->update(['meeting_alert_enabled' => true, 'meeting_alert_days_before' => 2]);
+
+    $survivor = Lead::factory()->create(['tenant_id' => $tenant->id, 'meeting_date' => now()->addDays(2)]);
+    Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'meeting_date' => now()->addDays(2),
+        'merged_into_lead_id' => $survivor->id,
+    ]);
+
+    $this->artisan('leads:send-alert-notifications')->assertSuccessful();
+
+    // Exactly one notification — proves the merged-away lead produced none
+    // of its own while the eligible survivor still notified as expected.
+    expect($clientAdmin->notifications()->where('type', MeetingAlertNotification::class)->count())->toBe(1);
+});

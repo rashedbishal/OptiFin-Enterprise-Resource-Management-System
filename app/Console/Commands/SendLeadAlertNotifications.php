@@ -64,6 +64,7 @@ class SendLeadAlertNotifications extends Command
 
         $tenant->leads()
             ->whereNotNull($dateColumn)
+            ->whereNull('merged_into_lead_id')
             ->with('assignedUser')
             ->each(function (Lead $lead) use ($isActive, $notificationClass, $makeNotification, $admins): void {
                 if (! $isActive($lead)) {
@@ -118,7 +119,7 @@ class SendLeadAlertNotifications extends Command
         // every day, so it's worth keeping index-friendly.
         return $recipient->notifications()
             ->where('type', $notificationClass)
-            ->where('data->lead_id', $lead->id)
+            ->where('data', 'like', '%"lead_id":"'.$lead->id.'"%')
             ->where('created_at', '>=', today())
             ->where('created_at', '<', today()->addDay())
             ->exists();
