@@ -101,7 +101,7 @@ class SendTaskAlertNotifications extends Command
     {
         return $recipient->notifications()
             ->where('type', TaskAlertNotification::class)
-            ->where('data->task_id', $task->id)
+            ->where('data', 'like', '%"task_id":"'.$task->id.'"%')
             ->where('created_at', '>=', today())
             ->where('created_at', '<', today()->addDay())
             ->exists();
