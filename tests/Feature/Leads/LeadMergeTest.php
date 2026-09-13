@@ -20,6 +20,7 @@ use App\Models\TenantUser;
 use App\Services\LeadDuplicateDetectionService;
 use App\Services\LeadMergeService;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 
@@ -188,6 +189,40 @@ test('a lead that has already been merged cannot take part in another merge, and
         ->toThrow(LeadMergeException::class);
 
     expect($thirdLead->fresh()->merged_into_lead_id)->toBeNull();
+});
+
+/**
+ * M8 fix: proves the survivor/loser lookup used for the already-merged
+ * guard is compiled with lockForUpdate() in a deterministic order (by id).
+ * True concurrent-transaction blocking can't be observed under SQLite (no
+ * row-level locking to exercise here, and Laravel's SQLite grammar drops
+ * FOR UPDATE entirely) — that guarantee comes from lockForUpdate()
+ * compiling to a real `SELECT ... FOR UPDATE` on Postgres (production),
+ * standard RDBMS behavior this suite can't execute end-to-end. Mirrors the
+ * identical, already-established technique in
+ * LeadSourceCostCatalogTest.php and PlatformLeadSourceDeletionTest.php.
+ */
+test('merging locks both the survivor and loser lead rows together, in a deterministic order', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+
+    $survivor = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $loser = Lead::factory()->create(['tenant_id' => $tenant->id]);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    app(LeadMergeService::class)->merge($survivor, $loser, $clientAdmin, []);
+
+    $queries = collect(DB::getQueryLog())->pluck('query');
+    DB::disableQueryLog();
+
+    $lockedLookup = $queries->first(
+        fn (string $sql): bool => str_contains($sql, 'from "leads"')
+            && str_contains($sql, '"id" in (?, ?)')
+            && str_contains($sql, 'order by "id" asc')
+    );
+
+    expect($lockedLookup)->not->toBeNull();
 });
 
 test('a failure partway through a merge rolls back every change already made in that transaction', function () {

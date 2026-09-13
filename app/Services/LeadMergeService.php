@@ -232,10 +232,6 @@ class LeadMergeService
             throw new LeadMergeException('A lead cannot be merged with itself.');
         }
 
-        if ($survivor->merged_into_lead_id !== null || $loser->merged_into_lead_id !== null) {
-            throw new LeadMergeException('One of these leads has already been merged and can no longer take part in a merge.');
-        }
-
         $conflicts = $this->conflictingFields($survivor, $loser);
         $customFieldConflicts = $this->conflictingCustomFieldValues($survivor, $loser);
 
@@ -275,6 +271,29 @@ class LeadMergeService
         }
 
         return DB::transaction(function () use ($survivor, $loser, $performedBy, $updates, $customFieldConflicts, $fieldResolutions, $resolutionSnapshot, $link): Lead {
+            // M8 fix: the already-merged guard moved here, behind a lock on
+            // both rows, closes the race two concurrent merge requests for
+            // the same pair could otherwise win (both reading
+            // merged_into_lead_id as null before either commits). Both rows
+            // are locked together in one ordered query (by id, ULIDs sort
+            // deterministically) rather than two separate sequential lock
+            // statements — the same "lock the stable parent row(s)" idiom
+            // already used by Lead::nextIdentifier() and
+            // LeadSourceCosts\Index::save(), extended here to a pair so a
+            // second concurrent call naming the same two leads in opposite
+            // survivor/loser roles locks them in the identical order and
+            // simply waits, rather than deadlocking against the first.
+            $lockedLeads = Lead::query()
+                ->whereIn('id', [$survivor->id, $loser->id])
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            if ($lockedLeads->get($survivor->id)?->merged_into_lead_id !== null || $lockedLeads->get($loser->id)?->merged_into_lead_id !== null) {
+                throw new LeadMergeException('One of these leads has already been merged and can no longer take part in a merge.');
+            }
+
             foreach (self::CHILD_MODELS as $modelClass) {
                 $modelClass::query()->where('lead_id', $loser->id)->update(['lead_id' => $survivor->id]);
             }
