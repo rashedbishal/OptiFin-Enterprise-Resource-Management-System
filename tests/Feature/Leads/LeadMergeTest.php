@@ -1,19 +1,25 @@
 <?php
 
 use App\Enums\LeadDuplicateLinkStatus;
+use App\Enums\LeadSourceType;
+use App\Enums\MessageChannel;
 use App\Exceptions\LeadMergeException;
 use App\Livewire\Tenant\Leads\Index;
 use App\Livewire\Tenant\Leads\Show;
+use App\Models\Conversation;
 use App\Models\Lead;
 use App\Models\LeadAssignment;
 use App\Models\LeadAttachment;
 use App\Models\LeadDetailUpdateLog;
 use App\Models\LeadDuplicateLink;
 use App\Models\LeadNote;
+use App\Models\LeadSource;
 use App\Models\LeadStatusLog;
+use App\Models\Message;
 use App\Models\TenantUser;
 use App\Services\LeadDuplicateDetectionService;
 use App\Services\LeadMergeService;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 
@@ -45,7 +51,25 @@ test('merging two leads reparents all of the loser\'s history onto the survivor'
     ]);
     $detailLog = LeadDetailUpdateLog::factory()->create(['lead_id' => $loser->id, 'changed_by' => $clientAdmin->id]);
 
+    $leadSource = LeadSource::factory()->create(['tenant_id' => $tenant->id]);
+    $conversation = Conversation::factory()->create([
+        'tenant_id' => $tenant->id,
+        'lead_id' => $loser->id,
+        'lead_source_id' => $leadSource->id,
+    ]);
+    $message = Message::factory()->create([
+        'tenant_id' => $tenant->id,
+        'conversation_id' => $conversation->id,
+        'lead_id' => $loser->id,
+    ]);
+
     $survivorNote = LeadNote::factory()->create(['lead_id' => $survivor->id, 'tenant_user_id' => $clientAdmin->id]);
+    $survivorConversation = Conversation::factory()->create([
+        'tenant_id' => $tenant->id,
+        'lead_id' => $survivor->id,
+        'lead_source_id' => $leadSource->id,
+        'channel' => MessageChannel::Messenger,
+    ]);
 
     app(LeadMergeService::class)->merge($survivor, $loser, $clientAdmin, []);
 
@@ -54,9 +78,12 @@ test('merging two leads reparents all of the loser\'s history onto the survivor'
     expect($statusLog->fresh()->lead_id)->toBe($survivor->id);
     expect($assignment->fresh()->lead_id)->toBe($survivor->id);
     expect($detailLog->fresh()->lead_id)->toBe($survivor->id);
+    expect($conversation->fresh()->lead_id)->toBe($survivor->id);
+    expect($message->fresh()->lead_id)->toBe($survivor->id);
 
     // The survivor's own pre-existing history is untouched, not replaced.
     expect($survivorNote->fresh()->lead_id)->toBe($survivor->id);
+    expect($survivorConversation->fresh()->lead_id)->toBe($survivor->id);
 
     expect($loser->fresh()->merged_into_lead_id)->toBe($survivor->id);
 });
@@ -124,12 +151,18 @@ test('merge is rejected across tenants and leaves no side effects', function () 
     $survivor = Lead::factory()->create(['tenant_id' => $tenantA->id]);
     $otherTenantLead = Lead::factory()->create(['tenant_id' => $tenantB->id]);
     $note = LeadNote::factory()->create(['lead_id' => $otherTenantLead->id, 'tenant_user_id' => TenantUser::factory()->create(['tenant_id' => $tenantB->id])]);
+    $conversation = Conversation::factory()->create([
+        'tenant_id' => $tenantB->id,
+        'lead_id' => $otherTenantLead->id,
+        'lead_source_id' => LeadSource::factory()->create(['tenant_id' => $tenantB->id])->id,
+    ]);
 
     expect(fn () => app(LeadMergeService::class)->merge($survivor, $otherTenantLead, $clientAdminA, []))
         ->toThrow(LeadMergeException::class);
 
     expect($otherTenantLead->fresh()->merged_into_lead_id)->toBeNull();
     expect($note->fresh()->lead_id)->toBe($otherTenantLead->id);
+    expect($conversation->fresh()->lead_id)->toBe($otherTenantLead->id);
 });
 
 test('a lead that has already been merged cannot take part in another merge, and nothing is changed by the attempt', function () {
@@ -163,6 +196,11 @@ test('a failure partway through a merge rolls back every change already made in 
     $survivor = Lead::factory()->create(['tenant_id' => $tenant->id, 'company' => 'Old Co']);
     $loser = Lead::factory()->create(['tenant_id' => $tenant->id, 'company' => 'New Co']);
     $note = LeadNote::factory()->create(['lead_id' => $loser->id, 'tenant_user_id' => $clientAdmin->id]);
+    $conversation = Conversation::factory()->create([
+        'tenant_id' => $tenant->id,
+        'lead_id' => $loser->id,
+        'lead_source_id' => LeadSource::factory()->create(['tenant_id' => $tenant->id])->id,
+    ]);
 
     // A TenantUser that was built but never actually saved: LeadDuplicateLink
     // .resolved_by's foreign key to tenant_users then fails on the merge's
@@ -175,9 +213,11 @@ test('a failure partway through a merge rolls back every change already made in 
     expect(fn () => app(LeadMergeService::class)->merge($survivor, $loser, $neverPersisted, ['company' => 'loser']))
         ->toThrow(Exception::class);
 
-    // Nothing persisted: the note was never actually reparented, the loser
-    // was never marked merged, and the survivor's company is untouched.
+    // Nothing persisted: the note and conversation were never actually
+    // reparented, the loser was never marked merged, and the survivor's
+    // company is untouched.
     expect($note->fresh()->lead_id)->toBe($loser->id);
+    expect($conversation->fresh()->lead_id)->toBe($loser->id);
     expect($loser->fresh()->merged_into_lead_id)->toBeNull();
     expect($survivor->fresh()->company)->toBe('Old Co');
 });
@@ -262,4 +302,90 @@ test('dismissing a possible duplicate from the lead detail page removes it from 
 
     expect($link->fresh()->status)->toBe(LeadDuplicateLinkStatus::Dismissed);
     expect(app(LeadDuplicateDetectionService::class)->detectFor($other))->toHaveCount(0);
+});
+
+test('a loser\'s multiple conversations across different lead sources all reparent onto the survivor without deduplication', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+
+    $survivor = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $loser = Lead::factory()->create(['tenant_id' => $tenant->id]);
+
+    $survivorSource = LeadSource::factory()->create(['tenant_id' => $tenant->id]);
+    $loserSourceA = LeadSource::factory()->create(['tenant_id' => $tenant->id]);
+    $loserSourceB = LeadSource::factory()->create(['tenant_id' => $tenant->id]);
+
+    $survivorConversation = Conversation::factory()->create([
+        'tenant_id' => $tenant->id,
+        'lead_id' => $survivor->id,
+        'lead_source_id' => $survivorSource->id,
+        'external_thread_id' => 'survivor-thread',
+    ]);
+    $loserConversationA = Conversation::factory()->create([
+        'tenant_id' => $tenant->id,
+        'lead_id' => $loser->id,
+        'lead_source_id' => $loserSourceA->id,
+        'external_thread_id' => 'loser-thread-a',
+    ]);
+    $loserConversationB = Conversation::factory()->create([
+        'tenant_id' => $tenant->id,
+        'lead_id' => $loser->id,
+        'lead_source_id' => $loserSourceB->id,
+        'external_thread_id' => 'loser-thread-b',
+    ]);
+
+    app(LeadMergeService::class)->merge($survivor, $loser, $clientAdmin, []);
+
+    expect($survivorConversation->fresh()->lead_id)->toBe($survivor->id);
+    expect($loserConversationA->fresh()->lead_id)->toBe($survivor->id);
+    expect($loserConversationB->fresh()->lead_id)->toBe($survivor->id);
+
+    // Three distinct rows, each keeping its own lead_source_id/thread
+    // identity — none collapsed or deduplicated into another.
+    $survivorConversations = $survivor->fresh()->conversations;
+    expect($survivorConversations)->toHaveCount(3);
+    expect($survivorConversations->pluck('lead_source_id')->unique())->toHaveCount(3);
+});
+
+test('messageTimeline surfaces the loser\'s reparented normalized messages while the survivor\'s own legacy history stays untouched', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+
+    $whatsappSource = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Whatsapp]);
+
+    $survivor = Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'source_id' => $whatsappSource->id,
+        'source_data' => [
+            'messages' => [
+                [
+                    'type' => 'text',
+                    'text' => ['body' => 'Legacy survivor message'],
+                    'timestamp' => Carbon::parse('2026-01-01 09:00:00')->timestamp,
+                ],
+            ],
+        ],
+    ]);
+    $loser = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $whatsappSource->id]);
+
+    $conversation = Conversation::factory()->create([
+        'tenant_id' => $tenant->id,
+        'lead_id' => $loser->id,
+        'lead_source_id' => $whatsappSource->id,
+    ]);
+    Message::factory()->create([
+        'tenant_id' => $tenant->id,
+        'conversation_id' => $conversation->id,
+        'lead_id' => $loser->id,
+        'body' => 'Hello from loser',
+        'created_at' => Carbon::parse('2026-01-02 10:00:00'),
+    ]);
+
+    app(LeadMergeService::class)->merge($survivor, $loser, $clientAdmin, []);
+
+    $texts = collect($survivor->fresh()->messageTimeline())->pluck('text')->all();
+
+    // The loser's normalized message is now visible on the survivor...
+    expect($texts)->toContain('Hello from loser');
+    // ...and the survivor's own pre-existing legacy source_data entry is
+    // completely untouched, not replaced or hidden by the reparented row.
+    expect($texts)->toContain('Legacy survivor message');
 });

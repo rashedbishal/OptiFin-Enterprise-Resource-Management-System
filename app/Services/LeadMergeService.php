@@ -7,6 +7,7 @@ use App\Enums\ConsentStatus;
 use App\Enums\ConsentType;
 use App\Enums\LeadDuplicateLinkStatus;
 use App\Exceptions\LeadMergeException;
+use App\Models\Conversation;
 use App\Models\Deal;
 use App\Models\Lead;
 use App\Models\LeadAssignment;
@@ -18,6 +19,7 @@ use App\Models\LeadDetailUpdateLog;
 use App\Models\LeadDuplicateLink;
 use App\Models\LeadNote;
 use App\Models\LeadStatusLog;
+use App\Models\Message;
 use App\Models\Task;
 use App\Models\TenantUser;
 use Illuminate\Support\Facades\DB;
@@ -81,6 +83,23 @@ class LeadMergeService
      * mergeConsents()), the same reasoning LeadCustomFieldValue/LeadTag's
      * pivot already established for their own unique-constrained data.
      *
+     * Conversation::class and Message::class (Feature #15) belong here too
+     * — despite each having its own unique constraint
+     * (conversations_identity_unique on tenant_id/lead_source_id/channel/
+     * external_thread_id; messages_external_id_unique on tenant_id/channel/
+     * external_message_id), neither constraint includes lead_id, so a blind
+     * reparent can never collide with it: RecordInboundMessage::handle()'s
+     * own firstOrCreate() already guarantees at most one Conversation row
+     * exists per (tenant_id, lead_source_id, channel, external_thread_id)
+     * tenant-wide, regardless of which lead currently owns it, so moving
+     * that row's lead_id can't newly duplicate an already-unique tuple —
+     * unlike LeadCustomFieldValue/LeadConsent above, which genuinely can
+     * collide because their unique constraints DO include lead_id.
+     * Message.lead_id is a separate, denormalized column (not derived from
+     * conversation_id) — both classes are listed here independently so each
+     * table's own lead_id moves, keeping a reparented Conversation and its
+     * Messages consistent with each other.
+     *
      * @var array<int, class-string>
      */
     private const array CHILD_MODELS = [
@@ -92,6 +111,8 @@ class LeadMergeService
         Task::class,
         Deal::class,
         LeadConsentEvent::class,
+        Conversation::class,
+        Message::class,
     ];
 
     /**
