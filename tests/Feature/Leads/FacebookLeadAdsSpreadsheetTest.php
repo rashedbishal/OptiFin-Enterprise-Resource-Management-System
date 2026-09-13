@@ -12,6 +12,36 @@ use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Livewire\Livewire;
+use Maatwebsite\Excel\Excel as ExcelWriterType;
+use Maatwebsite\Excel\Facades\Excel;
+use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+
+/**
+ * Actually renders the export to a real XLSX file and reads the given
+ * cell back — proving the ACTUAL written cell data type, not just what
+ * map() returns. map() alone can't prove this: it returns the raw string
+ * unchanged either way, since the formula-injection protection happens at
+ * the cell-binding layer (FacebookLeadAdsExport::bindValue()), not in
+ * map()'s own return value.
+ *
+ * @return array{type: string, value: mixed}
+ */
+function exportedCell(FacebookLeadAdsExport $export, string $coordinate): array
+{
+    $binary = Excel::raw($export, ExcelWriterType::XLSX);
+
+    $tmpPath = tempnam(sys_get_temp_dir(), 'fb_lead_ads_export_test_');
+    file_put_contents($tmpPath, $binary);
+
+    try {
+        $cell = IOFactory::load($tmpPath)->getActiveSheet()->getCell($coordinate);
+
+        return ['type' => $cell->getDataType(), 'value' => $cell->getValue()];
+    } finally {
+        @unlink($tmpPath);
+    }
+}
 
 test('the spreadsheet table does not lazy-load each lead\'s status one row at a time', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
@@ -511,4 +541,97 @@ test('the facebook lead ads export maps headings and rows from field_data', func
     expect($row[2])->toBe('Jane Doe');
     expect($row[3])->toBe('Dhaka');
     expect($row[4])->toBe('Contact Us');
+});
+
+test('a formula-like lead name is written as a literal string, not an executable formula', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'name' => '=HYPERLINK("http://evil.example/","Click here")',
+        'source_data' => ['field_data' => []],
+    ]);
+
+    $export = new FacebookLeadAdsExport(new Collection([$lead]), []);
+
+    // Columns: A = Lead ID, B = Name (no dynamic field columns in this case).
+    $cell = exportedCell($export, 'B2');
+
+    expect($cell['type'])->toBe(DataType::TYPE_STRING);
+    expect($cell['value'])->toBe('=HYPERLINK("http://evil.example/","Click here")');
+});
+
+test('a formula-like instant form field value is written as a literal string, not an executable formula', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'name' => 'Jane Doe',
+        'source_data' => [
+            'field_data' => [
+                ['name' => 'comment', 'values' => ['=SUM(1,2)']],
+            ],
+        ],
+    ]);
+
+    $export = new FacebookLeadAdsExport(new Collection([$lead]), ['comment']);
+
+    // Columns: A = Lead ID, B = Name, C = Comment.
+    $cell = exportedCell($export, 'C2');
+
+    expect($cell['type'])->toBe(DataType::TYPE_STRING);
+    expect($cell['value'])->toBe('=SUM(1,2)');
+});
+
+test('lead values beginning with +, -, or @ are written as literal strings with their exact content preserved', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'name' => '+1 not a phone number, a note',
+        'source_data' => [
+            'field_data' => [
+                ['name' => 'minus_note', 'values' => ['-1 is a negative comment, not a number']],
+                ['name' => 'at_note', 'values' => ['@mention someone']],
+            ],
+        ],
+    ]);
+
+    $export = new FacebookLeadAdsExport(new Collection([$lead]), ['minus_note', 'at_note']);
+
+    // Columns: A = Lead ID, B = Name, C = Minus Note, D = At Note.
+    $name = exportedCell($export, 'B2');
+    $minus = exportedCell($export, 'C2');
+    $at = exportedCell($export, 'D2');
+
+    expect($name['type'])->toBe(DataType::TYPE_STRING);
+    expect($name['value'])->toBe('+1 not a phone number, a note');
+
+    expect($minus['type'])->toBe(DataType::TYPE_STRING);
+    expect($minus['value'])->toBe('-1 is a negative comment, not a number');
+
+    expect($at['type'])->toBe(DataType::TYPE_STRING);
+    expect($at['value'])->toBe('@mention someone');
+});
+
+test('normal lead name and field values are written unchanged as literal strings', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'name' => 'Jane Doe',
+        'source_data' => [
+            'field_data' => [
+                ['name' => 'city', 'values' => ['Dhaka']],
+            ],
+        ],
+    ]);
+
+    $export = new FacebookLeadAdsExport(new Collection([$lead]), ['city']);
+
+    // Columns: A = Lead ID, B = Name, C = City.
+    $name = exportedCell($export, 'B2');
+    $city = exportedCell($export, 'C2');
+
+    expect($name['type'])->toBe(DataType::TYPE_STRING);
+    expect($name['value'])->toBe('Jane Doe');
+
+    expect($city['type'])->toBe(DataType::TYPE_STRING);
+    expect($city['value'])->toBe('Dhaka');
 });
