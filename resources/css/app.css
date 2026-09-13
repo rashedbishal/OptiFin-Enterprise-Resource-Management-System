@@ -142,54 +142,66 @@ blue-tinted glow on top of them read as a color cast rather than ambiance.
 }
 
 /*
-Card material system — the translucent "glass" surface every flux:card
-(and a small number of dedicated nested-stat surfaces, e.g. the Deal
-Value/Lead Score boxes in lead-hero.blade.php) is built from. Colour-only
-glass, deliberately no backdrop-filter here: the see-through look comes
-from layering translucent color + a bright top-edge highlight
-(inset-ring-white, applied alongside these classes at each call site,
-same utility already used on the Kanban lead-card) + a soft two-layer
-shadow for lift, not from blurring what's behind it — keeps the
-"selective glass" scope (menus/mobile header/dropdowns only) intact
-for backdrop-filter while still giving cards a layered, glassy read.
+Card material system — a three-level elevation scale (canvas → card →
+nested-card), the same idea already applied to the sidebar (a distinctly
+different, opaque tone from the canvas, not just a faint border).
+
+An earlier version of this used translucent (alpha < 1) backgrounds to get
+a "glass" look. In practice, over this app's tinted canvas (cream in light
+mode, a gradient in dark mode) translucent white/black blended into
+whatever was behind it closely enough to read as "no color at all" — see
+the dashboard/table/lead-detail screenshots that prompted this rewrite.
+Every level below is now a fully OPAQUE, deliberately chosen tone so the
+elevation is unambiguous regardless of what's behind it; the "glass" read
+comes from the top-edge highlight (inset-ring-white, applied alongside
+these classes — same technique as the Kanban lead-card) + shadow, not from
+transparency. This keeps the "selective glass" scope (menus/mobile
+header/dropdowns only) intact for real backdrop-filter blur.
 
 .card-surface = the outer/raised surface (a card floating on the canvas).
-.card-surface-nested = an inner surface *within* a card — deliberately
-flatter and darker/more muted with no shadow, so it reads as recessed
+.card-surface-nested = an inner surface *within* a card — a different,
+flatter, more muted opaque tone with no shadow, so it reads as recessed
 relative to the card around it rather than as another floating panel.
+Also applied to flux:table's own container (see flux/table/index.blade.php)
+since most tables in this app sit directly on the canvas, not inside a
+flux:card — they need the same elevation treatment cards get.
 */
 @layer utilities {
-    /* :where() zeroes specificity, same trick Flux's own card stub uses
-    ([:where(&)]:bg-white etc.) so a consumer's own bg-*/border-* utility
-    on a specific <flux:card> still wins over this default. */
     /*
-    Light-mode values pushed up from an earlier, subtler pass (0.8/0.7
-    alpha, faint shadow) — against the warm cream canvas tint, that read
-    as barely distinguishable from the canvas itself ("colorless"). Higher
-    opacity + a cooler, more visible zinc-300 border + a deeper two-layer
-    shadow gives the card real separation: crisp cool-white surface against
-    a warm ambient canvas, with enough shadow to read as raised, not flat.
+    Plain selectors here, NOT :where(...) — an earlier version wrapped
+    both the light and dark rules in :where() (the same zero-specificity
+    trick Flux's own card stub uses) to stay override-friendly, but the
+    build was silently dropping the light (:where(.card-surface)) rule
+    entirely: since a .card-surface element always sits under
+    <html class="dark"> in dark mode, :where(.card-surface) and
+    :where(.dark .card-surface) both matched the same element with equal
+    (zero) specificity, and something in the Tailwind v4/Lightning CSS
+    minification step collapsed them into just the later (dark) rule —
+    verified by reproducing it with a clean rebuild before switching to
+    plain classes below, which are unaffected. No known call site
+    overrides a card/table's own background/border, so losing the
+    override-friendliness isn't a real cost here.
     */
-    :where(.card-surface) {
-        background-color: rgb(255 255 255 / 0.94);
-        border-color: rgb(212 212 216 / 0.9);
-        box-shadow: 0 1px 3px rgb(0 0 0 / 0.06), 0 20px 40px -20px rgb(0 0 0 / 0.18);
+    .card-surface {
+        background-color: #ffffff;
+        border-color: rgb(212 212 216);
+        box-shadow: 0 1px 3px rgb(0 0 0 / 0.08), 0 20px 40px -20px rgb(0 0 0 / 0.22);
     }
 
-    :where(.dark .card-surface) {
-        background-color: rgb(255 255 255 / 0.09);
-        border-color: rgb(255 255 255 / 0.12);
-        box-shadow: 0 1px 2px rgb(0 0 0 / 0.35), 0 20px 40px -18px rgb(0 0 0 / 0.55);
+    .dark .card-surface {
+        background-color: #2a2a2a;
+        border-color: rgb(255 255 255 / 0.14);
+        box-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 20px 40px -18px rgb(0 0 0 / 0.6);
     }
 
-    :where(.card-surface-nested) {
-        background-color: rgb(244 244 245 / 0.85);
-        border-color: rgb(212 212 216 / 0.7);
+    .card-surface-nested {
+        background-color: #f0ede4;
+        border-color: rgb(212 212 216 / 0.8);
     }
 
-    :where(.dark .card-surface-nested) {
-        background-color: rgb(0 0 0 / 0.28);
-        border-color: rgb(255 255 255 / 0.07);
+    .dark .card-surface-nested {
+        background-color: #202020;
+        border-color: rgb(255 255 255 / 0.08);
     }
 }
 

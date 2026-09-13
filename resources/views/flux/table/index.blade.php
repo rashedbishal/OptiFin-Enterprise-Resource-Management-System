@@ -12,8 +12,14 @@ $classes = Flux::classes()
     ->add('whitespace-nowrap [&_dialog]:whitespace-normal [&_[popover]]:whitespace-normal')
     ;
 
+// card-surface (see app.css): most flux:table usages in this app sit
+// directly on the canvas rather than inside a flux:card — without this
+// they were indistinguishable from the bare background. Same opaque
+// surface + top-edge highlight + shadow flux:card uses, just with
+// overflow-hidden (not padding) since the table's own cells already
+// carry their own spacing.
 $containerClasses = Flux::classes()
-    ->add('flex flex-col')
+    ->add('flex flex-col overflow-hidden rounded-xl border card-surface inset-ring-1 inset-ring-white/60 dark:inset-ring-white/10')
     ->add($attributes->pluck('container:class'))
     ;
 @endphp
