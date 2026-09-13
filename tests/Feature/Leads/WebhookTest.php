@@ -6,6 +6,7 @@ use App\Events\LeadReceived;
 use App\Events\LeadUpdated;
 use App\Models\Lead;
 use App\Models\LeadSource;
+use App\Services\LeadMergeService;
 use Illuminate\Support\Facades\Event;
 
 test('a facebook webhook verify challenge succeeds with the correct token', function () {
@@ -70,6 +71,53 @@ test('a facebook message creates a lead, and a follow-up message is appended ins
 
     $lead = Lead::where('tenant_id', $tenant->id)->first();
     expect($lead->message)->toContain('Hello there')->toContain('Second message');
+});
+
+test('a facebook message from a sender whose lead has since been merged away creates a new lead instead of reviving the loser', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::FacebookMessenger,
+        'config' => ['page_id' => '123', 'verify_token' => 'secret-token'],
+    ]);
+
+    $payload = [
+        'entry' => [[
+            'messaging' => [[
+                'sender' => ['id' => 'psid-1'],
+                'message' => ['text' => 'Hello there'],
+            ]],
+        ]],
+    ];
+
+    $this->postJson(route('api.webhook.facebook', $tenant->tenant_code), $payload)->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(1);
+    $leadA = Lead::where('tenant_id', $tenant->id)->firstOrFail();
+
+    $leadB = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    app(LeadMergeService::class)->merge($leadB, $leadA, $clientAdmin, []);
+
+    $leadAMessageAfterMerge = $leadA->fresh()->message;
+    $leadASourceDataAfterMerge = $leadA->fresh()->source_data;
+
+    $payload['entry'][0]['messaging'][0]['message']['text'] = 'Second message';
+    $this->postJson(route('api.webhook.facebook', $tenant->tenant_code), $payload)->assertOk();
+
+    // A brand-new third lead was created — the merged-away loser was never
+    // resolved as "the existing lead" for this sender.
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(3);
+
+    $leadC = Lead::where('tenant_id', $tenant->id)
+        ->whereNotIn('id', [$leadA->id, $leadB->id])
+        ->firstOrFail();
+    expect($leadC->message)->toBe('Second message');
+
+    // The loser's own legacy fields are completely untouched by the
+    // follow-up — it was never passed to appendFacebookMessage().
+    expect($leadA->fresh()->message)->toBe($leadAMessageAfterMerge);
+    expect($leadA->fresh()->source_data)->toBe($leadASourceDataAfterMerge);
 });
 
 test('a facebook messenger webhook with no active messenger source still acknowledges with 200', function () {
@@ -164,6 +212,53 @@ test('an instagram dm creates a lead, and a follow-up message is appended instea
 
     $lead = Lead::where('tenant_id', $tenant->id)->first();
     expect($lead->message)->toContain('Hi, is this available?')->toContain('Still interested');
+});
+
+test('an instagram dm from a sender whose lead has since been merged away creates a new lead instead of reviving the loser', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Instagram,
+        'config' => ['instagram_account_id' => '456', 'verify_token' => 'secret-token'],
+    ]);
+
+    $payload = [
+        'entry' => [[
+            'messaging' => [[
+                'sender' => ['id' => 'igsid-1'],
+                'message' => ['text' => 'Hi, is this available?'],
+            ]],
+        ]],
+    ];
+
+    $this->postJson(route('api.webhook.instagram', $tenant->tenant_code), $payload)->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(1);
+    $leadA = Lead::where('tenant_id', $tenant->id)->firstOrFail();
+
+    $leadB = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    app(LeadMergeService::class)->merge($leadB, $leadA, $clientAdmin, []);
+
+    $leadAMessageAfterMerge = $leadA->fresh()->message;
+    $leadASourceDataAfterMerge = $leadA->fresh()->source_data;
+
+    $payload['entry'][0]['messaging'][0]['message']['text'] = 'Still interested';
+    $this->postJson(route('api.webhook.instagram', $tenant->tenant_code), $payload)->assertOk();
+
+    // A brand-new third lead was created — the merged-away loser was never
+    // resolved as "the existing lead" for this sender.
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(3);
+
+    $leadC = Lead::where('tenant_id', $tenant->id)
+        ->whereNotIn('id', [$leadA->id, $leadB->id])
+        ->firstOrFail();
+    expect($leadC->message)->toBe('Still interested');
+
+    // The loser's own legacy fields are completely untouched by the
+    // follow-up — it was never passed to appendInstagramMessage().
+    expect($leadA->fresh()->message)->toBe($leadAMessageAfterMerge);
+    expect($leadA->fresh()->source_data)->toBe($leadASourceDataAfterMerge);
 });
 
 test('an instagram webhook with no active instagram source still acknowledges with 200', function () {
@@ -297,6 +392,57 @@ test('a whatsapp message creates a lead, and a follow-up message from the same n
 
     $lead = Lead::where('tenant_id', $tenant->id)->first();
     expect($lead->message)->toContain('Hi, interested in your product')->toContain('What is the price?');
+});
+
+test('a whatsapp message from a phone number whose lead has since been merged away creates a new lead instead of reviving the loser', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => ['phone_number_id' => '123', 'access_token' => 'x', 'verify_token' => 'y'],
+    ]);
+
+    $payload = [
+        'entry' => [[
+            'changes' => [[
+                'value' => [
+                    'messages' => [[
+                        'from' => '8801700000000',
+                        'text' => ['body' => 'Hi, interested in your product'],
+                    ]],
+                ],
+            ]],
+        ]],
+    ];
+
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), $payload)->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(1);
+    $leadA = Lead::where('tenant_id', $tenant->id)->firstOrFail();
+
+    $leadB = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    app(LeadMergeService::class)->merge($leadB, $leadA, $clientAdmin, []);
+
+    $leadAMessageAfterMerge = $leadA->fresh()->message;
+    $leadASourceDataAfterMerge = $leadA->fresh()->source_data;
+
+    $payload['entry'][0]['changes'][0]['value']['messages'][0]['text']['body'] = 'What is the price?';
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), $payload)->assertOk();
+
+    // A brand-new third lead was created — the merged-away loser was never
+    // resolved as "the existing lead" for this phone number.
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(3);
+
+    $leadC = Lead::where('tenant_id', $tenant->id)
+        ->whereNotIn('id', [$leadA->id, $leadB->id])
+        ->firstOrFail();
+    expect($leadC->message)->toBe('What is the price?');
+
+    // The loser's own legacy fields are completely untouched by the
+    // follow-up — it was never passed to appendWhatsappMessage().
+    expect($leadA->fresh()->message)->toBe($leadAMessageAfterMerge);
+    expect($leadA->fresh()->source_data)->toBe($leadASourceDataAfterMerge);
 });
 
 test('a whatsapp webhook for an unknown tenant code still acknowledges with 200 instead of failing Meta\'s retry', function () {

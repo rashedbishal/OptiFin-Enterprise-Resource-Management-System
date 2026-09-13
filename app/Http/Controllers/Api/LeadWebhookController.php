@@ -97,6 +97,7 @@ class LeadWebhookController extends Controller
                         $existingLead = Lead::query()
                             ->where('source_id', $source->id)
                             ->where('source_data->facebook_user_id', $senderId)
+                            ->whereNull('merged_into_lead_id')
                             ->first();
 
                         if ($existingLead instanceof Lead) {
@@ -183,6 +184,7 @@ class LeadWebhookController extends Controller
                         $existingLead = Lead::query()
                             ->where('source_id', $source->id)
                             ->where('source_data->instagram_user_id', $senderId)
+                            ->whereNull('merged_into_lead_id')
                             ->first();
 
                         if ($existingLead instanceof Lead) {
@@ -276,7 +278,7 @@ class LeadWebhookController extends Controller
 
                         $handleMessage = function () use ($source, $senderPhone, $senderId, $messageText, $message, $attachment, $sentAt, $change): void {
                             $existingLead = is_string($senderPhone) && $senderPhone !== ''
-                                ? Lead::query()->where('source_id', $source->id)->where('phone', $senderPhone)->first()
+                                ? Lead::query()->where('source_id', $source->id)->where('phone', $senderPhone)->whereNull('merged_into_lead_id')->first()
                                 : null;
 
                             if ($existingLead instanceof Lead) {
