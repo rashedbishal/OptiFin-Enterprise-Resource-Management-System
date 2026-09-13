@@ -3,14 +3,18 @@
 namespace App\Livewire\Platform\Clients;
 
 use App\Enums\LeadSourceType;
+use App\Models\Conversation;
 use App\Models\Currency;
 use App\Models\Lead;
+use App\Models\LeadImport;
 use App\Models\LeadSource;
 use App\Models\LeadStatus;
 use App\Models\Tenant;
+use App\Models\WebsiteForm;
 use Flux\Flux;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -411,13 +415,67 @@ class LeadSources extends Component
         $this->confirmingDeleteId = null;
     }
 
+    /**
+     * Unlike the tenant-side Facebook-Lead-Ads-only deleteSource() (which
+     * only ever reaches a source with no leads or costs — see
+     * Tenant\Leads\Index::deleteSource()), this Platform Admin path can
+     * reach any source of any type, so it must guard every direct
+     * dependent itself: leads/lead_imports cascade on delete (a source
+     * with either would otherwise silently take its whole history down
+     * with it), while lead_source_costs/website_forms/conversations
+     * restrict on delete (a source with any of those would otherwise fail
+     * with an uncaught QueryException instead of a clear message).
+     * Conversations are checked first since that dependency has no
+     * existing way to be cleared (unlike costs/forms, which a tenant can
+     * delete individually) — a source with conversation history is
+     * permanently, not just currently, blocked from deletion.
+     *
+     * Locks the LeadSource row before checking so a webhook/import cannot
+     * create a new dependency between the check and the delete — the
+     * same "lock the stable parent row" idiom already used by
+     * LeadSourceCosts\Index::save() and Lead::nextIdentifier().
+     */
     public function delete(string $id): void
     {
         Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
 
-        $this->tenant->leadSources()->findOrFail($id)->delete();
+        DB::transaction(function () use ($id): void {
+            $source = $this->tenant->leadSources()->lockForUpdate()->findOrFail($id);
 
-        Flux::toast(variant: 'success', text: __('Lead source deleted.'));
+            if (Conversation::where('lead_source_id', $source->id)->exists()) {
+                Flux::toast(variant: 'danger', text: __('This source has conversation history and can no longer be deleted.'));
+
+                return;
+            }
+
+            if ($source->leads()->exists()) {
+                Flux::toast(variant: 'danger', text: __('This source has leads and can no longer be deleted.'));
+
+                return;
+            }
+
+            if (LeadImport::where('source_id', $source->id)->exists()) {
+                Flux::toast(variant: 'danger', text: __('This source has import history and can no longer be deleted.'));
+
+                return;
+            }
+
+            if ($source->costs()->exists()) {
+                Flux::toast(variant: 'danger', text: __('This source has recorded cost history and can no longer be deleted.'));
+
+                return;
+            }
+
+            if (WebsiteForm::where('lead_source_id', $source->id)->exists()) {
+                Flux::toast(variant: 'danger', text: __('This source has website forms configured and can no longer be deleted.'));
+
+                return;
+            }
+
+            $source->delete();
+
+            Flux::toast(variant: 'success', text: __('Lead source deleted.'));
+        });
     }
 
     /**

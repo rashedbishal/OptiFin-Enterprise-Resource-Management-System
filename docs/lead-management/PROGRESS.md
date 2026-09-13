@@ -579,9 +579,30 @@ Following Feature #15's closure, a full forensic audit of the entire Lead Manage
 
 **C5 is CLOSED.** Do not reopen unless a future change causes a real regression.
 
+### C1 — Platform Admin LeadSource deletion has no dependent-data guard — **COMPLETE / APPROVED / CLOSED**
+
+**Finding**: `App\Livewire\Platform\Clients\LeadSources::delete()` called `$source->delete()` unconditionally — no dependency check of any kind, unlike the tenant-side `Tenant\Leads\Index::deleteSource()`. Depending on which dependents existed, this either silently cascaded away every Lead (and its full history) for a source with no restrict-type dependent, or threw an uncaught `QueryException` for a source with one (`lead_source_costs`/`website_forms`/`conversations`, all `restrictOnDelete()`).
+
+**Fix**: `delete()` now wraps the lookup, dependency checks, and the delete itself in one `DB::transaction()`, with `lockForUpdate()` applied to the `LeadSource` row before any check runs — closing the cascade-side check-then-act race (a webhook/import creating a new dependent between the check and the delete) while preserving PostgreSQL's own already-safe `restrictOnDelete()` guarantees. Five direct dependents are checked in this order, each with its own `Flux::toast('danger', ...)` and an early `return` before any deletion: **conversations → leads → lead_imports → lead_source_costs → website_forms**. Conversations are checked first since — per the related DE1 finding below — that dependency has no existing way to ever be cleared, unlike costs/forms (which a tenant can delete individually via existing UI) or leads/imports (which never block deletion at all, only cascade). Authorization (`Gate::forUser(...)->authorize('update', $this->tenant)`) and the tenant-scoped resolution (`$this->tenant->leadSources()`) are both unchanged in position and behavior — only `lockForUpdate()` was added to the resolution chain.
+
+**DE1 — LeadSource records with inbound Conversation history can become permanently undeletable — explicitly investigated alongside C1, confirmed real, and deliberately NOT fixed here.** Verified during C1's own architecture inspection: `LeadSourceCost` and `WebsiteForm` rows can both be cleared via existing tenant UI, and `leads`/`lead_imports` never block deletion (cascade, not restrict) — but no delete, soft-delete, archive, or detach path exists anywhere in the codebase for `Conversation`/`Message`. Once a `LeadSource` has ever received one inbound WhatsApp/Messenger/Instagram message, it is now *correctly and visibly* refused deletion (via C1's fix) rather than crashing — but it remains, exactly as before, **permanently** undeletable. This is unchanged by C1 and is **intentionally deferred** pending a separate, explicit product decision (data-retention policy, whether to ever support archiving/re-parenting, etc. — none of that was implemented, backfilled, or decided in this work). `LeadSource.is_active`/`toggleActive()` (pre-existing, unmodified) remains the available lever for taking a source out of service without requiring deletion.
+
+**Verification**:
+- Focused `PlatformLeadSourceDeletionTest.php` (new file): **11/11 passed** — empty-source success (with exact success-toast assertion), each of the five dependencies individually blocked (with exact danger-toast assertions), messages-survive-a-blocked-attempt, mixed-dependencies-blocked-by-the-first-checked-one, authorization-still-enforced, cross-tenant-isolation, and a `lockForUpdate()`-compiles-into-the-query test mirroring `LeadSourceCostCatalogTest.php`'s own established technique.
+- `LeadPipelinePickerTest.php` (contains the one pre-existing Platform-deletion test, left untouched): **10/10 passed**.
+- Tenant-side deletion + Currency-guard regression (`FacebookLeadAdsSpreadsheetTest`, `LeadSourceCostCatalogTest`, `LeadManagementSettingsTest`): **59/59 passed**.
+- Full `tests/Feature/Leads/`: **899/900 passed, 1 pre-existing skip, 0 failures**.
+- Full application suite: **1065/1068 passed, 2 failures, 1 skip** — the 2 failures are the same pre-existing `tests/Feature/Broadcasting/LeadsIndexListenerTest.php` mismatches (`'$refresh'` vs actual `onLeadReceived`/`onLeadUpdated`) documented as pre-existing and unrelated since Feature #2. Zero new failures — independently re-run and reproduced during a separate final-verification pass before closure.
+- Pint: clean.
+- PHPStan: **425 errors** — matching the pre-existing baseline exactly; explicitly confirmed the errors still listed against `LeadSources.php` are the same six pre-existing methods this fix never touched, at shifted line numbers only; zero errors on `delete()` itself or in the new test file.
+
+**Explicitly confirmed at closure**: authorization and tenant-scoped resolution unchanged in behavior; no model, migration, policy, or service file was touched (`app/Livewire/Platform/Clients/LeadSources.php` was the only production file changed); the tenant-side `deleteSource()` path was not modified; no force-delete capability was introduced; no Conversation/Message lifecycle, archive, or backfill change was made.
+
+**C1 is CLOSED.** Do not reopen unless a future change causes a real regression. **DE1 remains open/deferred** — not resolved by C1, not scheduled, pending an explicit product decision.
+
 ---
 
 **Last completed feature: Feature #15 — In-App Communication (Phase 1)**
 **Next feature: None defined on the current roadmap.**
-**Audit remediation status: C5 (raw Meta access token in queued job payload) — CLOSED (see §23). No other audit finding (C1–C4, C6, M1–M10, L1–L4) has been approved for implementation.**
-**Next required action: None active. Wait for explicit instruction before starting C1 or any other audit finding, or any further work.**
+**Audit remediation status: C5 (raw Meta access token in queued job payload) — CLOSED. C1 (Platform Admin LeadSource deletion dependency guard) — CLOSED (see §23). DE1 (permanently undeletable LeadSource with conversation history) remains explicitly deferred pending a separate product decision — not implemented, not scheduled. No other audit finding (C2–C4, C6, M1–M10, L1–L4) has been approved for implementation.**
+**Next required action: None active. Wait for explicit instruction before starting C2 or any other audit finding, or any further work.**
