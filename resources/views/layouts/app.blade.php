@@ -32,7 +32,7 @@
         vendor/livewire/flux/stubs/resources/views/flux/sidebar/index.blade.php),
         and this bar previously used z-30, which painted over the open
         drawer on mobile. z-[15] sits in the gap between the two. --}}
-        <div class="relative z-[15] flex shrink-0 items-center gap-2 border-b border-zinc-200/70 bg-[#FDFCF7]/90 px-4 py-2 backdrop-blur-sm dark:border-zinc-700/70 dark:bg-zinc-800/90">
+        <div class="relative z-[15] flex shrink-0 items-center gap-2 border-b border-zinc-200/70 bg-[#FDFCF7]/90 px-4 py-2 backdrop-blur-sm dark:border-zinc-700/70 dark:bg-[#0e1826]/90">
             <div class="min-w-0 flex-1">
                 @stack('breadcrumbs')
             </div>

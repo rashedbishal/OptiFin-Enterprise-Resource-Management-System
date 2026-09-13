@@ -75,6 +75,32 @@ ever hides something for the brief pre-hydration window it's meant to.
         --color-warning: var(--color-amber-400);
         --color-error: var(--color-rose-400);
         --color-info: var(--color-sky-400);
+
+        /*
+        Dark navy-steel surface scale. Tailwind/Flux dark:bg-zinc-* /
+        dark:border-zinc-* / dark:text-zinc-* all read these variables, so
+        this is the one place that restyles cards, tables, buttons, inputs,
+        menus, modals, page chrome, and native controls together. Light
+        mode keeps the grayscale zinc map in @theme above. The sidebar is
+        hardcoded near-black and is intentionally not on this scale.
+
+        900 matches the canvas (#0e1826). 800 is a raised card. 700 is
+        overlays (menus, outline buttons, dialogs). 600 is hover/separators.
+        50–400 stay light enough for muted text on those surfaces.
+        */
+        --color-zinc-50: #eef3f8;
+        --color-zinc-100: #dce6f0;
+        --color-zinc-200: #b9c8d8;
+        --color-zinc-300: #c5d0dc;
+        --color-zinc-400: #8fa3b8;
+        --color-zinc-500: #6b8299;
+        --color-zinc-600: #3a536c;
+        --color-zinc-700: #1e334c;
+        --color-zinc-800: #152436;
+        --color-zinc-900: #0e1826;
+        --color-zinc-950: #0a121c;
+
+        --color-gray-200: #243044;
     }
 }
 
@@ -107,6 +133,10 @@ stacking context that would trap this behind the wrong siblings).
 No prefers-reduced-motion guard needed — this is a static gradient, not
 an animation.
 */
+html.dark {
+    color-scheme: dark;
+}
+
 body {
     position: relative;
 }
@@ -133,10 +163,24 @@ body::before {
 }
 
 /*
-Dark mode intentionally has no radial atmosphere tint (unlike light mode
-above) — the sidebar/canvas gradients already carry the depth here, and a
-blue-tinted glow on top of them read as a color cast rather than ambiance.
+Dark canvas — deep navy steel throughout, including the top-left.
+The previous top-left radial used a mid steel (56 92 128 at 0.38)
+that composited into a washed, light patch against the sidebar;
+that stop is now a deep navy so the corner stays dark. Sidebar
+(#141414→#0a0a0a) stays untouched.
+
+Painted on `body` itself (not ::before) so an opaque body background
+can't hide it. ::before stays empty in dark mode so the two layers
+never stack.
 */
+.dark body {
+    background-color: #0e1826;
+    background-image:
+        radial-gradient(ellipse 110% 85% at 12% -8%, rgb(10 28 52 / 0.92), transparent 58%),
+        radial-gradient(ellipse 95% 75% at 100% 110%, rgb(6 10 18 / 0.72), transparent 64%),
+        linear-gradient(168deg, rgb(12 26 46) 0%, rgb(10 18 32) 48%, rgb(8 14 24) 100%);
+}
+
 .dark body::before {
     background-image: none;
 }
@@ -189,9 +233,9 @@ flux:card — they need the same elevation treatment cards get.
     }
 
     .dark .card-surface {
-        background-color: #2a2a2a;
-        border-color: rgb(255 255 255 / 0.14);
-        box-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 20px 40px -18px rgb(0 0 0 / 0.6);
+        background-color: var(--color-zinc-800);
+        border-color: rgb(120 160 200 / 0.16);
+        box-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 20px 40px -18px rgb(0 0 0 / 0.55);
     }
 
     .card-surface-nested {
@@ -200,8 +244,8 @@ flux:card — they need the same elevation treatment cards get.
     }
 
     .dark .card-surface-nested {
-        background-color: #202020;
-        border-color: rgb(255 255 255 / 0.08);
+        background-color: var(--color-zinc-900);
+        border-color: rgb(120 160 200 / 0.10);
     }
 }
 
@@ -631,9 +675,9 @@ background) since these are solid placeholder shapes, not letters.
 :where(.dark, .dark *) .skeleton-shimmer {
     background-image: linear-gradient(
         90deg,
-        rgb(63 63 70) 25%,
-        rgb(82 82 91) 50%,
-        rgb(63 63 70) 75%
+        rgb(22 36 54) 25%,
+        rgb(36 56 80) 50%,
+        rgb(22 36 54) 75%
     );
 }
 
@@ -654,7 +698,7 @@ background) since these are solid placeholder shapes, not letters.
     }
 
     :where(.dark, .dark *) .skeleton-shimmer {
-        background-color: rgb(63 63 70);
+        background-color: rgb(22 36 54);
     }
 }
 
