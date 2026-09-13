@@ -974,11 +974,9 @@ class LeadWebhookController extends Controller
         DownloadLeadAttachment::dispatch(
             attachment: $pending,
             senderId: $senderId,
-            accessToken: $accessToken,
             platform: $type->value,
             remoteUrl: $attachment['url'] ?? null,
             mediaId: $attachment['media_id'] ?? null,
-            whatsappPhoneNumberId: $type === LeadSourceType::Whatsapp ? ($source->config['phone_number_id'] ?? null) : null,
         );
     }
 

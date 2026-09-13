@@ -554,8 +554,34 @@ Never assume the codebase exactly matches this document — verify the current c
 
 Do not reopen completed features merely because they are documented here.
 
+## 23. Forensic Audit Remediation
+
+Following Feature #15's closure, a full forensic audit of the entire Lead Management module (not limited to Feature #15) was conducted across two sessions: an initial audit (security, data integrity, concurrency/cross-feature, QA/dead-code — all read-only, no code changes) and a follow-up validation session that independently re-verified every material finding against the current codebase and reconciled the audit's finding inventory. Findings are tracked by ID (C1–C6, M1–M10, L1–L4, plus QA gaps Q1–Q9 and intentional/deferred items D1–D6) rather than as a numbered "Feature." Each approved fix follows the same Inspect → Impact Analysis → Architecture Proposal → wait for explicit approval → Implementation → Testing → Regression Verification discipline as every Feature above, scoped to exactly **one finding at a time** — audit fixes are not to be bundled together.
+
+### C5 — Raw Meta access token serialized into DownloadLeadAttachment's queued job payload — **COMPLETE / APPROVED / CLOSED**
+
+**Finding**: `App\Jobs\DownloadLeadAttachment` took the Meta access token (and, for WhatsApp, the `phone_number_id`) as plain constructor scalars — neither intercepted by `SerializesModels`, so both were serialized in cleartext into the `jobs` table (queue driver: `database`) and, since the job's `$tries = 1`, permanently into `failed_jobs.payload` on any failure. This contradicted the "resolve credentials fresh inside the job, never pass them through `dispatch()`" convention already established elsewhere in this module (`WhatsAppSender`, `SendOutboundMessage`, `ReconcileOutboundMessageStatus`, `ProcessEmailLeadSource`).
+
+**Fix**: Removed `accessToken`/`whatsappPhoneNumberId` from the job's constructor entirely. Added a private `resolveCredentials()` method that re-reads `$this->attachment->lead->source->config` at execution time — mirroring `WhatsAppSender::send()`'s existing pattern exactly. `LeadWebhookController::createPendingAttachmentAndDispatch()` no longer passes either value into `dispatch()`; its pre-dispatch token-existence guard is unchanged. If credentials can't be resolved at execution time (e.g. config cleared between dispatch and execution), the job now calls the existing `markFailed()` with a clear reason rather than crashing — the same visible-`Failed`-attachment outcome shape every other failure path in this job already produces.
+
+**Scope deviation, explicitly approved during implementation**: `tests/Feature/Leads/WebhookAttachmentTest.php` (not in the original approved file list) had 3 assertions directly referencing the removed `accessToken`/`whatsappPhoneNumberId` properties — a direct, unavoidable mechanical consequence of the constructor change, not an independent scope expansion. Implementation stopped and reported this before touching the file; the fix (replacing the value comparisons with `! property_exists($job, 'accessToken')`/`! property_exists($job, 'whatsappPhoneNumberId')` negative assertions) was explicitly approved before proceeding.
+
+**Verification**:
+- Focused `DownloadLeadAttachmentJobTest.php`: **12/12 passed** (6 existing tests mechanically updated to source the token via the lead's `LeadSource.config` instead of the constructor; 4 new tests — serialized-payload sentinel-token absence, credential-rotation-between-dispatch-and-execution, missing-credential-marks-Failed-safely, cross-tenant-credential-isolation).
+- `WebhookAttachmentTest.php`: **6/6 passed**.
+- Related attachment/Meta tests (`LeadAttachmentDownloadTest`, `LeadAttachmentDisplayTest`, `CleanupOrphanedLeadAttachmentsTest`, `WebhookFacebookLeadAdsTest`): **22/22 passed**.
+- Full `tests/Feature/Leads/`: **888/889 passed, 1 pre-existing skip, 0 failures**.
+- Full application suite: **1054/1057 passed, 2 failures, 1 skip** — the 2 failures are the same pre-existing `tests/Feature/Broadcasting/LeadsIndexListenerTest.php` mismatches (`'$refresh'` vs actual `onLeadReceived`/`onLeadUpdated`) documented as pre-existing and unrelated since Feature #2; the skip is the same pre-existing skip documented throughout this file. Zero new failures.
+- Pint: clean.
+- PHPStan: **425 errors** — matching the pre-existing baseline exactly; explicitly confirmed zero of those errors are in either changed production file (`app/Jobs/DownloadLeadAttachment.php`, `app/Http/Controllers/Api/LeadWebhookController.php`).
+
+**Explicitly confirmed at closure**: raw access token and `phone_number_id` are absent from the job's constructor and its serialized payload; credentials resolve fresh at execution time (proven by a rotation test); tenant isolation preserved (proven by a dedicated cross-tenant test); no schema/migration change; no queue-configuration change; `WhatsAppSender`/`MessengerSender`/`InstagramSender`/`ProcessEmailLeadSource`/other jobs untouched; `$tries = 1` and existing retry/failure semantics unchanged.
+
+**C5 is CLOSED.** Do not reopen unless a future change causes a real regression.
+
 ---
 
 **Last completed feature: Feature #15 — In-App Communication (Phase 1)**
 **Next feature: None defined on the current roadmap.**
-**Next required action: None active. Wait for explicit instruction before starting any further work.**
+**Audit remediation status: C5 (raw Meta access token in queued job payload) — CLOSED (see §23). No other audit finding (C1–C4, C6, M1–M10, L1–L4) has been approved for implementation.**
+**Next required action: None active. Wait for explicit instruction before starting C1 or any other audit finding, or any further work.**

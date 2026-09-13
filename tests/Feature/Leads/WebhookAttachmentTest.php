@@ -44,7 +44,7 @@ test('a facebook message with an image attachment and no caption leaves the mess
     Queue::assertPushed(DownloadLeadAttachment::class, fn (DownloadLeadAttachment $job): bool => $job->attachment->is($attachment)
         && $job->platform === 'facebook_messenger'
         && $job->senderId === 'psid-1'
-        && $job->accessToken === 'page-token'
+        && ! property_exists($job, 'accessToken')
         && $job->remoteUrl === 'https://scontent.xx.fbcdn.net/photo.jpg');
 });
 
@@ -123,7 +123,7 @@ test('an instagram dm with a video attachment and caption text tags the lead mes
 
     Queue::assertPushed(DownloadLeadAttachment::class, fn (DownloadLeadAttachment $job): bool => $job->attachment->is($attachment)
         && $job->platform === 'instagram'
-        && $job->accessToken === 'igaa-token'
+        && ! property_exists($job, 'accessToken')
         && $job->remoteUrl === 'https://scontent.xx.cdninstagram.com/clip.mp4');
 });
 
@@ -163,8 +163,8 @@ test('a whatsapp image message queues a download job keyed by media id instead o
     Queue::assertPushed(DownloadLeadAttachment::class, fn (DownloadLeadAttachment $job): bool => $job->attachment->is($attachment)
         && $job->platform === 'whatsapp'
         && $job->mediaId === 'media-abc'
-        && $job->accessToken === 'wa-token'
-        && $job->whatsappPhoneNumberId === '456'
+        && ! property_exists($job, 'accessToken')
+        && ! property_exists($job, 'whatsappPhoneNumberId')
         && $job->remoteUrl === null);
 });
 

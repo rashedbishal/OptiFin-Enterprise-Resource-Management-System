@@ -60,19 +60,25 @@ class DownloadLeadAttachment implements ShouldQueue
     public function __construct(
         public LeadAttachment $attachment,
         public string $senderId,
-        public string $accessToken,
         public string $platform,
         public ?string $remoteUrl = null,
         public ?string $mediaId = null,
-        public ?string $whatsappPhoneNumberId = null,
     ) {}
 
     public function handle(): void
     {
+        $credentials = $this->resolveCredentials();
+
+        if ($credentials === null) {
+            $this->markFailed('Lead source credential is no longer configured.');
+
+            return;
+        }
+
         try {
             $download = $this->platform === 'whatsapp'
-                ? $this->downloadWhatsappMedia()
-                : $this->downloadCdnAttachment();
+                ? $this->downloadWhatsappMedia($credentials['accessToken'], $credentials['whatsappPhoneNumberId'])
+                : $this->downloadCdnAttachment($credentials['accessToken']);
         } catch (Throwable $e) {
             $this->markFailed($e->getMessage());
 
@@ -97,7 +103,7 @@ class DownloadLeadAttachment implements ShouldQueue
     /**
      * @return array{path: string, mime: string, source_url: string}|null
      */
-    private function downloadCdnAttachment(): ?array
+    private function downloadCdnAttachment(string $accessToken): ?array
     {
         if ($this->remoteUrl === null) {
             $this->markFailed('No remote URL was provided.');
@@ -119,7 +125,7 @@ class DownloadLeadAttachment implements ShouldQueue
         // Meta's docs don't guarantee one behavior over the other.
         if (! $response->successful()) {
             $separator = str_contains($this->remoteUrl, '?') ? '&' : '?';
-            $retryUrl = $this->remoteUrl.$separator.'access_token='.urlencode($this->accessToken);
+            $retryUrl = $this->remoteUrl.$separator.'access_token='.urlencode($accessToken);
             $response = Http::timeout(60)->withOptions(['sink' => $tmpPath])->get($retryUrl);
         }
 
@@ -136,7 +142,7 @@ class DownloadLeadAttachment implements ShouldQueue
     /**
      * @return array{path: string, mime: string, source_url: string}|null
      */
-    private function downloadWhatsappMedia(): ?array
+    private function downloadWhatsappMedia(string $accessToken, ?string $whatsappPhoneNumberId): ?array
     {
         if ($this->mediaId === null) {
             $this->markFailed('No WhatsApp media id was provided.');
@@ -144,10 +150,10 @@ class DownloadLeadAttachment implements ShouldQueue
             return null;
         }
 
-        $lookup = Http::withToken($this->accessToken)
+        $lookup = Http::withToken($accessToken)
             ->timeout(15)
             ->get("https://graph.facebook.com/v21.0/{$this->mediaId}", array_filter([
-                'phone_number_id' => $this->whatsappPhoneNumberId,
+                'phone_number_id' => $whatsappPhoneNumberId,
             ]));
 
         if (! $lookup->successful()) {
@@ -171,7 +177,7 @@ class DownloadLeadAttachment implements ShouldQueue
         }
 
         $tmpPath = $this->tempPath();
-        $response = Http::withToken($this->accessToken)->timeout(120)->withOptions(['sink' => $tmpPath])->get($mediaUrl);
+        $response = Http::withToken($accessToken)->timeout(120)->withOptions(['sink' => $tmpPath])->get($mediaUrl);
 
         if (! $response->successful()) {
             @unlink($tmpPath);
@@ -231,6 +237,31 @@ class DownloadLeadAttachment implements ShouldQueue
         rename($tmpAbsolutePath, Storage::disk('local')->path($relativePath));
 
         return ['path' => $relativePath, 'mime' => $mime, 'source_url' => $sourceUrl];
+    }
+
+    /**
+     * Re-reads the access token (and, for WhatsApp, the phone_number_id)
+     * fresh from the lead's LeadSource at execution time — never captured
+     * at dispatch time and never passed through the job's constructor — so
+     * neither value is ever serialized into the queued job payload or a
+     * failed_jobs row. Mirrors WhatsAppSender::send()'s "read config fresh,
+     * every time" convention.
+     *
+     * @return array{accessToken: string, whatsappPhoneNumberId: ?string}|null
+     */
+    private function resolveCredentials(): ?array
+    {
+        $config = $this->attachment->lead->source->config ?? [];
+        $accessToken = $config['access_token'] ?? $config['page_access_token'] ?? null;
+
+        if (! is_string($accessToken) || $accessToken === '') {
+            return null;
+        }
+
+        return [
+            'accessToken' => $accessToken,
+            'whatsappPhoneNumberId' => $this->platform === 'whatsapp' ? ($config['phone_number_id'] ?? null) : null,
+        ];
     }
 
     private function markFailed(string $reason): void
