@@ -5,6 +5,8 @@ use App\Livewire\Tenant\Leads\Show;
 use App\Models\Lead;
 use App\Models\Task;
 use App\Models\TaskStatusLog;
+use App\Models\TenantUser;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 
 test('a task moves from pending to completed and records a status log entry, setting closed_at', function () {
@@ -42,6 +44,40 @@ test('a task moves from pending to cancelled and records a status log entry, set
     expect($task->status)->toBe(TaskStatus::Cancelled);
     expect($task->closed_at)->not->toBeNull();
     expect(TaskStatusLog::where('task_id', $task->id)->where('new_status', TaskStatus::Cancelled->value)->exists())->toBeTrue();
+});
+
+test('a failure partway through changeTaskStatus() rolls back both the task update and its status log', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $task = Task::factory()->create(['tenant_id' => $tenant->id, 'lead_id' => $lead->id]);
+
+    // A TenantUser with the identical tenant_id/role_id/user_type as the
+    // real, already-authorized $clientAdmin, but never actually persisted:
+    // Gate::denies('update', $lead) passes, but TaskStatusLog.changed_by's
+    // foreign key to tenant_users then fails on the write immediately after
+    // $task->update() — mirroring the same technique used for
+    // updateStatus()/changeDealStatus() and the established pattern in
+    // LeadMergeTest.php/LeadAssignmentTest.php.
+    $neverPersisted = TenantUser::factory()->make([
+        'id' => (string) Str::ulid(),
+        'tenant_id' => $clientAdmin->tenant_id,
+        'role_id' => $clientAdmin->role_id,
+        'user_type' => $clientAdmin->user_type,
+    ]);
+
+    expect(fn () => Livewire::actingAs($neverPersisted)
+        ->test(Show::class, ['lead' => $lead])
+        ->call('completeInitialLoad')
+        ->call('changeTaskStatus', $task->id, 'completed'))
+        ->toThrow(Exception::class);
+
+    // Nothing persisted: the task's status/closed_at change made by
+    // $task->update() inside the same transaction was rolled back, and no
+    // TaskStatusLog row exists.
+    $task->refresh();
+    expect($task->status)->toBe(TaskStatus::Pending);
+    expect($task->closed_at)->toBeNull();
+    expect(TaskStatusLog::where('task_id', $task->id)->exists())->toBeFalse();
 });
 
 test('a completed task can be reopened, clearing its closed_at', function () {

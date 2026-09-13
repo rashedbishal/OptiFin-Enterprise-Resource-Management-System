@@ -60,6 +60,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\Rule;
@@ -1288,41 +1289,49 @@ class Show extends Component
 
         $priorityChanged = in_array('priority', $changed, true);
 
-        $this->lead->save();
+        // M2 fix: the lead save, its LeadStatusLog/LeadDetailUpdateLog audit
+        // rows, the scoring recompute, and both events are wrapped in one
+        // transaction so a failure partway through can't leave the lead's
+        // status/priority changed with no matching audit trail — mirroring
+        // the identical DB::transaction() boundary Index::applyBulkStatusChange()
+        // already uses for this exact same status-change side-effect chain.
+        DB::transaction(function () use ($statusChanged, $priorityChanged, $oldStatus, $newStatus): void {
+            $this->lead->save();
 
-        if ($statusChanged) {
-            LeadStatusLog::create([
-                'lead_id' => $this->lead->id,
-                'changed_by' => Auth::id(),
-                'old_status_id' => $oldStatus->id,
-                'new_status_id' => $newStatus->id,
-            ]);
+            if ($statusChanged) {
+                LeadStatusLog::create([
+                    'lead_id' => $this->lead->id,
+                    'changed_by' => Auth::id(),
+                    'old_status_id' => $oldStatus->id,
+                    'new_status_id' => $newStatus->id,
+                ]);
 
-            event(new LeadStatusChanged($this->lead, $oldStatus, $newStatus, Auth::user()));
-        }
+                event(new LeadStatusChanged($this->lead, $oldStatus, $newStatus, Auth::user()));
+            }
 
-        if ($priorityChanged) {
-            LeadDetailUpdateLog::create([
-                'lead_id' => $this->lead->id,
-                'changed_by' => Auth::id(),
-                'changed_fields' => ['priority'],
-            ]);
-        }
+            if ($priorityChanged) {
+                LeadDetailUpdateLog::create([
+                    'lead_id' => $this->lead->id,
+                    'changed_by' => Auth::id(),
+                    'changed_fields' => ['priority'],
+                ]);
+            }
 
-        // Status and Priority are both scoring fields (LeadScoringField) —
-        // a targeted recompute here, not a generic LeadUpdated listener.
-        // Resolved via app(), not method injection: this is also called
-        // internally by updateStatusAndAssignment() as a plain PHP method
-        // call ($this->updateStatus()), which Laravel's request-level
-        // action dispatch (the only thing that supports method injection)
-        // never sees.
-        if ($statusChanged || $priorityChanged) {
-            app(LeadScoringService::class)->computeFor($this->lead, 'status_priority_changed');
-            $this->lead->refresh();
-            unset($this->latestScoreLog);
-        }
+            // Status and Priority are both scoring fields (LeadScoringField) —
+            // a targeted recompute here, not a generic LeadUpdated listener.
+            // Resolved via app(), not method injection: this is also called
+            // internally by updateStatusAndAssignment() as a plain PHP method
+            // call ($this->updateStatus()), which Laravel's request-level
+            // action dispatch (the only thing that supports method injection)
+            // never sees.
+            if ($statusChanged || $priorityChanged) {
+                app(LeadScoringService::class)->computeFor($this->lead, 'status_priority_changed');
+                $this->lead->refresh();
+                unset($this->latestScoreLog);
+            }
 
-        event(new LeadUpdated($this->lead));
+            event(new LeadUpdated($this->lead));
+        });
 
         unset($this->activity);
 
@@ -2299,20 +2308,28 @@ class Show extends Component
 
         $oldStatus = $deal->status;
 
-        $deal->update([
-            'status' => $target,
-            // Cleared back to null on reopen, written the moment the Deal
-            // closes either way — never directly user-editable (see the
-            // deals table migration's docblock).
-            'actual_close_date' => $target === DealStatus::Open ? null : now()->toDateString(),
-        ]);
+        // M2 fix: the deal update and its DealStatusLog audit row are
+        // wrapped in one transaction so a failure partway through can't
+        // leave the deal's status changed with no matching audit row —
+        // same DB::transaction() pattern used for the lead's own status
+        // change above, and already established by
+        // Index::applyBulkStatusChange().
+        DB::transaction(function () use ($deal, $target, $oldStatus): void {
+            $deal->update([
+                'status' => $target,
+                // Cleared back to null on reopen, written the moment the Deal
+                // closes either way — never directly user-editable (see the
+                // deals table migration's docblock).
+                'actual_close_date' => $target === DealStatus::Open ? null : now()->toDateString(),
+            ]);
 
-        DealStatusLog::create([
-            'deal_id' => $deal->id,
-            'changed_by' => Auth::id(),
-            'old_status' => $oldStatus,
-            'new_status' => $target,
-        ]);
+            DealStatusLog::create([
+                'deal_id' => $deal->id,
+                'changed_by' => Auth::id(),
+                'old_status' => $oldStatus,
+                'new_status' => $target,
+            ]);
+        });
 
         unset($this->deals, $this->currentDealId, $this->activity);
         Flux::toast(variant: 'success', text: __('Deal status updated.'));
@@ -2493,20 +2510,27 @@ class Show extends Component
 
         $oldStatus = $task->status;
 
-        $task->update([
-            'status' => $target,
-            // Cleared back to null on reopen, written the moment the task
-            // closes either way — never directly user-editable (see the
-            // tasks table migration's docblock).
-            'closed_at' => $target === TaskStatus::Pending ? null : now(),
-        ]);
+        // M2 fix: the task update and its TaskStatusLog audit row are
+        // wrapped in one transaction so a failure partway through can't
+        // leave the task's status changed with no matching audit row —
+        // same DB::transaction() pattern used for the lead's and deal's
+        // own status changes above.
+        DB::transaction(function () use ($task, $target, $oldStatus): void {
+            $task->update([
+                'status' => $target,
+                // Cleared back to null on reopen, written the moment the task
+                // closes either way — never directly user-editable (see the
+                // tasks table migration's docblock).
+                'closed_at' => $target === TaskStatus::Pending ? null : now(),
+            ]);
 
-        TaskStatusLog::create([
-            'task_id' => $task->id,
-            'changed_by' => Auth::id(),
-            'old_status' => $oldStatus,
-            'new_status' => $target,
-        ]);
+            TaskStatusLog::create([
+                'task_id' => $task->id,
+                'changed_by' => Auth::id(),
+                'old_status' => $oldStatus,
+                'new_status' => $target,
+            ]);
+        });
 
         unset($this->tasks, $this->activity);
         Flux::toast(variant: 'success', text: __('Task status updated.'));

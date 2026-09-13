@@ -5,6 +5,8 @@ use App\Livewire\Tenant\Leads\Show;
 use App\Models\Deal;
 use App\Models\DealStatusLog;
 use App\Models\Lead;
+use App\Models\TenantUser;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 
 test('a deal moves from open to won and records a status log entry', function () {
@@ -42,6 +44,39 @@ test('a deal moves from open to lost and records a status log entry', function (
     expect($deal->status)->toBe(DealStatus::Lost);
     expect($deal->actual_close_date)->not->toBeNull();
     expect(DealStatusLog::where('deal_id', $deal->id)->where('new_status', DealStatus::Lost->value)->exists())->toBeTrue();
+});
+
+test('a failure partway through changeDealStatus() rolls back both the deal update and its status log', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $deal = Deal::factory()->create(['tenant_id' => $tenant->id, 'lead_id' => $lead->id]);
+
+    // A TenantUser with the identical tenant_id/role_id/user_type as the
+    // real, already-authorized $clientAdmin, but never actually persisted:
+    // Gate::denies('update', $lead) passes, but DealStatusLog.changed_by's
+    // foreign key to tenant_users then fails on the write immediately after
+    // $deal->update() — mirroring the same technique used for updateStatus()
+    // and the established pattern in LeadMergeTest.php/LeadAssignmentTest.php.
+    $neverPersisted = TenantUser::factory()->make([
+        'id' => (string) Str::ulid(),
+        'tenant_id' => $clientAdmin->tenant_id,
+        'role_id' => $clientAdmin->role_id,
+        'user_type' => $clientAdmin->user_type,
+    ]);
+
+    expect(fn () => Livewire::actingAs($neverPersisted)
+        ->test(Show::class, ['lead' => $lead])
+        ->call('completeInitialLoad')
+        ->call('changeDealStatus', $deal->id, 'won'))
+        ->toThrow(Exception::class);
+
+    // Nothing persisted: the deal's status/actual_close_date change made by
+    // $deal->update() inside the same transaction was rolled back, and no
+    // DealStatusLog row exists.
+    $deal->refresh();
+    expect($deal->status)->toBe(DealStatus::Open);
+    expect($deal->actual_close_date)->toBeNull();
+    expect(DealStatusLog::where('deal_id', $deal->id)->exists())->toBeFalse();
 });
 
 test('a won deal can be reopened, clearing its actual close date', function () {

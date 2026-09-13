@@ -5,9 +5,12 @@ use App\Events\LeadUpdated;
 use App\Livewire\Tenant\Leads\Show;
 use App\Models\Lead;
 use App\Models\LeadDetailUpdateLog;
+use App\Models\LeadScoreLog;
 use App\Models\LeadStatus;
 use App\Models\LeadStatusLog;
+use App\Models\TenantUser;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Str;
 use Livewire\Livewire;
 
 test('updating status to an id outside this tenant\'s own pipeline is silently rejected', function () {
@@ -91,6 +94,48 @@ test('changing status and priority together records both a status log and a prio
 
     expect(LeadStatusLog::where('lead_id', $lead->id)->exists())->toBeTrue();
     expect(LeadDetailUpdateLog::where('lead_id', $lead->id)->where('changed_fields', json_encode(['priority']))->exists())->toBeTrue();
+});
+
+test('a failure partway through updateStatus() rolls back the status change, the priority change, and every audit/scoring side effect', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id, 'priority' => LeadPriority::Low]);
+
+    // A TenantUser with the identical tenant_id/role_id/user_type as the
+    // real, already-authorized $clientAdmin, but never actually persisted:
+    // Gate::denies('update', $lead) passes (it only reads in-memory
+    // tenant_id/user_type/role attributes, never re-queries the acting
+    // user's own row), but LeadStatusLog.changed_by's foreign key to
+    // tenant_users then fails on the write immediately after
+    // $this->lead->save() — the same never-persisted-FK-reference technique
+    // already established in LeadMergeTest.php and LeadAssignmentTest.php,
+    // applied via the authenticated user instead of an explicit parameter
+    // since updateStatus() sources changed_by from Auth::id().
+    $neverPersisted = TenantUser::factory()->make([
+        'id' => (string) Str::ulid(),
+        'tenant_id' => $clientAdmin->tenant_id,
+        'role_id' => $clientAdmin->role_id,
+        'user_type' => $clientAdmin->user_type,
+    ]);
+
+    expect(fn () => Livewire::actingAs($neverPersisted)
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
+        ->set('status', leadStatus('contacted')->id)
+        ->set('priority', LeadPriority::High->value)
+        ->call('updateStatus'))
+        ->toThrow(Exception::class);
+
+    // Nothing persisted: the status and priority changes made by the
+    // earlier $this->lead->save() call inside the same transaction were
+    // rolled back, no LeadStatusLog/LeadDetailUpdateLog row exists, and no
+    // scoring recompute (which runs later in the same transaction, after
+    // the audit-log write that failed) ever left a trace.
+    $lead->refresh();
+    expect($lead->status_id)->toBe(leadStatus('new')->id);
+    expect($lead->priority)->toBe(LeadPriority::Low);
+    expect($lead->first_contacted_at)->toBeNull();
+    expect(LeadStatusLog::where('lead_id', $lead->id)->exists())->toBeFalse();
+    expect(LeadDetailUpdateLog::where('lead_id', $lead->id)->exists())->toBeFalse();
+    expect(LeadScoreLog::where('lead_id', $lead->id)->exists())->toBeFalse();
 });
 
 test('resubmitting the status form with no actual change to status or priority is a no-op', function () {
