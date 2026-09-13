@@ -747,6 +747,19 @@ class Index extends Component
      * that form edits together) and fails soft with a toast instead of
      * throwing, since this runs from board interactions rather than a
      * dedicated form submission.
+     *
+     * M2 fix: the LeadStatusLog write, the Lead status write, and both
+     * events are wrapped in one DB::transaction() so a failure partway
+     * through can't leave the two disagreeing — mirroring the identical
+     * DB::transaction() boundary already shipped for this exact same
+     * status-change side-effect chain in Show::updateStatus() and, in this
+     * same file, applyBulkStatusChange(). LeadStatusChanged/LeadUpdated are
+     * fired from inside the transaction (not deferred): both queue their
+     * consumers via the database queue driver, and a job row inserted on
+     * the same connection while a transaction is open is invisible to any
+     * other connection until that transaction actually commits, so a
+     * queued worker can never observe pre-commit data here — the same
+     * reasoning already relied on by Show::updateStatus()'s own fix.
      */
     public function moveLead(string $leadId, string $status): void
     {
@@ -771,27 +784,29 @@ class Index extends Component
             return;
         }
 
-        LeadStatusLog::create([
-            'lead_id' => $lead->id,
-            'changed_by' => Auth::id(),
-            'old_status_id' => $oldStatus->id,
-            'new_status_id' => $newStatus->id,
-        ]);
+        DB::transaction(function () use ($lead, $oldStatus, $newStatus): void {
+            LeadStatusLog::create([
+                'lead_id' => $lead->id,
+                'changed_by' => Auth::id(),
+                'old_status_id' => $oldStatus->id,
+                'new_status_id' => $newStatus->id,
+            ]);
 
-        $updates = ['status_id' => $newStatus->id];
+            $updates = ['status_id' => $newStatus->id];
 
-        if ($oldStatus->id === $lead->tenant->initialLeadStatus()?->id) {
-            $updates['first_contacted_at'] = $lead->first_contacted_at ?? now();
-        }
+            if ($oldStatus->id === $lead->tenant->initialLeadStatus()?->id) {
+                $updates['first_contacted_at'] = $lead->first_contacted_at ?? now();
+            }
 
-        if ($newStatus->is_closed) {
-            $updates['closed_at'] = now();
-        }
+            if ($newStatus->is_closed) {
+                $updates['closed_at'] = now();
+            }
 
-        $lead->update($updates);
+            $lead->update($updates);
 
-        event(new LeadStatusChanged($lead, $oldStatus, $newStatus, Auth::user()));
-        event(new LeadUpdated($lead));
+            event(new LeadStatusChanged($lead, $oldStatus, $newStatus, Auth::user()));
+            event(new LeadUpdated($lead));
+        });
 
         $this->refreshBoard();
 

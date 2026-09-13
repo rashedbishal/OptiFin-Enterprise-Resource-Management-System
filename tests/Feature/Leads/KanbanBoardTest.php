@@ -2,6 +2,7 @@
 
 use App\Enums\LeadPriority;
 use App\Enums\LeadSourceType;
+use App\Events\LeadStatusChanged;
 use App\Events\LeadUpdated;
 use App\Livewire\Tenant\Leads\Index;
 use App\Models\Lead;
@@ -346,4 +347,56 @@ test('the board filters leads by a created-at date range, applied instantly with
     $board = $component->get('boardLeads');
     $newLeads = $board->get(leadStatus('new')->id, collect());
     expect($newLeads->pluck('id'))->toContain($oldLead->id)->not->toContain($recentLead->id);
+});
+
+/**
+ * M2 fix: proves moveLead()'s LeadStatusLog write and Lead status write
+ * are atomic — a failure occurring AFTER both writes have already run
+ * (but before the transaction commits) must roll both back, not just
+ * prevent whichever write comes last.
+ *
+ * moveLead() writes LeadStatusLog first and the Lead second — the reverse
+ * order from Show::updateStatus()'s save-then-log — and neither write
+ * references anything via a swappable actor the way LeadStatusLog
+ * .changed_by does in the other M1/M2/M3/M8 rollback tests (the Lead
+ * update's own fields don't reference an FK a test can control), so the
+ * established never-persisted-FK-reference technique can't force a
+ * failure specifically on the SECOND write here. Verified directly: that
+ * technique fails on the FIRST write (LeadStatusLog.changed_by) instead,
+ * which passes identically whether or not moveLead() uses a transaction
+ * at all — since nothing has been written yet when the first statement
+ * itself throws, there's nothing to roll back, so a test built that way
+ * would trivially pass against the pre-fix code too and prove nothing.
+ * (Confirmed by temporarily reverting the production fix and re-running
+ * that version of this test: it passed unchanged against the unfixed
+ * code — see the M2 implementation report.)
+ *
+ * Instead, a real (not ShouldQueue) listener on LeadStatusChanged — fired
+ * inside the transaction, strictly after both the LeadStatusLog insert
+ * and the Lead update have already executed — deliberately throws. This
+ * genuinely distinguishes fixed from unfixed behavior: without the
+ * transaction, both prior writes would already be committed by the time
+ * this listener runs, so they'd survive the exception; with it, both
+ * roll back together.
+ */
+test('a failure after both writes complete rolls back the status change and the status log together', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id]);
+
+    Event::listen(LeadStatusChanged::class, function (): void {
+        throw new RuntimeException('Forcing a failure after both moveLead() writes have already run.');
+    });
+
+    expect(fn () => Livewire::actingAs($clientAdmin)
+        ->test(Index::class)->call('completeInitialLoad')
+        ->call('moveLead', $lead->id, leadStatus('contacted')->id))
+        ->toThrow(RuntimeException::class);
+
+    // Both writes rolled back together: the Lead's status was never
+    // actually changed, and no LeadStatusLog row survives even though its
+    // insert executed successfully before the listener threw.
+    $lead->refresh();
+    expect($lead->status_id)->toBe(leadStatus('new')->id);
+    expect($lead->first_contacted_at)->toBeNull();
+    expect(LeadStatusLog::where('lead_id', $lead->id)->exists())->toBeFalse();
 });
