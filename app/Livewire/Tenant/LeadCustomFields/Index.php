@@ -7,6 +7,7 @@ use App\Models\LeadCustomFieldDefinition;
 use Flux\Flux;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -280,32 +281,44 @@ class Index extends Component
      * (Settings::deleteCurrency()), since silently discarding populated
      * business-data values would be a real data loss, not just detaching a
      * label.
+     *
+     * Locks the LeadCustomFieldDefinition row before checking dependents so
+     * a concurrent Lead custom-field save or Website Form field change
+     * cannot create a new dependency between the check and the delete —
+     * same "lock the stable parent row" idiom already used by
+     * Platform\Clients\LeadSources::delete() (C1), Tenant\Leads\Index::
+     * deleteSource(), and Platform\LeadManagement\Settings::deleteStatus()/
+     * deleteCurrency().
      */
     public function delete(string $id): void
     {
-        $definition = LeadCustomFieldDefinition::where('tenant_id', Auth::user()->tenant_id)->findOrFail($id);
+        DB::transaction(function () use ($id): void {
+            $definition = LeadCustomFieldDefinition::lockForUpdate()
+                ->where('tenant_id', Auth::user()->tenant_id)
+                ->findOrFail($id);
 
-        Gate::authorize('delete', $definition);
+            Gate::authorize('delete', $definition);
 
-        if ($definition->hasValues()) {
-            Flux::toast(variant: 'danger', text: __('This field has values on one or more leads and cannot be deleted.'));
+            if ($definition->hasValues()) {
+                Flux::toast(variant: 'danger', text: __('This field has values on one or more leads and cannot be deleted.'));
 
-            return;
-        }
+                return;
+            }
 
-        // Feature #13: a definition still exposed by a Website Form must
-        // not be deletable out from under it either, even with zero
-        // submitted values yet — same "don't leave a dangling reference"
-        // principle as the hasValues() check above.
-        if ($definition->isReferencedByWebsiteForm()) {
-            Flux::toast(variant: 'danger', text: __('This field is used by one or more Website Forms and cannot be deleted.'));
+            // Feature #13: a definition still exposed by a Website Form must
+            // not be deletable out from under it either, even with zero
+            // submitted values yet — same "don't leave a dangling reference"
+            // principle as the hasValues() check above.
+            if ($definition->isReferencedByWebsiteForm()) {
+                Flux::toast(variant: 'danger', text: __('This field is used by one or more Website Forms and cannot be deleted.'));
 
-            return;
-        }
+                return;
+            }
 
-        $definition->delete();
+            $definition->delete();
 
-        unset($this->definitions);
-        Flux::toast(variant: 'success', text: __('Custom field deleted.'));
+            unset($this->definitions);
+            Flux::toast(variant: 'success', text: __('Custom field deleted.'));
+        });
     }
 }

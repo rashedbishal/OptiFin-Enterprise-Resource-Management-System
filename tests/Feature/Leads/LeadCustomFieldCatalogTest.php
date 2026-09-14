@@ -5,6 +5,8 @@ use App\Models\Lead;
 use App\Models\LeadCustomFieldDefinition;
 use App\Models\LeadCustomFieldValue;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Livewire\Livewire;
 
 test('a client admin can create a text custom field', function () {
@@ -255,4 +257,64 @@ test('a tenant\'s custom field catalog never appears for, or can be touched by, 
 
     expect($definitionA->fresh())->not->toBeNull();
     expect(LeadCustomFieldDefinition::where('tenant_id', $tenantB->id)->count())->toBe(1);
+});
+
+/**
+ * Concurrency-fix regression coverage for delete(), combining two distinct
+ * proofs in one focused test:
+ *
+ * 1. Mirrors PlatformLeadSourceDeletionTest.php's/LeadSourceCostCatalogTest.php's/
+ *    LeadManagementSettingsTest.php's own equivalent tests exactly: proves
+ *    the LeadCustomFieldDefinition row lookup used for the lock is compiled
+ *    into the query the code actually runs, for a definition with zero
+ *    dependents. True concurrent-transaction blocking from lockForUpdate()
+ *    can't be observed under SQLite (this app's test driver has no
+ *    row-level locking to exercise, and a second genuinely separate
+ *    connection to the same in-memory database isn't possible) — that
+ *    guarantee comes from lockForUpdate() compiling to a real
+ *    `SELECT ... FOR UPDATE` on Postgres (production), standard RDBMS
+ *    behavior this suite can't execute end-to-end.
+ *
+ * 2. A real (non-queued) Eloquent `deleted` event listener — fired inside
+ *    the transaction, strictly after the DELETE statement has already
+ *    executed — deliberately throws, on a second, independent definition.
+ *    This genuinely distinguishes fixed from unfixed behavior: without
+ *    DB::transaction(), the DELETE is already committed by the time this
+ *    listener runs, so the definition would stay gone despite the
+ *    exception; with it, the delete rolls back and the definition
+ *    survives.
+ */
+test('deleting a custom field locks the LeadCustomFieldDefinition row and rolls back if the delete fails after it runs', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $definition = LeadCustomFieldDefinition::factory()->create(['tenant_id' => $tenant->id]);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class)
+        ->call('delete', $definition->id);
+
+    $queries = collect(DB::getQueryLog())->pluck('query');
+    DB::disableQueryLog();
+
+    $lockedDefinitionLookup = $queries->first(fn (string $sql): bool => str_contains($sql, 'from "lead_custom_field_definitions"') && str_contains($sql, '"lead_custom_field_definitions"."id" = ?'));
+
+    expect($lockedDefinitionLookup)->not->toBeNull();
+    expect(LeadCustomFieldDefinition::whereKey($definition->id)->exists())->toBeFalse();
+
+    $secondDefinition = LeadCustomFieldDefinition::factory()->create(['tenant_id' => $tenant->id]);
+
+    Event::listen('eloquent.deleted: '.LeadCustomFieldDefinition::class, function (): void {
+        throw new RuntimeException('Forcing a failure after delete()\'s delete has already run.');
+    });
+
+    expect(fn () => Livewire::actingAs($clientAdmin)
+        ->test(Index::class)
+        ->call('delete', $secondDefinition->id))
+        ->toThrow(RuntimeException::class);
+
+    Event::forget('eloquent.deleted: '.LeadCustomFieldDefinition::class);
+
+    expect(LeadCustomFieldDefinition::whereKey($secondDefinition->id)->exists())->toBeTrue();
 });
