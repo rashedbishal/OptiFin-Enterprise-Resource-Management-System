@@ -4,6 +4,7 @@ use App\Enums\LeadDuplicateLinkStatus;
 use App\Models\Lead;
 use App\Models\LeadDuplicateLink;
 use App\Services\LeadDuplicateDetectionService;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\DB;
 
 test('a normalized email match across channels is flagged as a possible duplicate', function () {
@@ -258,4 +259,15 @@ test('detectFor() filters candidates by email_normalized/phone_normalized instea
     // predicate at all — only existence checks — so its absence here is
     // itself part of the proof the full-scan shape is gone.
     expect($candidateQuery)->not->toContain('"email" is not null');
+});
+
+test('leads:detect-duplicates is scheduled as a daily backfill sweep', function () {
+    $events = app(Schedule::class)->events();
+
+    $scheduled = collect($events)->first(
+        fn ($event): bool => str_contains($event->command ?? '', 'leads:detect-duplicates')
+    );
+
+    expect($scheduled)->not->toBeNull();
+    expect($scheduled->expression)->toBe('0 0 * * *');
 });
