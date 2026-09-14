@@ -236,11 +236,11 @@ class CreateLeadFromImport
         }
 
         $emailMatch = $normalizedEmail !== null
-            ? Lead::where('tenant_id', $tenant->id)->whereNull('merged_into_lead_id')->where('email', $normalizedEmail)->first(['id'])
+            ? Lead::where('tenant_id', $tenant->id)->whereNull('merged_into_lead_id')->where('email_normalized', $normalizedEmail)->first(['id'])
             : null;
 
         $phoneMatch = $normalizedPhone !== null
-            ? Lead::where('tenant_id', $tenant->id)->whereNull('merged_into_lead_id')->where('phone', $normalizedPhone)->first(['id'])
+            ? Lead::where('tenant_id', $tenant->id)->whereNull('merged_into_lead_id')->where('phone_normalized', $normalizedPhone)->first(['id'])
             : null;
 
         if ($emailMatch !== null && $phoneMatch !== null && $emailMatch->id !== $phoneMatch->id) {

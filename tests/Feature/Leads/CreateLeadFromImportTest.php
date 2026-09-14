@@ -99,6 +99,36 @@ test('an existing Lead duplicate by phone is skipped and recorded', function () 
     expect($row->duplicate_of_lead_id)->toBe($existing->id);
 });
 
+test('an existing Lead with a differently-cased email is matched by a differently-cased CSV row', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin, 'source' => $source, 'import' => $import] = setUpLeadImport();
+    $existing = Lead::factory()->create(['tenant_id' => $tenant->id, 'email' => 'Dup@Example.COM', 'name' => 'Original Name']);
+
+    app(CreateLeadFromImport::class)->handle($import, $tenant, $source, $clientAdmin, 1, ['name' => 'Impostor', 'email' => 'dup@example.com']);
+
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(1);
+    expect($existing->fresh()->name)->toBe('Original Name');
+
+    $row = LeadImportRow::where('lead_import_id', $import->id)->where('row_number', 1)->firstOrFail();
+    expect($row->status)->toBe(LeadImportRowStatus::Duplicate);
+    expect($row->duplicate_of_lead_id)->toBe($existing->id);
+    expect($import->fresh()->duplicate_count)->toBe(1);
+});
+
+test('an existing Lead with a differently-formatted phone is matched by a normalizing CSV row', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin, 'source' => $source, 'import' => $import] = setUpLeadImport();
+    $existing = Lead::factory()->create(['tenant_id' => $tenant->id, 'phone' => '(555) 123-4567', 'name' => 'Original Name']);
+
+    app(CreateLeadFromImport::class)->handle($import, $tenant, $source, $clientAdmin, 1, ['name' => 'Impostor', 'phone' => '555-123-4567']);
+
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(1);
+    expect($existing->fresh()->name)->toBe('Original Name');
+
+    $row = LeadImportRow::where('lead_import_id', $import->id)->where('row_number', 1)->firstOrFail();
+    expect($row->status)->toBe(LeadImportRowStatus::Duplicate);
+    expect($row->duplicate_of_lead_id)->toBe($existing->id);
+    expect($import->fresh()->duplicate_count)->toBe(1);
+});
+
 test('name-only matching a lead with a different email/phone is NOT a duplicate', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin, 'source' => $source, 'import' => $import] = setUpLeadImport();
     Lead::factory()->create(['tenant_id' => $tenant->id, 'name' => 'John Smith', 'email' => 'john.original@example.com']);
