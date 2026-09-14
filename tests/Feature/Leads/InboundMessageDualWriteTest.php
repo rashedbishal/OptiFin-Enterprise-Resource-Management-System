@@ -8,6 +8,7 @@ use App\Models\Conversation;
 use App\Models\Lead;
 use App\Models\LeadSource;
 use App\Models\Message;
+use App\Services\LeadMergeService;
 
 test('a facebook messenger message creates a conversation and a normalized inbound message alongside the legacy source_data write', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
@@ -112,6 +113,154 @@ test('a whatsapp message creates a conversation and normalized message keyed by 
     $message = Message::first();
     expect($message->body)->toBe('Hello WA');
     expect($message->external_message_id)->toBe('wamid.ABC');
+});
+
+/**
+ * Continuity fix regression coverage: after a merge, LeadMergeService
+ * already reparents the existing Conversation onto the survivor (verified
+ * in LeadMergeTest.php) — but before this fix, the webhook's own
+ * source_data/phone-based "existing lead" lookup could no longer find the
+ * survivor (source_data is deliberately never merged — see
+ * LeadMergeService::MERGEABLE_FIELDS), so a follow-up message on the same
+ * thread spawned a brand-new, spurious Lead instead of continuing onto the
+ * survivor the Conversation already correctly points to.
+ */
+test('a messenger message after a lead merge continues onto the survivor instead of spawning a new lead', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::FacebookMessenger,
+        'config' => ['page_id' => '123', 'verify_token' => 'secret-token'],
+    ]);
+
+    // A distractor tenant with a source of the same type and a conversation
+    // using the same external_thread_id value, to prove tenant isolation.
+    ['tenant' => $otherTenant] = tenantWithLeadManagement();
+    $otherSource = LeadSource::factory()->create(['tenant_id' => $otherTenant->id, 'type' => LeadSourceType::FacebookMessenger]);
+    $otherLead = Lead::factory()->create(['tenant_id' => $otherTenant->id]);
+    Conversation::factory()->create([
+        'tenant_id' => $otherTenant->id,
+        'lead_id' => $otherLead->id,
+        'lead_source_id' => $otherSource->id,
+        'channel' => MessageChannel::Messenger,
+        'external_thread_id' => 'psid-1',
+    ]);
+
+    $loser = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'source_data' => ['facebook_user_id' => 'psid-1']]);
+    $survivor = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $conversation = Conversation::factory()->create([
+        'tenant_id' => $tenant->id,
+        'lead_id' => $loser->id,
+        'lead_source_id' => $source->id,
+        'channel' => MessageChannel::Messenger,
+        'external_thread_id' => 'psid-1',
+    ]);
+
+    app(LeadMergeService::class)->merge($survivor, $loser, $clientAdmin, []);
+    expect($conversation->fresh()->lead_id)->toBe($survivor->id);
+
+    $leadCountBefore = Lead::where('tenant_id', $tenant->id)->count();
+
+    $this->postJson(route('api.webhook.facebook', $tenant->tenant_code), [
+        'entry' => [['messaging' => [[
+            'sender' => ['id' => 'psid-1'],
+            'message' => ['text' => 'Second message after merge'],
+        ]]]],
+    ])->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe($leadCountBefore);
+    expect(Conversation::where('tenant_id', $tenant->id)->where('external_thread_id', 'psid-1')->count())->toBe(1);
+
+    $conversation->refresh();
+    expect($conversation->lead_id)->toBe($survivor->id);
+
+    $newMessage = Message::where('conversation_id', $conversation->id)->latest('created_at')->first();
+    expect($newMessage->lead_id)->toBe($conversation->lead_id);
+    expect($newMessage->body)->toBe('Second message after merge');
+
+    expect(Conversation::where('tenant_id', $otherTenant->id)->count())->toBe(1);
+    expect(Lead::where('tenant_id', $otherTenant->id)->count())->toBe(1);
+});
+
+test('an instagram dm after a lead merge continues onto the survivor instead of spawning a new lead', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Instagram,
+        'config' => ['auth_mode' => 'facebook', 'instagram_account_id' => '999', 'verify_token' => 'secret-token'],
+    ]);
+
+    $loser = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'source_data' => ['instagram_user_id' => 'igsid-1']]);
+    $survivor = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $conversation = Conversation::factory()->create([
+        'tenant_id' => $tenant->id,
+        'lead_id' => $loser->id,
+        'lead_source_id' => $source->id,
+        'channel' => MessageChannel::Instagram,
+        'external_thread_id' => 'igsid-1',
+    ]);
+
+    app(LeadMergeService::class)->merge($survivor, $loser, $clientAdmin, []);
+    expect($conversation->fresh()->lead_id)->toBe($survivor->id);
+
+    $leadCountBefore = Lead::where('tenant_id', $tenant->id)->count();
+
+    $this->postJson(route('api.webhook.instagram', $tenant->tenant_code), [
+        'entry' => [['messaging' => [[
+            'sender' => ['id' => 'igsid-1'],
+            'message' => ['text' => 'Second DM after merge'],
+        ]]]],
+    ])->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe($leadCountBefore);
+    expect(Conversation::where('tenant_id', $tenant->id)->where('external_thread_id', 'igsid-1')->count())->toBe(1);
+
+    $conversation->refresh();
+    expect($conversation->lead_id)->toBe($survivor->id);
+
+    $newMessage = Message::where('conversation_id', $conversation->id)->latest('created_at')->first();
+    expect($newMessage->lead_id)->toBe($conversation->lead_id);
+    expect($newMessage->body)->toBe('Second DM after merge');
+});
+
+test('a whatsapp message after a lead merge continues onto the survivor instead of spawning a new lead', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => ['phone_number_id' => '111', 'verify_token' => 'secret-token'],
+    ]);
+
+    $loser = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'phone' => '15551234567']);
+    $survivor = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $conversation = Conversation::factory()->create([
+        'tenant_id' => $tenant->id,
+        'lead_id' => $loser->id,
+        'lead_source_id' => $source->id,
+        'channel' => MessageChannel::Whatsapp,
+        'external_thread_id' => '15551234567',
+    ]);
+
+    app(LeadMergeService::class)->merge($survivor, $loser, $clientAdmin, []);
+    expect($conversation->fresh()->lead_id)->toBe($survivor->id);
+
+    $leadCountBefore = Lead::where('tenant_id', $tenant->id)->count();
+
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), [
+        'entry' => [['changes' => [['value' => [
+            'messages' => [['from' => '15551234567', 'id' => 'wamid.DEF', 'type' => 'text', 'text' => ['body' => 'Second WA message after merge']]],
+        ]]]]],
+    ])->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe($leadCountBefore);
+    expect(Conversation::where('tenant_id', $tenant->id)->where('external_thread_id', '15551234567')->count())->toBe(1);
+
+    $conversation->refresh();
+    expect($conversation->lead_id)->toBe($survivor->id);
+
+    $newMessage = Message::where('conversation_id', $conversation->id)->latest('created_at')->first();
+    expect($newMessage->lead_id)->toBe($conversation->lead_id);
+    expect($newMessage->body)->toBe('Second WA message after merge');
 });
 
 test('Lead::messageTimeline merges legacy source_data entries with normalized message rows in chronological order', function () {

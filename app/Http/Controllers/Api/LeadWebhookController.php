@@ -18,6 +18,7 @@ use App\Events\LeadUpdated;
 use App\Http\Controllers\Controller;
 use App\Jobs\DownloadLeadAttachment;
 use App\Jobs\ReconcileOutboundMessageStatus;
+use App\Models\Conversation;
 use App\Models\Lead;
 use App\Models\LeadSource;
 use App\Models\Tenant;
@@ -94,11 +95,12 @@ class LeadWebhookController extends Controller
                     $sentAt = $this->messagingTimestamp($messaging);
 
                     $this->withDedupeLock($source->id, $senderId, function () use ($source, $senderId, $messageText, $messaging, $attachments, $sentAt): void {
-                        $existingLead = Lead::query()
-                            ->where('source_id', $source->id)
-                            ->where('source_data->facebook_user_id', $senderId)
-                            ->whereNull('merged_into_lead_id')
-                            ->first();
+                        $existingLead = $this->existingLeadForConversation($source, MessageChannel::Messenger, $senderId)
+                            ?? Lead::query()
+                                ->where('source_id', $source->id)
+                                ->where('source_data->facebook_user_id', $senderId)
+                                ->whereNull('merged_into_lead_id')
+                                ->first();
 
                         if ($existingLead instanceof Lead) {
                             $this->appendFacebookMessage($existingLead, $messageText, $messaging, $attachments, $senderId, $source, $sentAt);
@@ -181,11 +183,12 @@ class LeadWebhookController extends Controller
                     $sentAt = $this->messagingTimestamp($messaging);
 
                     $this->withDedupeLock($source->id, $senderId, function () use ($source, $senderId, $messageText, $messaging, $attachments, $sentAt): void {
-                        $existingLead = Lead::query()
-                            ->where('source_id', $source->id)
-                            ->where('source_data->instagram_user_id', $senderId)
-                            ->whereNull('merged_into_lead_id')
-                            ->first();
+                        $existingLead = $this->existingLeadForConversation($source, MessageChannel::Instagram, $senderId)
+                            ?? Lead::query()
+                                ->where('source_id', $source->id)
+                                ->where('source_data->instagram_user_id', $senderId)
+                                ->whereNull('merged_into_lead_id')
+                                ->first();
 
                         if ($existingLead instanceof Lead) {
                             $this->appendInstagramMessage($existingLead, $messageText, $messaging, $attachments, $senderId, $source, $sentAt);
@@ -277,9 +280,10 @@ class LeadWebhookController extends Controller
                             : now();
 
                         $handleMessage = function () use ($source, $senderPhone, $senderId, $messageText, $message, $attachment, $sentAt, $change): void {
-                            $existingLead = is_string($senderPhone) && $senderPhone !== ''
-                                ? Lead::query()->where('source_id', $source->id)->where('phone', $senderPhone)->whereNull('merged_into_lead_id')->first()
-                                : null;
+                            $existingLead = $this->existingLeadForConversation($source, MessageChannel::Whatsapp, $senderPhone)
+                                ?? (is_string($senderPhone) && $senderPhone !== ''
+                                    ? Lead::query()->where('source_id', $source->id)->where('phone', $senderPhone)->whereNull('merged_into_lead_id')->first()
+                                    : null);
 
                             if ($existingLead instanceof Lead) {
                                 $this->appendWhatsappMessage($existingLead, $messageText, $message, $attachment, $senderId, $source, $sentAt);
@@ -619,6 +623,34 @@ class LeadWebhookController extends Controller
     private function withDedupeLock(string $sourceId, string $identifier, callable $callback, int $lockSeconds = 10, int $blockSeconds = 5): mixed
     {
         return Cache::lock("lead-webhook-dedupe:{$sourceId}:{$identifier}", $lockSeconds)->block($blockSeconds, $callback);
+    }
+
+    /**
+     * Feature #15 continuity fix: an existing Conversation's lead_id is the
+     * authoritative owner of an ongoing external thread (see
+     * LeadMergeService's own Conversation/Message reparenting) — checked
+     * BEFORE the channel's own source_data/phone-based "existing lead"
+     * lookup, so a lead merge doesn't cause the next inbound message on the
+     * same thread to spawn a spurious new Lead once the original lookup key
+     * (which is deliberately never merged onto a survivor — see
+     * LeadMergeService::MERGEABLE_FIELDS) stops matching. Mirrors
+     * recordInboundMessage()'s own empty/'unknown' thread-id guard exactly,
+     * so this never looks up a Conversation for a thread id that method
+     * would itself refuse to write.
+     */
+    private function existingLeadForConversation(LeadSource $source, MessageChannel $channel, ?string $externalThreadId): ?Lead
+    {
+        if (! is_string($externalThreadId) || $externalThreadId === '' || $externalThreadId === 'unknown') {
+            return null;
+        }
+
+        return Conversation::query()
+            ->where('tenant_id', $source->tenant_id)
+            ->where('lead_source_id', $source->id)
+            ->where('channel', $channel)
+            ->where('external_thread_id', $externalThreadId)
+            ->first()
+            ?->lead;
     }
 
     /**

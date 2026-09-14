@@ -4,8 +4,10 @@ use App\Enums\LeadSourceType;
 use App\Enums\TenantStatus;
 use App\Events\LeadReceived;
 use App\Events\LeadUpdated;
+use App\Models\Conversation;
 use App\Models\Lead;
 use App\Models\LeadSource;
+use App\Models\Message;
 use App\Services\LeadMergeService;
 use Illuminate\Support\Facades\Event;
 
@@ -73,7 +75,7 @@ test('a facebook message creates a lead, and a follow-up message is appended ins
     expect($lead->message)->toContain('Hello there')->toContain('Second message');
 });
 
-test('a facebook message from a sender whose lead has since been merged away creates a new lead instead of reviving the loser', function () {
+test('a facebook message from a sender whose lead has since been merged continues onto the survivor instead of creating a new lead', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
     LeadSource::factory()->create([
@@ -102,17 +104,27 @@ test('a facebook message from a sender whose lead has since been merged away cre
     $leadAMessageAfterMerge = $leadA->fresh()->message;
     $leadASourceDataAfterMerge = $leadA->fresh()->source_data;
 
+    // The merge already reparented the Conversation this sender's first
+    // message created onto the survivor (see LeadMergeTest.php).
+    $conversation = Conversation::where('tenant_id', $tenant->id)->where('external_thread_id', 'psid-1')->firstOrFail();
+    expect($conversation->lead_id)->toBe($leadB->id);
+
     $payload['entry'][0]['messaging'][0]['message']['text'] = 'Second message';
     $this->postJson(route('api.webhook.facebook', $tenant->tenant_code), $payload)->assertOk();
 
-    // A brand-new third lead was created — the merged-away loser was never
-    // resolved as "the existing lead" for this sender.
-    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(3);
+    // No spurious new lead — the second message continues onto the
+    // survivor via the already-reparented Conversation.
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(2);
 
-    $leadC = Lead::where('tenant_id', $tenant->id)
-        ->whereNotIn('id', [$leadA->id, $leadB->id])
-        ->firstOrFail();
-    expect($leadC->message)->toBe('Second message');
+    // No duplicate Conversation was created for the same thread.
+    expect(Conversation::where('tenant_id', $tenant->id)->where('external_thread_id', 'psid-1')->count())->toBe(1);
+
+    $conversation->refresh();
+    expect($conversation->lead_id)->toBe($leadB->id);
+
+    $newMessage = Message::where('conversation_id', $conversation->id)->latest('created_at')->firstOrFail();
+    expect($newMessage->lead_id)->toBe($conversation->lead_id);
+    expect($newMessage->body)->toBe('Second message');
 
     // The loser's own legacy fields are completely untouched by the
     // follow-up — it was never passed to appendFacebookMessage().
@@ -214,7 +226,7 @@ test('an instagram dm creates a lead, and a follow-up message is appended instea
     expect($lead->message)->toContain('Hi, is this available?')->toContain('Still interested');
 });
 
-test('an instagram dm from a sender whose lead has since been merged away creates a new lead instead of reviving the loser', function () {
+test('an instagram dm from a sender whose lead has since been merged continues onto the survivor instead of creating a new lead', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
     LeadSource::factory()->create([
@@ -243,17 +255,27 @@ test('an instagram dm from a sender whose lead has since been merged away create
     $leadAMessageAfterMerge = $leadA->fresh()->message;
     $leadASourceDataAfterMerge = $leadA->fresh()->source_data;
 
+    // The merge already reparented the Conversation this sender's first
+    // message created onto the survivor (see LeadMergeTest.php).
+    $conversation = Conversation::where('tenant_id', $tenant->id)->where('external_thread_id', 'igsid-1')->firstOrFail();
+    expect($conversation->lead_id)->toBe($leadB->id);
+
     $payload['entry'][0]['messaging'][0]['message']['text'] = 'Still interested';
     $this->postJson(route('api.webhook.instagram', $tenant->tenant_code), $payload)->assertOk();
 
-    // A brand-new third lead was created — the merged-away loser was never
-    // resolved as "the existing lead" for this sender.
-    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(3);
+    // No spurious new lead — the second message continues onto the
+    // survivor via the already-reparented Conversation.
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(2);
 
-    $leadC = Lead::where('tenant_id', $tenant->id)
-        ->whereNotIn('id', [$leadA->id, $leadB->id])
-        ->firstOrFail();
-    expect($leadC->message)->toBe('Still interested');
+    // No duplicate Conversation was created for the same thread.
+    expect(Conversation::where('tenant_id', $tenant->id)->where('external_thread_id', 'igsid-1')->count())->toBe(1);
+
+    $conversation->refresh();
+    expect($conversation->lead_id)->toBe($leadB->id);
+
+    $newMessage = Message::where('conversation_id', $conversation->id)->latest('created_at')->firstOrFail();
+    expect($newMessage->lead_id)->toBe($conversation->lead_id);
+    expect($newMessage->body)->toBe('Still interested');
 
     // The loser's own legacy fields are completely untouched by the
     // follow-up — it was never passed to appendInstagramMessage().
@@ -394,7 +416,7 @@ test('a whatsapp message creates a lead, and a follow-up message from the same n
     expect($lead->message)->toContain('Hi, interested in your product')->toContain('What is the price?');
 });
 
-test('a whatsapp message from a phone number whose lead has since been merged away creates a new lead instead of reviving the loser', function () {
+test('a whatsapp message from a phone number whose lead has since been merged continues onto the survivor instead of creating a new lead', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
     LeadSource::factory()->create([
@@ -427,17 +449,27 @@ test('a whatsapp message from a phone number whose lead has since been merged aw
     $leadAMessageAfterMerge = $leadA->fresh()->message;
     $leadASourceDataAfterMerge = $leadA->fresh()->source_data;
 
+    // The merge already reparented the Conversation this sender's first
+    // message created onto the survivor (see LeadMergeTest.php).
+    $conversation = Conversation::where('tenant_id', $tenant->id)->where('external_thread_id', '8801700000000')->firstOrFail();
+    expect($conversation->lead_id)->toBe($leadB->id);
+
     $payload['entry'][0]['changes'][0]['value']['messages'][0]['text']['body'] = 'What is the price?';
     $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), $payload)->assertOk();
 
-    // A brand-new third lead was created — the merged-away loser was never
-    // resolved as "the existing lead" for this phone number.
-    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(3);
+    // No spurious new lead — the second message continues onto the
+    // survivor via the already-reparented Conversation.
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(2);
 
-    $leadC = Lead::where('tenant_id', $tenant->id)
-        ->whereNotIn('id', [$leadA->id, $leadB->id])
-        ->firstOrFail();
-    expect($leadC->message)->toBe('What is the price?');
+    // No duplicate Conversation was created for the same thread.
+    expect(Conversation::where('tenant_id', $tenant->id)->where('external_thread_id', '8801700000000')->count())->toBe(1);
+
+    $conversation->refresh();
+    expect($conversation->lead_id)->toBe($leadB->id);
+
+    $newMessage = Message::where('conversation_id', $conversation->id)->latest('created_at')->firstOrFail();
+    expect($newMessage->lead_id)->toBe($conversation->lead_id);
+    expect($newMessage->body)->toBe('What is the price?');
 
     // The loser's own legacy fields are completely untouched by the
     // follow-up — it was never passed to appendWhatsappMessage().
