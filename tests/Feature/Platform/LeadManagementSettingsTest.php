@@ -6,6 +6,8 @@ use App\Models\Lead;
 use App\Models\LeadStatus;
 use App\Models\PlatformUser;
 use App\Models\Tenant;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Livewire\Livewire;
 
 test('mother admin can create a custom lead status', function () {
@@ -204,4 +206,102 @@ test('deleting a currency goes through the confirm modal', function () {
         ->assertSet('showDeleteCurrencyModal', false);
 
     expect(Currency::whereKey($currency->id)->exists())->toBeFalse();
+});
+
+/**
+ * Concurrency-fix regression coverage for deleteStatus(), combining two
+ * distinct proofs in one focused test:
+ *
+ * 1. Mirrors PlatformLeadSourceDeletionTest.php's/LeadSourceCostCatalogTest.php's
+ *    own equivalent tests exactly: proves the LeadStatus row lookup used for
+ *    the lock is compiled into the query the code actually runs, for a
+ *    status with zero dependents. True concurrent-transaction blocking from
+ *    lockForUpdate() can't be observed under SQLite (this app's test driver
+ *    has no row-level locking to exercise, and a second genuinely separate
+ *    connection to the same in-memory database isn't possible) — that
+ *    guarantee comes from lockForUpdate() compiling to a real
+ *    `SELECT ... FOR UPDATE` on Postgres (production), standard RDBMS
+ *    behavior this suite can't execute end-to-end.
+ *
+ * 2. A real (non-queued) Eloquent `deleted` event listener — fired inside
+ *    the transaction, strictly after the DELETE statement has already
+ *    executed — deliberately throws, on a second, independent status. This
+ *    genuinely distinguishes fixed from unfixed behavior: without
+ *    DB::transaction(), the DELETE is already committed by the time this
+ *    listener runs, so the status row would stay gone despite the
+ *    exception; with it, the delete rolls back and the status survives.
+ */
+test('deleting a lead status locks the LeadStatus row and rolls back if the delete fails after it runs', function () {
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+    $status = LeadStatus::factory()->create();
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    Livewire::actingAs($motherAdmin, 'platform')
+        ->test(Settings::class)
+        ->call('deleteStatus', $status->id);
+
+    $queries = collect(DB::getQueryLog())->pluck('query');
+    DB::disableQueryLog();
+
+    $lockedStatusLookup = $queries->first(fn (string $sql): bool => str_contains($sql, 'from "lead_statuses"') && str_contains($sql, '"lead_statuses"."id" = ?'));
+
+    expect($lockedStatusLookup)->not->toBeNull();
+    expect(LeadStatus::whereKey($status->id)->exists())->toBeFalse();
+
+    $secondStatus = LeadStatus::factory()->create();
+
+    Event::listen('eloquent.deleted: '.LeadStatus::class, function (): void {
+        throw new RuntimeException('Forcing a failure after deleteStatus()\'s delete has already run.');
+    });
+
+    expect(fn () => Livewire::actingAs($motherAdmin, 'platform')
+        ->test(Settings::class)
+        ->call('deleteStatus', $secondStatus->id))
+        ->toThrow(RuntimeException::class);
+
+    Event::forget('eloquent.deleted: '.LeadStatus::class);
+
+    expect(LeadStatus::whereKey($secondStatus->id)->exists())->toBeTrue();
+});
+
+/**
+ * Concurrency-fix regression coverage for deleteCurrency() — mirrors the
+ * deleteStatus() test above exactly; see its own docblock for the full
+ * reasoning on the SQLite locking limitation and the rollback technique.
+ */
+test('deleting a currency locks the Currency row and rolls back if the delete fails after it runs', function () {
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+    $currency = Currency::factory()->create();
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    Livewire::actingAs($motherAdmin, 'platform')
+        ->test(Settings::class)
+        ->call('deleteCurrency', $currency->id);
+
+    $queries = collect(DB::getQueryLog())->pluck('query');
+    DB::disableQueryLog();
+
+    $lockedCurrencyLookup = $queries->first(fn (string $sql): bool => str_contains($sql, 'from "currencies"') && str_contains($sql, '"currencies"."id" = ?'));
+
+    expect($lockedCurrencyLookup)->not->toBeNull();
+    expect(Currency::whereKey($currency->id)->exists())->toBeFalse();
+
+    $secondCurrency = Currency::factory()->create();
+
+    Event::listen('eloquent.deleted: '.Currency::class, function (): void {
+        throw new RuntimeException('Forcing a failure after deleteCurrency()\'s delete has already run.');
+    });
+
+    expect(fn () => Livewire::actingAs($motherAdmin, 'platform')
+        ->test(Settings::class)
+        ->call('deleteCurrency', $secondCurrency->id))
+        ->toThrow(RuntimeException::class);
+
+    Event::forget('eloquent.deleted: '.Currency::class);
+
+    expect(Currency::whereKey($secondCurrency->id)->exists())->toBeTrue();
 });

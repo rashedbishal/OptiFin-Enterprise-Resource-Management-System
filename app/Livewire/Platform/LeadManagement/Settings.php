@@ -200,21 +200,31 @@ class Settings extends Component
         $this->confirmingDeleteStatusId = null;
     }
 
+    /**
+     * Locks the LeadStatus row before checking dependents so a concurrent
+     * lead creation/status change (from any tenant — this is a shared,
+     * platform-wide catalog) cannot create a new dependency between the
+     * check and the delete — same "lock the stable parent row" idiom
+     * already used by Platform\Clients\LeadSources::delete() (C1) and
+     * Tenant\Leads\Index::deleteSource().
+     */
     public function deleteStatus(string $id): void
     {
-        $status = LeadStatus::findOrFail($id);
+        DB::transaction(function () use ($id): void {
+            $status = LeadStatus::lockForUpdate()->findOrFail($id);
 
-        Gate::forUser(Auth::guard('platform')->user())->authorize('delete', $status);
+            Gate::forUser(Auth::guard('platform')->user())->authorize('delete', $status);
 
-        if (Lead::where('status_id', $status->id)->exists() || DB::table('tenant_lead_statuses')->where('lead_status_id', $status->id)->exists()) {
-            Flux::toast(variant: 'danger', text: __('This status is in use by a client and cannot be deleted.'));
+            if (Lead::where('status_id', $status->id)->exists() || DB::table('tenant_lead_statuses')->where('lead_status_id', $status->id)->exists()) {
+                Flux::toast(variant: 'danger', text: __('This status is in use by a client and cannot be deleted.'));
 
-            return;
-        }
+                return;
+            }
 
-        $status->delete();
+            $status->delete();
 
-        Flux::toast(variant: 'success', text: __('Lead status deleted.'));
+            Flux::toast(variant: 'success', text: __('Lead status deleted.'));
+        });
     }
 
     #[Computed]
@@ -314,36 +324,46 @@ class Settings extends Component
         $this->confirmingDeleteCurrencyId = null;
     }
 
+    /**
+     * Locks the Currency row before checking dependents so a concurrent
+     * lead/deal/cost write (from any tenant — this is a shared,
+     * platform-wide catalog) cannot create a new dependency between the
+     * check and the delete — same "lock the stable parent row" idiom
+     * already used by Platform\Clients\LeadSources::delete() (C1) and
+     * Tenant\Leads\Index::deleteSource().
+     */
     public function deleteCurrency(string $id): void
     {
-        $currency = Currency::findOrFail($id);
+        DB::transaction(function () use ($id): void {
+            $currency = Currency::lockForUpdate()->findOrFail($id);
 
-        Gate::forUser(Auth::guard('platform')->user())->authorize('delete', $currency);
+            Gate::forUser(Auth::guard('platform')->user())->authorize('delete', $currency);
 
-        $inUseByLead = Lead::where('estimated_budget_currency_id', $currency->id)
-            ->orWhere('deal_value_currency_id', $currency->id)
-            ->exists();
+            $inUseByLead = Lead::where('estimated_budget_currency_id', $currency->id)
+                ->orWhere('deal_value_currency_id', $currency->id)
+                ->exists();
 
-        // Feature #4 (Deal / Opportunity): a currency referenced only by a
-        // Deal (never by any Lead) must block deletion too, or that Deal's
-        // currency_id would be silently null-on-deleted out from under it.
-        $inUseByDeal = Deal::where('currency_id', $currency->id)->exists();
+            // Feature #4 (Deal / Opportunity): a currency referenced only by a
+            // Deal (never by any Lead) must block deletion too, or that Deal's
+            // currency_id would be silently null-on-deleted out from under it.
+            $inUseByDeal = Deal::where('currency_id', $currency->id)->exists();
 
-        // Feature #12: a currency referenced only by a recorded source cost
-        // entry (never by any Lead or Deal) must block deletion too, or
-        // that entry's currency_id would be silently null-on-deleted out
-        // from under it — same reasoning Feature #4 already established
-        // for $inUseByDeal above.
-        $inUseByLeadSourceCost = LeadSourceCost::where('currency_id', $currency->id)->exists();
+            // Feature #12: a currency referenced only by a recorded source cost
+            // entry (never by any Lead or Deal) must block deletion too, or
+            // that entry's currency_id would be silently null-on-deleted out
+            // from under it — same reasoning Feature #4 already established
+            // for $inUseByDeal above.
+            $inUseByLeadSourceCost = LeadSourceCost::where('currency_id', $currency->id)->exists();
 
-        if ($inUseByLead || $inUseByDeal || $inUseByLeadSourceCost || DB::table('tenant_currencies')->where('currency_id', $currency->id)->exists()) {
-            Flux::toast(variant: 'danger', text: __('This currency is in use by a client and cannot be deleted.'));
+            if ($inUseByLead || $inUseByDeal || $inUseByLeadSourceCost || DB::table('tenant_currencies')->where('currency_id', $currency->id)->exists()) {
+                Flux::toast(variant: 'danger', text: __('This currency is in use by a client and cannot be deleted.'));
 
-            return;
-        }
+                return;
+            }
 
-        $currency->delete();
+            $currency->delete();
 
-        Flux::toast(variant: 'success', text: __('Currency deleted.'));
+            Flux::toast(variant: 'success', text: __('Currency deleted.'));
+        });
     }
 }
