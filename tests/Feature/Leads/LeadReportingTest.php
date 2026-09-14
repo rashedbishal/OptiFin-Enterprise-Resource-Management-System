@@ -176,6 +176,60 @@ test('an inactive source\'s historical leads remain included and are badged inac
     Livewire::actingAs($clientAdmin)->test(Index::class)->assertSeeHtml('Inactive');
 });
 
+test('a LeadSource deleted between sourceBreakdown()\'s two reads never produces a broken row', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    $vanishing = LeadSource::factory()->create(['tenant_id' => $tenant->id]);
+    Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $vanishing->id, 'created_at' => now()]);
+
+    $survivor = LeadSource::factory()->create(['tenant_id' => $tenant->id]);
+    Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $survivor->id, 'created_at' => now()]);
+
+    $intercepted = false;
+
+    // Matches EITHER of sourceBreakdown()'s two reads and fires on
+    // whichever one actually executes first, deleting the source
+    // immediately afterward — genuinely interleaving a concurrent write
+    // between the two reads regardless of which order the method issues
+    // them in. DB::listen() only fires after a query has already completed
+    // and returned its rows, so a hook tied to a specific one of the two
+    // queries (rather than "whichever runs first") would only correctly
+    // interleave for one particular ordering and silently fail to reproduce
+    // anything for the other — this pattern-matches both so the same test
+    // stays meaningful regardless of which one sourceBreakdown() runs first.
+    DB::listen(function ($query) use ($vanishing, &$intercepted): void {
+        $isRelevantQuery = str_contains($query->sql, 'from "lead_sources"')
+            || str_contains($query->sql, 'group by "source_id"');
+
+        if ($intercepted || ! $isRelevantQuery) {
+            return;
+        }
+
+        $intercepted = true;
+
+        // Simulates an external concurrent actor deleting the LeadSource
+        // between sourceBreakdown()'s two logical reads — a raw, unguarded
+        // delete, deliberately bypassing every application-level deletion
+        // guard (C1/tenant deleteSource()'s own checks), since this test
+        // exists to prove sourceBreakdown() itself stays safe regardless of
+        // how or why a concurrent deletion happens. The real database's
+        // cascadeOnDelete() on leads.source_id applies to a raw
+        // query-builder delete exactly as it would to any other caller.
+        DB::table('lead_sources')->where('id', $vanishing->id)->delete();
+    });
+
+    $breakdown = app(LeadReportingService::class)->sourceBreakdown(
+        $tenant, now()->subDays(29)->startOfDay(), now()->addDay()->startOfDay()
+    );
+
+    expect($intercepted)->toBeTrue();
+    expect(LeadSource::find($vanishing->id))->toBeNull();
+
+    expect($breakdown)->toHaveCount(1);
+    expect($breakdown->first()['source']->id)->toBe($survivor->id);
+    expect($breakdown->first()['count'])->toBe(1);
+});
+
 test('unassigned leads form their own bucket', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
 

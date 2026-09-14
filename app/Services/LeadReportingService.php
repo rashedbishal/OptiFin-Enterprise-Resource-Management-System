@@ -107,16 +107,26 @@ class LeadReportingService
      */
     public function sourceBreakdown(Tenant $tenant, CarbonInterface $from, CarbonInterface $to): Collection
     {
+        // Sources fetched BEFORE the count query, not filtered by
+        // whereIn('id', $counts->keys()) afterward: leads.source_id is
+        // cascadeOnDelete(), so a LeadSource deleted between these two reads
+        // takes its leads down with it — it simply can't appear in the
+        // count query below once gone. Fetching sources second (the
+        // original order) left a window where a source_id captured by the
+        // count query could vanish from a *subsequent* LeadSource lookup,
+        // producing a null 'source' entry. This order is race-free by
+        // construction, not by transaction/isolation-level tricks (Postgres
+        // READ COMMITTED re-snapshots every statement, so wrapping both
+        // reads in one transaction would not have helped).
+        $sources = LeadSource::query()
+            ->where('tenant_id', $tenant->id)
+            ->get()
+            ->keyBy('id');
+
         $counts = $this->baseQuery($tenant, $from, $to)
             ->selectRaw('source_id, count(*) as count')
             ->groupBy('source_id')
             ->pluck('count', 'source_id');
-
-        $sources = LeadSource::query()
-            ->where('tenant_id', $tenant->id)
-            ->whereIn('id', $counts->keys())
-            ->get()
-            ->keyBy('id');
 
         return $counts->map(fn (int $count, string $sourceId): array => [
             'source' => $sources[$sourceId],
