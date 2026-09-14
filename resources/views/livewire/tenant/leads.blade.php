@@ -739,7 +739,7 @@
                                 <flux:table.cell>
                                     <div class="flex justify-end gap-2">
                                         <flux:button size="sm" :href="route('tenant-leads.show', $lead)" wire:navigate>{{ __('View') }}</flux:button>
-                                        @if ($this->canDeleteLeads && in_array($lead->source->type->value, ['email', 'website_form', 'manual']))
+                                        @if ($this->canDeleteLeads && $lead->source->type->isIndividuallyDeletable())
                                             <flux:button size="sm" variant="danger" wire:click="confirmDeleteLead('{{ $lead->id }}')">
                                                 {{ __('Delete') }}
                                             </flux:button>

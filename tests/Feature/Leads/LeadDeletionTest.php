@@ -207,3 +207,72 @@ test('deleting a lead from the detail page also requires the correct password', 
 
     expect(Lead::find($lead->id))->toBeNull();
 });
+
+test('a client admin cannot delete a protected-source lead from the index', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Whatsapp]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class)->call('completeInitialLoad')
+        ->call('delete', $lead->id)
+        ->assertDispatched('toast-show');
+
+    expect(Lead::find($lead->id))->not->toBeNull();
+});
+
+test('a client admin cannot delete a protected-source lead from the detail page', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Whatsapp]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
+        ->call('delete')
+        ->assertDispatched('toast-show');
+
+    expect(Lead::find($lead->id))->not->toBeNull();
+});
+
+test('a client admin can still delete a manual lead', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class)->call('completeInitialLoad')
+        ->call('delete', $lead->id)
+        ->assertDispatched('toast-show');
+
+    expect(Lead::find($lead->id))->toBeNull();
+});
+
+test('the detail page does not show a delete button for a protected-source lead', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Whatsapp]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
+        ->assertDontSeeHtml('wire:click="confirmDelete"');
+});
+
+test('the detail page shows a delete button for an allowed-source lead', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
+        ->assertSeeHtml('wire:click="confirmDelete"');
+});
+
+test('the lead panel does not show a delete button for a protected-source lead', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Whatsapp]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
+        ->assertDontSeeHtml('wire:click="confirmDelete"');
+});

@@ -923,6 +923,12 @@ class Index extends Component
             return;
         }
 
+        if (! $lead->source->type->isIndividuallyDeletable()) {
+            Flux::toast(variant: 'danger', text: __('This lead\'s source type cannot be deleted individually.'));
+
+            return;
+        }
+
         $lead->delete();
 
         if ($this->selectedLeadId === $id) {
@@ -1801,7 +1807,7 @@ class Index extends Component
         $wasShowingSelectedLead = false;
 
         foreach ($this->eligibleSelectedLeads() as $lead) {
-            $deletableSourceType = in_array($lead->source->type->value, ['email', 'website_form', 'manual'], true);
+            $deletableSourceType = $lead->source->type->isIndividuallyDeletable();
 
             if (! $deletableSourceType || Gate::denies('delete', $lead)) {
                 continue;

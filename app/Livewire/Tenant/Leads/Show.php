@@ -2657,6 +2657,12 @@ class Show extends Component
             return;
         }
 
+        if (! $this->lead->source->type->isIndividuallyDeletable()) {
+            Flux::toast(variant: 'danger', text: __('This lead\'s source type cannot be deleted individually.'));
+
+            return;
+        }
+
         $leadId = $this->lead->id;
 
         $this->lead->delete();

@@ -68,7 +68,7 @@
 
         <div class="flex flex-col items-end gap-2">
             <div class="flex gap-1.5 sm:gap-2">
-                @if ($canDelete)
+                @if ($canDelete && $lead->source->type->isIndividuallyDeletable())
                     <flux:button type="button" size="sm" variant="danger" icon="trash" wire:click="confirmDelete">
                         {{ __('Delete') }}
                     </flux:button>

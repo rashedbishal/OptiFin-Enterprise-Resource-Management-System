@@ -71,6 +71,24 @@ enum LeadSourceType: string
     }
 
     /**
+     * Whether a Lead attributed to this source type may be deleted
+     * individually (single-lead delete, from the table row or the lead
+     * detail/panel view) — only self-created/tenant-owned data (a manually
+     * keyed-in lead, a submitted website form, an IMAP-polled email) is
+     * eligible. Every Platform-Admin-configured external/automated channel
+     * (Messenger, Facebook Lead Ads, WhatsApp, Instagram, LinkedIn) and CSV
+     * Import stay individually undeletable — the same rule already enforced
+     * by Index::performBulkDelete() for bulk deletion.
+     */
+    public function isIndividuallyDeletable(): bool
+    {
+        return match ($this) {
+            self::Email, self::WebsiteForm, self::Manual => true,
+            default => false,
+        };
+    }
+
+    /**
      * Get the configurable fields for this lead source type's `config` payload.
      *
      * @return array<int, array{key: string, label: string, type: string, sensitive: bool, options?: array<string, string>, depends_on?: string}>
