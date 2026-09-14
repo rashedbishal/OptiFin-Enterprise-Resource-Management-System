@@ -141,11 +141,16 @@ class LeadSources extends Component
 
     /**
      * How many of this tenant's leads currently sit in each status —
-     * powers both the removal guard below and the picker's lead-count
-     * badges, so an admin can see why a status is locked before they even
-     * try to remove it. Reordering never touches leads.status_id at all,
-     * so only removal needs to consult this; adding and reordering are
-     * always safe regardless of these counts.
+     * powers the picker's lead-count badges, so an admin can see why a
+     * status is locked before they even try to remove it. Reordering never
+     * touches leads.status_id at all, so only removal needs a count at all;
+     * adding and reordering are always safe regardless of these counts.
+     *
+     * Deliberately NOT consulted by toggleLeadStatus() itself any more (see
+     * that method's own docblock) — its removal guard re-queries this same
+     * count fresh, inside its own locked transaction, rather than reusing
+     * this Livewire-memoized read, since this computed property's cached
+     * value could predate the coordination lock being acquired.
      *
      * @return array<string, int> status id => lead count
      */
@@ -169,22 +174,79 @@ class LeadSources extends Component
      * (see Lead::nextPipelineStatus() and Index::tenantLeadStatuses(),
      * which both only ever consider the tenant's *current* pipeline) —
      * reassign those leads to another status first.
+     *
+     * TOCTOU fix: removal is a readers/writer pair against every writer
+     * that assigns a Lead's status_id, coordinated via a Tenant-row lock —
+     * the same "lock the stable parent row" idiom as every other TOCTOU fix
+     * in this module. This method's removal branch takes the exclusive FOR
+     * UPDATE lock (App\Models\Tenant::lockForUpdate(), reusing the exact
+     * row Lead::nextIdentifier() already locks), while every status-
+     * assigning writer (Index::moveLead(), Show::updateStatus(),
+     * Index::applyBulkStatusChange(), CreateManualLead,
+     * CreateLeadFromImport, ProcessEmailLeadSource,
+     * LeadWebhookController::createLead()) takes a shared FOR SHARE lock on
+     * the same row before resolving its target/default status. PostgreSQL
+     * blocks this FOR UPDATE until every outstanding FOR SHARE commits, and
+     * blocks any new FOR SHARE once this one is granted — so whichever side
+     * commits first is authoritative, and the loser safely re-resolves
+     * against the post-commit pipeline (this removal re-observes a
+     * just-committed lead and refuses via the existing "in use" toast
+     * below; a writer that loses the race re-reads the pipeline after this
+     * commits and finds the status gone, falling through to its own
+     * existing "status not found" handling). The addition branch below is
+     * deliberately kept entirely outside any lock/transaction — adding a
+     * status can never strand a lead, since no lead can already reference a
+     * not-yet-added status, so it would only add pointless contention
+     * against the removal branch's rare exclusive lock for no safety
+     * benefit.
      */
     public function toggleLeadStatus(string $statusId): void
     {
         Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
 
         $currentIds = $this->tenant->leadStatuses()->orderByPivot('position')->pluck('lead_statuses.id')->all();
-        $alreadySelected = in_array($statusId, $currentIds, true);
 
-        if ($alreadySelected) {
+        if (! in_array($statusId, $currentIds, true)) {
+            $newIds = [...$currentIds, $statusId];
+
+            $syncData = [];
+
+            foreach ($newIds as $index => $id) {
+                $syncData[$id] = ['position' => $index + 1];
+            }
+
+            $this->tenant->leadStatuses()->sync($syncData);
+
+            unset($this->selectedLeadStatuses);
+
+            return;
+        }
+
+        DB::transaction(function () use ($statusId): void {
+            $tenant = Tenant::whereKey($this->tenant->id)->lockForUpdate()->firstOrFail();
+
+            // Re-read fresh under the lock — deliberately not the
+            // unlocked $currentIds captured above, which could predate
+            // lock acquisition (see this method's own docblock).
+            $currentIds = $tenant->leadStatuses()->orderByPivot('position')->pluck('lead_statuses.id')->all();
+
+            if (! in_array($statusId, $currentIds, true)) {
+                // Already removed by a concurrent call (e.g. a stale
+                // double-click) since the unlocked check above — nothing
+                // left to do.
+                return;
+            }
+
             if (count($currentIds) <= 1) {
                 Flux::toast(variant: 'danger', text: __('A client must have at least one pipeline status.'));
 
                 return;
             }
 
-            $leadCount = $this->leadCountsByStatus[$statusId] ?? 0;
+            // Freshly queried under the lock above, deliberately not
+            // $this->leadCountsByStatus (see that computed property's
+            // own docblock) — that read could predate lock acquisition.
+            $leadCount = (int) $tenant->leads()->where('status_id', $statusId)->count();
 
             if ($leadCount > 0) {
                 Flux::toast(variant: 'danger', text: trans_choice(
@@ -195,19 +257,17 @@ class LeadSources extends Component
 
                 return;
             }
-        }
 
-        $newIds = $alreadySelected
-            ? array_values(array_diff($currentIds, [$statusId]))
-            : [...$currentIds, $statusId];
+            $newIds = array_values(array_diff($currentIds, [$statusId]));
 
-        $syncData = [];
+            $syncData = [];
 
-        foreach ($newIds as $index => $id) {
-            $syncData[$id] = ['position' => $index + 1];
-        }
+            foreach ($newIds as $index => $id) {
+                $syncData[$id] = ['position' => $index + 1];
+            }
 
-        $this->tenant->leadStatuses()->sync($syncData);
+            $tenant->leadStatuses()->sync($syncData);
+        });
 
         unset($this->selectedLeadStatuses);
     }

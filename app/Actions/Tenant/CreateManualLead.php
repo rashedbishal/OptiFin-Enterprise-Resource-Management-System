@@ -32,6 +32,24 @@ class CreateManualLead
     public function handle(Tenant $tenant, array $data, TenantUser $createdBy, ?TenantUser $assignee): Lead
     {
         return DB::transaction(function () use ($tenant, $data, $createdBy, $assignee) {
+            // TOCTOU fix: coordination lock — see
+            // Platform\Clients\LeadSources::toggleLeadStatus()'s own docblock
+            // for the full readers/writer protocol. $data['status_id'] was
+            // already validated against the tenant's live pipeline by the
+            // caller (see LeadValidationRules::statusId()), but that
+            // validation happens before this transaction opens — re-checked
+            // here, after the lock, so a pipeline-status removal racing this
+            // exact window can never strand the lead being created. Falls
+            // back to the pipeline's first stage (the same default every
+            // automated creation path already uses) rather than failing the
+            // whole submission outright, since this Action has no channel
+            // back to a form-field error.
+            $lockedTenant = Tenant::whereKey($tenant->id)->sharedLock()->firstOrFail();
+
+            $statusId = $lockedTenant->leadStatuses->contains('id', $data['status_id'])
+                ? $data['status_id']
+                : $lockedTenant->initialLeadStatus()?->id;
+
             $source = LeadSource::query()->firstOrCreate(
                 ['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual],
                 ['name' => 'Custom', 'is_active' => true],
@@ -50,7 +68,7 @@ class CreateManualLead
                 'email' => $data['email'],
                 'phone' => $data['phone'],
                 'message' => $data['message'],
-                'status_id' => $data['status_id'],
+                'status_id' => $statusId,
                 'priority' => $data['priority'],
                 'estimated_budget' => $data['estimated_budget'],
                 'estimated_budget_currency_id' => $data['estimated_budget_currency_id'] ?? null,
