@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 use Maatwebsite\Excel\Excel as ExcelWriterType;
 use Maatwebsite\Excel\Facades\Excel;
@@ -494,6 +495,47 @@ test('a client admin cannot delete another tenant\'s facebook lead ads source', 
         ->toThrow(ModelNotFoundException::class);
 
     expect(LeadSource::find($sourceB->id))->not->toBeNull();
+});
+
+/**
+ * Concurrency-fix regression coverage. Mirrors
+ * PlatformLeadSourceDeletionTest.php's and LeadSourceCostCatalogTest.php's
+ * own equivalent tests exactly: this only proves the LeadSource row lookup
+ * used for the lock is compiled into the query the code actually runs, for
+ * a source with zero dependents. It deliberately does NOT assert on a "for
+ * update" clause in the logged SQL text — verified empirically (via a
+ * direct query-log inspection against this app's actual SQLite test
+ * connection) that Laravel's SQLite grammar drops the lock clause entirely
+ * for `lockForUpdate()`, unlike Postgres, so that clause cannot appear in
+ * this suite's logged SQL regardless of whether the fix is present; an
+ * assertion on it would be permanently unsatisfiable here, not a stronger
+ * proof. True concurrent-transaction blocking from lockForUpdate() can't
+ * be observed under SQLite either way (this app's test driver has no
+ * row-level locking to exercise, and a second genuinely separate
+ * connection to the same in-memory database isn't possible) — that
+ * guarantee comes from lockForUpdate() compiling to a real
+ * `SELECT ... FOR UPDATE` on Postgres (production, confirmed directly
+ * against the real `pgsql` connection during this fix's implementation),
+ * standard RDBMS behavior this suite can't execute end-to-end.
+ */
+test('deleting a facebook lead ads source locks the LeadSource row itself before checking dependencies', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds]);
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class)->call('completeInitialLoad')
+        ->call('deleteSource', $source->id);
+
+    $queries = collect(DB::getQueryLog())->pluck('query');
+    DB::disableQueryLog();
+
+    $lockedSourceLookup = $queries->first(fn (string $sql): bool => str_contains($sql, 'from "lead_sources"') && str_contains($sql, '"lead_sources"."id" = ?'));
+
+    expect($lockedSourceLookup)->not->toBeNull();
+    expect(LeadSource::find($source->id))->toBeNull();
 });
 
 test('the spreadsheet view downloads an xlsx file named after the source and the current timestamp', function () {

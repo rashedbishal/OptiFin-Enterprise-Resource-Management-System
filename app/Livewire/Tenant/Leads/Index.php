@@ -960,39 +960,49 @@ class Index extends Component
      * is only rendered when `leads_count` is 0, but the count is re-checked
      * here too since it's a data-state guard, not something the policy
      * itself encodes.
+     *
+     * Locks the LeadSource row before checking dependents so a concurrent
+     * Facebook Lead Ads webhook (the only way a Lead or Cost can attach to
+     * this source type) cannot create a new dependency between the check
+     * and the delete — same "lock the stable parent row" idiom already
+     * used by Platform\Clients\LeadSources::delete() (C1) and
+     * LeadSourceCosts\Index::save().
      */
     public function deleteSource(string $id): void
     {
-        $source = LeadSource::where('tenant_id', Auth::user()->tenant_id)
-            ->where('type', LeadSourceType::FacebookLeadAds)
-            ->findOrFail($id);
+        DB::transaction(function () use ($id): void {
+            $source = LeadSource::where('tenant_id', Auth::user()->tenant_id)
+                ->where('type', LeadSourceType::FacebookLeadAds)
+                ->lockForUpdate()
+                ->findOrFail($id);
 
-        if (Gate::denies('delete', $source)) {
-            Flux::toast(variant: 'danger', text: __("You don't have permission to delete this lead source."));
+            if (Gate::denies('delete', $source)) {
+                Flux::toast(variant: 'danger', text: __("You don't have permission to delete this lead source."));
 
-            return;
-        }
+                return;
+            }
 
-        if ($source->leads()->exists()) {
-            Flux::toast(variant: 'danger', text: __('This source has leads and can no longer be deleted.'));
+            if ($source->leads()->exists()) {
+                Flux::toast(variant: 'danger', text: __('This source has leads and can no longer be deleted.'));
 
-            return;
-        }
+                return;
+            }
 
-        // Feature #12: a source with recorded cost history must not be
-        // deletable out from under it, even when it has zero leads (e.g. a
-        // month of ad spend that produced no leads) — same "don't silently
-        // lose recorded financial data" principle as Currency's in-use
-        // block below.
-        if ($source->costs()->exists()) {
-            Flux::toast(variant: 'danger', text: __('This source has recorded cost history and can no longer be deleted.'));
+            // Feature #12: a source with recorded cost history must not be
+            // deletable out from under it, even when it has zero leads (e.g. a
+            // month of ad spend that produced no leads) — same "don't silently
+            // lose recorded financial data" principle as Currency's in-use
+            // block below.
+            if ($source->costs()->exists()) {
+                Flux::toast(variant: 'danger', text: __('This source has recorded cost history and can no longer be deleted.'));
 
-            return;
-        }
+                return;
+            }
 
-        $source->delete();
+            $source->delete();
 
-        Flux::toast(variant: 'success', text: __('Lead source deleted.'));
+            Flux::toast(variant: 'success', text: __('Lead source deleted.'));
+        });
     }
 
     /**
