@@ -7,11 +7,13 @@ use App\Events\LeadReceived;
 use App\Events\LeadUpdated;
 use App\Models\Lead;
 use App\Models\LeadSource;
+use App\Models\Tenant;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -176,16 +178,29 @@ class ProcessEmailLeadSource implements ShouldQueue
             return;
         }
 
-        $lead = Lead::create([
-            'tenant_id' => $this->source->tenant_id,
-            'source_id' => $this->source->id,
-            'name' => $name,
-            'email' => $email,
-            'message' => trim($body['message']),
-            'html_body' => $body['html'],
-            'source_data' => ['subject' => $header->subject ?? null],
-            'status_id' => $this->source->tenant->initialLeadStatus()?->id,
-        ]);
+        // TOCTOU fix: coordination lock — see
+        // Platform\Clients\LeadSources::toggleLeadStatus()'s own docblock
+        // for the full readers/writer protocol. Wrapped in its own
+        // transaction (this job has none otherwise) so the lock and the
+        // Lead::create() below commit atomically — a pipeline-status
+        // removal racing this exact window can never strand the lead being
+        // created. $tenant->initialLeadStatus() is read from this
+        // freshly-locked instance, never $this->source->tenant (which may
+        // carry a stale cached relation).
+        $lead = DB::transaction(function () use ($name, $email, $body, $header): Lead {
+            $tenant = Tenant::whereKey($this->source->tenant_id)->sharedLock()->firstOrFail();
+
+            return Lead::create([
+                'tenant_id' => $this->source->tenant_id,
+                'source_id' => $this->source->id,
+                'name' => $name,
+                'email' => $email,
+                'message' => trim($body['message']),
+                'html_body' => $body['html'],
+                'source_data' => ['subject' => $header->subject ?? null],
+                'status_id' => $tenant->initialLeadStatus()?->id,
+            ]);
+        });
 
         event(new LeadReceived($lead));
 

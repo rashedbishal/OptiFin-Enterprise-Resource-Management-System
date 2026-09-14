@@ -40,6 +40,7 @@ use App\Models\LeadTag;
 use App\Models\Message;
 use App\Models\Task;
 use App\Models\TaskStatusLog;
+use App\Models\Tenant;
 use App\Models\TenantUser;
 use App\Notifications\FollowUpCancelledNotification;
 use App\Notifications\FollowUpUpdatedNotification;
@@ -1230,6 +1231,18 @@ class Show extends Component
         return $events;
     }
 
+    /**
+     * TOCTOU fix: status resolution now happens inside the transaction
+     * below, immediately after taking a shared (FOR SHARE) coordination
+     * lock on the tenant row — see
+     * Platform\Clients\LeadSources::toggleLeadStatus()'s own docblock for
+     * the full readers/writer protocol this participates in. The whole
+     * method's body (not just the status branch) is wrapped so a
+     * priority-only submission never needs a second, conditional locking
+     * path. A lost race against a concurrent pipeline-status removal falls
+     * through to the pre-existing "status not found" no-op below, exactly
+     * as an already-invalid $this->status always has.
+     */
     public function updateStatus(): void
     {
         if (Gate::denies('update', $this->lead)) {
@@ -1242,60 +1255,63 @@ class Show extends Component
             'priority' => ['required', Rule::enum(LeadPriority::class)],
         ]);
 
-        // Scoped to this tenant's own configured pipeline, not the raw
-        // global lead_statuses catalog — $this->status is a plain public
-        // property (wire:model, no #[Locked]), so a tampered submission
-        // could otherwise name a status only ever added to a *different*
-        // tenant's pipeline. Same lookup/no-op-if-missing pattern as
-        // Index::moveLead().
-        $newStatus = $this->lead->tenant->leadStatuses->firstWhere('id', $this->status);
+        $updated = DB::transaction(function () use ($validated): bool {
+            $tenant = Tenant::whereKey($this->lead->tenant_id)->sharedLock()->firstOrFail();
 
-        if ($newStatus === null) {
-            return;
-        }
+            // Scoped to this tenant's own configured pipeline, not the raw
+            // global lead_statuses catalog — $this->status is a plain public
+            // property (wire:model, no #[Locked]), so a tampered submission
+            // could otherwise name a status only ever added to a *different*
+            // tenant's pipeline. Same lookup/no-op-if-missing pattern as
+            // Index::moveLead().
+            $newStatus = $tenant->leadStatuses->firstWhere('id', $this->status);
 
-        $oldStatus = $this->lead->status;
-        $statusChanged = $oldStatus->id !== $newStatus->id;
-
-        // Bundled with Status in one form (status-form.blade.php /
-        // status-assignment-form.blade.php), but previously only ever
-        // saved — and only ever logged — as a side effect of *also*
-        // changing Status: a priority-only submission hit the old
-        // "$oldStatus->id === $newStatus->id, return" guard before ever
-        // reaching $this->lead->update() below, silently discarding it.
-        // Building $updates unconditionally and deciding what happened from
-        // Eloquent's own dirty-tracking (same pattern applyDetailChanges()
-        // already uses) fixes both: the save and the activity log.
-        $updates = ['priority' => LeadPriority::from($validated['priority'])];
-
-        if ($statusChanged) {
-            $updates['status_id'] = $newStatus->id;
-
-            if ($oldStatus->id === $this->lead->tenant->initialLeadStatus()?->id) {
-                $updates['first_contacted_at'] = $this->lead->first_contacted_at ?? now();
+            if ($newStatus === null) {
+                return false;
             }
 
-            if ($newStatus->is_closed) {
-                $updates['closed_at'] = now();
+            $oldStatus = $this->lead->status;
+            $statusChanged = $oldStatus->id !== $newStatus->id;
+
+            // Bundled with Status in one form (status-form.blade.php /
+            // status-assignment-form.blade.php), but previously only ever
+            // saved — and only ever logged — as a side effect of *also*
+            // changing Status: a priority-only submission hit the old
+            // "$oldStatus->id === $newStatus->id, return" guard before ever
+            // reaching $this->lead->update() below, silently discarding it.
+            // Building $updates unconditionally and deciding what happened from
+            // Eloquent's own dirty-tracking (same pattern applyDetailChanges()
+            // already uses) fixes both: the save and the activity log.
+            $updates = ['priority' => LeadPriority::from($validated['priority'])];
+
+            if ($statusChanged) {
+                $updates['status_id'] = $newStatus->id;
+
+                if ($oldStatus->id === $tenant->initialLeadStatus()?->id) {
+                    $updates['first_contacted_at'] = $this->lead->first_contacted_at ?? now();
+                }
+
+                if ($newStatus->is_closed) {
+                    $updates['closed_at'] = now();
+                }
             }
-        }
 
-        $this->lead->fill($updates);
-        $changed = array_keys($this->lead->getDirty());
+            $this->lead->fill($updates);
+            $changed = array_keys($this->lead->getDirty());
 
-        if ($changed === []) {
-            return;
-        }
+            if ($changed === []) {
+                return false;
+            }
 
-        $priorityChanged = in_array('priority', $changed, true);
+            $priorityChanged = in_array('priority', $changed, true);
 
-        // M2 fix: the lead save, its LeadStatusLog/LeadDetailUpdateLog audit
-        // rows, the scoring recompute, and both events are wrapped in one
-        // transaction so a failure partway through can't leave the lead's
-        // status/priority changed with no matching audit trail — mirroring
-        // the identical DB::transaction() boundary Index::applyBulkStatusChange()
-        // already uses for this exact same status-change side-effect chain.
-        DB::transaction(function () use ($statusChanged, $priorityChanged, $oldStatus, $newStatus): void {
+            // M2 fix: the lead save, its LeadStatusLog/LeadDetailUpdateLog audit
+            // rows, the scoring recompute, and both events are wrapped in the
+            // same transaction as the coordination lock above so a failure
+            // partway through can't leave the lead's status/priority changed
+            // with no matching audit trail — mirroring the identical
+            // DB::transaction() boundary Index::applyBulkStatusChange()
+            // already uses for this exact same status-change side-effect chain.
             $this->lead->save();
 
             if ($statusChanged) {
@@ -1331,7 +1347,13 @@ class Show extends Component
             }
 
             event(new LeadUpdated($this->lead));
+
+            return true;
         });
+
+        if (! $updated) {
+            return;
+        }
 
         unset($this->activity);
 

@@ -108,45 +108,61 @@ class CreateLeadFromImport
             return;
         }
 
-        $status = $this->resolveStatus($tenant, $row['status'] ?? null);
-        $priority = $this->resolvePriority($row['priority'] ?? null);
-        $assignee = $this->resolveAssignee($tenant, $row['assignee_email'] ?? null);
-        $tags = $this->resolveTags($tenant, $row['tags'] ?? null);
-        $budgetCurrencyId = $this->resolveCurrencyId($tenant, $row['budget'] ?? null, $row['budget_currency'] ?? null);
-        $dealValueCurrencyId = $this->resolveCurrencyId($tenant, $row['deal_value'] ?? null, $row['deal_value_currency'] ?? null);
-        $resolutionErrors = [];
+        // TOCTOU fix: $status is now resolved inside the transaction below,
+        // immediately after taking a shared (FOR SHARE) coordination lock on
+        // the tenant row — see
+        // Platform\Clients\LeadSources::toggleLeadStatus()'s own docblock
+        // for the full readers/writer protocol. The other 5 resolutions
+        // don't need the lock, but stay alongside $status inside the same
+        // transaction so every resolution failure is still reported
+        // together in one combined Failed row, exactly as before — only
+        // moved from before the transaction to its first statements.
+        DB::transaction(function () use ($import, $tenant, $source, $importedBy, $rowNumber, $row, $name, $email, $phone, $normalizedEmail, $normalizedPhone): void {
+            // $status is resolved from this freshly-locked $lockedTenant,
+            // never the outer $tenant parameter — $tenant may be reused
+            // across every row in the same chunk (see App\Imports\LeadCsvImport)
+            // and could carry a stale cached leadStatuses relation from an
+            // earlier row, which would defeat the lock's purpose here.
+            $lockedTenant = Tenant::whereKey($tenant->id)->sharedLock()->firstOrFail();
 
-        if ($status === false) {
-            $resolutionErrors[] = __('Unknown status: :value', ['value' => (string) ($row['status'] ?? '')]);
-        }
+            $status = $this->resolveStatus($lockedTenant, $row['status'] ?? null);
+            $priority = $this->resolvePriority($row['priority'] ?? null);
+            $assignee = $this->resolveAssignee($tenant, $row['assignee_email'] ?? null);
+            $tags = $this->resolveTags($tenant, $row['tags'] ?? null);
+            $budgetCurrencyId = $this->resolveCurrencyId($tenant, $row['budget'] ?? null, $row['budget_currency'] ?? null);
+            $dealValueCurrencyId = $this->resolveCurrencyId($tenant, $row['deal_value'] ?? null, $row['deal_value_currency'] ?? null);
+            $resolutionErrors = [];
 
-        if ($priority === false) {
-            $resolutionErrors[] = __('Unknown priority: :value', ['value' => (string) ($row['priority'] ?? '')]);
-        }
+            if ($status === false) {
+                $resolutionErrors[] = __('Unknown status: :value', ['value' => (string) ($row['status'] ?? '')]);
+            }
 
-        if ($assignee === false) {
-            $resolutionErrors[] = __('Unknown assignee_email: :value', ['value' => (string) ($row['assignee_email'] ?? '')]);
-        }
+            if ($priority === false) {
+                $resolutionErrors[] = __('Unknown priority: :value', ['value' => (string) ($row['priority'] ?? '')]);
+            }
 
-        if ($tags === false) {
-            $resolutionErrors[] = __('One or more tags do not exist for this tenant.');
-        }
+            if ($assignee === false) {
+                $resolutionErrors[] = __('Unknown assignee_email: :value', ['value' => (string) ($row['assignee_email'] ?? '')]);
+            }
 
-        if ($budgetCurrencyId === false) {
-            $resolutionErrors[] = __('Unknown budget_currency: :value', ['value' => (string) ($row['budget_currency'] ?? '')]);
-        }
+            if ($tags === false) {
+                $resolutionErrors[] = __('One or more tags do not exist for this tenant.');
+            }
 
-        if ($dealValueCurrencyId === false) {
-            $resolutionErrors[] = __('Unknown deal_value_currency: :value', ['value' => (string) ($row['deal_value_currency'] ?? '')]);
-        }
+            if ($budgetCurrencyId === false) {
+                $resolutionErrors[] = __('Unknown budget_currency: :value', ['value' => (string) ($row['budget_currency'] ?? '')]);
+            }
 
-        if ($resolutionErrors !== []) {
-            $this->recordRow($import, $rowNumber, LeadImportRowStatus::Failed, $row, $resolutionErrors, $normalizedEmail, $normalizedPhone);
+            if ($dealValueCurrencyId === false) {
+                $resolutionErrors[] = __('Unknown deal_value_currency: :value', ['value' => (string) ($row['deal_value_currency'] ?? '')]);
+            }
 
-            return;
-        }
+            if ($resolutionErrors !== []) {
+                $this->recordRow($import, $rowNumber, LeadImportRowStatus::Failed, $row, $resolutionErrors, $normalizedEmail, $normalizedPhone);
 
-        DB::transaction(function () use ($import, $tenant, $source, $importedBy, $rowNumber, $row, $name, $email, $phone, $normalizedEmail, $normalizedPhone, $status, $priority, $assignee, $tags, $budgetCurrencyId, $dealValueCurrencyId): void {
+                return;
+            }
+
             /** @var LeadStatus $status */
             /** @var LeadPriority $priority */
             /** @var array<int, LeadTag> $tags */

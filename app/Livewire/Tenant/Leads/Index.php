@@ -14,8 +14,10 @@ use App\Models\Lead;
 use App\Models\LeadCustomFieldDefinition;
 use App\Models\LeadDetailUpdateLog;
 use App\Models\LeadSource;
+use App\Models\LeadStatus;
 use App\Models\LeadStatusLog;
 use App\Models\LeadTag;
+use App\Models\Tenant;
 use App\Models\TenantUser;
 use App\Notifications\FollowUpUpdatedNotification;
 use App\Notifications\MeetingUpdatedNotification;
@@ -30,6 +32,7 @@ use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
@@ -38,6 +41,7 @@ use Livewire\Component;
 use Livewire\WithPagination;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 #[Title('Leads')]
 class Index extends Component
@@ -760,6 +764,16 @@ class Index extends Component
      * other connection until that transaction actually commits, so a
      * queued worker can never observe pre-commit data here — the same
      * reasoning already relied on by Show::updateStatus()'s own fix.
+     *
+     * TOCTOU fix: $newStatus is now resolved *inside* this transaction,
+     * immediately after taking a shared (FOR SHARE) coordination lock on
+     * the tenant row — see Platform\Clients\LeadSources::toggleLeadStatus()'s
+     * own docblock for the full readers/writer protocol. This closes the
+     * race where a Platform Admin removes the very pipeline status this
+     * move targets in the gap between resolving it and writing it; the
+     * loser of that race safely falls through to the pre-existing "status
+     * not found" no-op below, exactly as an already-invalid $status always
+     * has.
      */
     public function moveLead(string $leadId, string $status): void
     {
@@ -772,19 +786,21 @@ class Index extends Component
             return;
         }
 
-        $newStatus = $lead->tenant->leadStatuses->firstWhere('id', $status);
+        $newStatus = DB::transaction(function () use ($lead, $status): ?LeadStatus {
+            $tenant = Tenant::whereKey($lead->tenant_id)->sharedLock()->firstOrFail();
 
-        if ($newStatus === null) {
-            return;
-        }
+            $newStatus = $tenant->leadStatuses->firstWhere('id', $status);
 
-        $oldStatus = $lead->status;
+            if ($newStatus === null) {
+                return null;
+            }
 
-        if ($oldStatus->id === $newStatus->id) {
-            return;
-        }
+            $oldStatus = $lead->status;
 
-        DB::transaction(function () use ($lead, $oldStatus, $newStatus): void {
+            if ($oldStatus->id === $newStatus->id) {
+                return null;
+            }
+
             LeadStatusLog::create([
                 'lead_id' => $lead->id,
                 'changed_by' => Auth::id(),
@@ -794,7 +810,7 @@ class Index extends Component
 
             $updates = ['status_id' => $newStatus->id];
 
-            if ($oldStatus->id === $lead->tenant->initialLeadStatus()?->id) {
+            if ($oldStatus->id === $tenant->initialLeadStatus()?->id) {
                 $updates['first_contacted_at'] = $lead->first_contacted_at ?? now();
             }
 
@@ -806,7 +822,13 @@ class Index extends Component
 
             event(new LeadStatusChanged($lead, $oldStatus, $newStatus, Auth::user()));
             event(new LeadUpdated($lead));
+
+            return $newStatus;
         });
+
+        if ($newStatus === null) {
+            return;
+        }
 
         $this->refreshBoard();
 
@@ -1494,10 +1516,42 @@ class Index extends Component
     /**
      * Replicates Show::updateStatus()'s status-only side effects (status
      * log row, LeadStatusChanged event, scoring recompute, LeadUpdated
-     * event, first_contacted_at/closed_at bookkeeping) per Lead, in its own
-     * DB::transaction() so one failure can't roll back everything else
-     * already applied. Deliberately NOT calling into Show — that component
-     * is untouched, this is a parallel implementation of the same rules.
+     * event, first_contacted_at/closed_at bookkeeping) per Lead.
+     * Deliberately NOT calling into Show — that component is untouched,
+     * this is a parallel implementation of the same rules.
+     *
+     * TOCTOU fix: the whole bounded batch (MAX_BULK_SELECTION = 100 leads)
+     * now runs inside ONE outer DB::transaction(), starting with a single
+     * shared (FOR SHARE) coordination lock on the tenant row, with
+     * $newStatus resolved immediately after — see
+     * Platform\Clients\LeadSources::toggleLeadStatus()'s own docblock for
+     * the full readers/writer protocol. Re-acquiring the lock per lead
+     * would be pointless (the same tenant row, same lock, for the same
+     * logical operation) and would still leave a window between releasing
+     * it for one lead and re-acquiring it for the next — so the lock is
+     * acquired once and held for the entire outer transaction.
+     *
+     * Per-lead failure isolation preserved via a nested DB::transaction()
+     * per lead: Laravel issues a real PostgreSQL SAVEPOINT for a
+     * transaction() call made while already inside one (confirmed against
+     * this app's own Postgres connection: transaction level goes 1→2 on
+     * entry, back to 1 on exit, whether committed or rolled back), so a
+     * failure inside one lead's nested transaction rolls back only that
+     * lead's own writes, never the outer transaction or any
+     * already-committed-to-savepoint lead before it — restoring this
+     * method's original "one failure can't roll back everything else
+     * already applied" guarantee even though every lead now shares one
+     * outer transaction/lock. The original per-lead DB::transaction() call
+     * had no surrounding try/catch, so an uncaught exception aborted the
+     * whole loop (only earlier, already-separately-committed leads stayed
+     * applied); wrapping the nested call in try/catch here additionally
+     * lets the loop continue to the remaining leads after an isolated
+     * failure — a strict improvement over the original, not merely a
+     * restoration of it. A caught failure is logged (mirroring
+     * NurtureInactiveLeads::processLead()'s identical per-item isolation
+     * pattern) and treated as not-succeeded for the existing
+     * reportBulkResult() partial-success toast, the same way an
+     * authorization skip already is.
      */
     public function applyBulkStatusChange(LeadScoringService $scoringService): void
     {
@@ -1505,53 +1559,68 @@ class Index extends Component
             'bulkStatusId' => ['required', Rule::exists('tenant_lead_statuses', 'lead_status_id')->where('tenant_id', Auth::user()->tenant_id)],
         ]);
 
-        $tenant = Auth::user()->tenant;
-        $newStatus = $tenant->leadStatuses->firstWhere('id', $validated['bulkStatusId']);
-
-        if ($newStatus === null) {
-            return;
-        }
-
+        $tenantId = Auth::user()->tenant_id;
         $attempted = min(count($this->selectedLeadIds), self::MAX_BULK_SELECTION);
-        $succeeded = 0;
 
-        foreach ($this->eligibleSelectedLeads() as $lead) {
-            if (Gate::denies('update', $lead)) {
-                continue;
+        $succeeded = DB::transaction(function () use ($validated, $tenantId, $scoringService): ?int {
+            $tenant = Tenant::whereKey($tenantId)->sharedLock()->firstOrFail();
+
+            $newStatus = $tenant->leadStatuses->firstWhere('id', $validated['bulkStatusId']);
+
+            if ($newStatus === null) {
+                return null;
             }
 
-            DB::transaction(function () use ($lead, $newStatus, $scoringService): void {
-                $oldStatus = $lead->status;
+            $succeeded = 0;
 
-                if ($oldStatus->id === $newStatus->id) {
-                    return;
+            foreach ($this->eligibleSelectedLeads() as $lead) {
+                if (Gate::denies('update', $lead)) {
+                    continue;
                 }
 
-                $updates = ['status_id' => $newStatus->id];
+                try {
+                    DB::transaction(function () use ($lead, $newStatus, $scoringService): void {
+                        $oldStatus = $lead->status;
 
-                if ($oldStatus->id === $lead->tenant->initialLeadStatus()?->id) {
-                    $updates['first_contacted_at'] = $lead->first_contacted_at ?? now();
+                        if ($oldStatus->id !== $newStatus->id) {
+                            $updates = ['status_id' => $newStatus->id];
+
+                            if ($oldStatus->id === $lead->tenant->initialLeadStatus()?->id) {
+                                $updates['first_contacted_at'] = $lead->first_contacted_at ?? now();
+                            }
+
+                            if ($newStatus->is_closed) {
+                                $updates['closed_at'] = now();
+                            }
+
+                            $lead->update($updates);
+
+                            LeadStatusLog::create([
+                                'lead_id' => $lead->id,
+                                'changed_by' => Auth::id(),
+                                'old_status_id' => $oldStatus->id,
+                                'new_status_id' => $newStatus->id,
+                            ]);
+
+                            event(new LeadStatusChanged($lead, $oldStatus, $newStatus, Auth::user()));
+                            $scoringService->computeFor($lead, 'status_priority_changed');
+                            event(new LeadUpdated($lead));
+                        }
+                    });
+                } catch (Throwable $e) {
+                    Log::error("Bulk status change failed for lead [{$lead->id}]: {$e->getMessage()}");
+
+                    continue;
                 }
 
-                if ($newStatus->is_closed) {
-                    $updates['closed_at'] = now();
-                }
+                $succeeded++;
+            }
 
-                $lead->update($updates);
+            return $succeeded;
+        });
 
-                LeadStatusLog::create([
-                    'lead_id' => $lead->id,
-                    'changed_by' => Auth::id(),
-                    'old_status_id' => $oldStatus->id,
-                    'new_status_id' => $newStatus->id,
-                ]);
-
-                event(new LeadStatusChanged($lead, $oldStatus, $newStatus, Auth::user()));
-                $scoringService->computeFor($lead, 'status_priority_changed');
-                event(new LeadUpdated($lead));
-            });
-
-            $succeeded++;
+        if ($succeeded === null) {
+            return;
         }
 
         $this->showBulkStatusModal = false;

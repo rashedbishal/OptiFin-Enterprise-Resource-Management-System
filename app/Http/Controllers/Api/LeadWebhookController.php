@@ -30,6 +30,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -586,11 +587,24 @@ class LeadWebhookController extends Controller
      */
     private function createLead(LeadSource $source, array $attributes, array $customFieldValues = []): Lead
     {
-        $lead = Lead::create(array_merge([
-            'tenant_id' => $source->tenant_id,
-            'source_id' => $source->id,
-            'status_id' => $source->tenant->initialLeadStatus()?->id,
-        ], $attributes));
+        // TOCTOU fix: coordination lock — see
+        // Platform\Clients\LeadSources::toggleLeadStatus()'s own docblock
+        // for the full readers/writer protocol. Wrapped in its own
+        // transaction (no caller of createLead() wraps one already) so the
+        // lock and the Lead::create() below commit atomically — a
+        // pipeline-status removal racing this exact window can never
+        // strand the lead being created. initialLeadStatus() is read from
+        // this freshly-locked $tenant, never $source->tenant (which may
+        // carry a stale cached relation).
+        $lead = DB::transaction(function () use ($source, $attributes): Lead {
+            $tenant = Tenant::whereKey($source->tenant_id)->sharedLock()->firstOrFail();
+
+            return Lead::create(array_merge([
+                'tenant_id' => $source->tenant_id,
+                'source_id' => $source->id,
+                'status_id' => $tenant->initialLeadStatus()?->id,
+            ], $attributes));
+        });
 
         if ($customFieldValues !== []) {
             app(SaveLeadCustomFieldValues::class)->handle($lead, $source->tenant_id, $customFieldValues);
