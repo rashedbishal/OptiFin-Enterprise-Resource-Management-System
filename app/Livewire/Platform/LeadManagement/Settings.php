@@ -207,6 +207,12 @@ class Settings extends Component
      * check and the delete — same "lock the stable parent row" idiom
      * already used by Platform\Clients\LeadSources::delete() (C1) and
      * Tenant\Leads\Index::deleteSource().
+     *
+     * The lead_status_logs check runs first: unlike a current Lead or a
+     * tenant's pipeline selection, a historical log entry has no existing
+     * reassignment or cleanup path — a status referenced there is
+     * permanently, not just currently, blocked from deletion (mirroring
+     * why C1 checks Conversation history first for the same reason).
      */
     public function deleteStatus(string $id): void
     {
@@ -215,7 +221,12 @@ class Settings extends Component
 
             Gate::forUser(Auth::guard('platform')->user())->authorize('delete', $status);
 
-            if (Lead::where('status_id', $status->id)->exists() || DB::table('tenant_lead_statuses')->where('lead_status_id', $status->id)->exists()) {
+            $referencedByStatusLog = DB::table('lead_status_logs')
+                ->where('old_status_id', $status->id)
+                ->orWhere('new_status_id', $status->id)
+                ->exists();
+
+            if ($referencedByStatusLog || Lead::where('status_id', $status->id)->exists() || DB::table('tenant_lead_statuses')->where('lead_status_id', $status->id)->exists()) {
                 Flux::toast(variant: 'danger', text: __('This status is in use by a client and cannot be deleted.'));
 
                 return;

@@ -4,6 +4,7 @@ use App\Livewire\Platform\LeadManagement\Settings;
 use App\Models\Currency;
 use App\Models\Lead;
 use App\Models\LeadStatus;
+use App\Models\LeadStatusLog;
 use App\Models\PlatformUser;
 use App\Models\Tenant;
 use Illuminate\Support\Facades\DB;
@@ -110,6 +111,54 @@ test('deleting a status goes through the confirm modal', function () {
         ->assertSet('showDeleteStatusModal', false);
 
     expect(LeadStatus::whereKey($status->id)->exists())->toBeFalse();
+});
+
+/**
+ * Regression coverage for the LeadStatusLog dependent-check gap: a status
+ * with zero *current* leads and not selected in any tenant's pipeline —
+ * passing both pre-existing checks — can still be permanently referenced
+ * by historical lead_status_logs.old_status_id/new_status_id rows
+ * (restrictOnDelete()), from a lead that has since moved to a different
+ * status. Before the fix, this reached $status->delete() and the
+ * database's own FK constraint raised an uncaught QueryException; the
+ * new check detects it first and produces the same graceful "in use"
+ * toast every other dependent check already does.
+ */
+test('a status referenced only by historical status-change logs cannot be deleted', function () {
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+    $statusA = LeadStatus::factory()->create();
+    $statusB = LeadStatus::factory()->create();
+    $tenant = Tenant::factory()->create();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => $statusB->id]);
+
+    // TenantFactory attaches the entire LeadStatus catalog to every new
+    // tenant's pipeline (see its own docblock) — detach A explicitly so
+    // this test isolates the LeadStatusLog check from the pre-existing
+    // tenant_lead_statuses check.
+    $tenant->leadStatuses()->detach($statusA->id);
+
+    // The lead was moved into A, then out of A into B — the exact shape a
+    // real transition produces, leaving A referenced by both rows even
+    // though the lead's current status_id is B. changed_by is explicitly
+    // null (nullable, not relevant here) rather than left to the
+    // factory's default TenantUser::factory(), which would otherwise
+    // create its own stray Tenant — auto-attaching the full LeadStatus
+    // catalog (per TenantFactory) and reintroducing a tenant_lead_statuses
+    // row for A that this test deliberately isolates against below.
+    LeadStatusLog::factory()->create(['lead_id' => $lead->id, 'changed_by' => null, 'old_status_id' => null, 'new_status_id' => $statusA->id]);
+    LeadStatusLog::factory()->create(['lead_id' => $lead->id, 'changed_by' => null, 'old_status_id' => $statusA->id, 'new_status_id' => $statusB->id]);
+
+    // Both pre-existing checks would incorrectly pass: no current lead
+    // sits in A, and A isn't selected in this tenant's pipeline.
+    expect(Lead::where('status_id', $statusA->id)->exists())->toBeFalse();
+    expect(DB::table('tenant_lead_statuses')->where('lead_status_id', $statusA->id)->exists())->toBeFalse();
+
+    Livewire::actingAs($motherAdmin, 'platform')
+        ->test(Settings::class)
+        ->call('deleteStatus', $statusA->id)
+        ->assertDispatched('toast-show');
+
+    expect(LeadStatus::whereKey($statusA->id)->exists())->toBeTrue();
 });
 
 test('mother admin can create a custom currency', function () {
