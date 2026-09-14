@@ -245,16 +245,14 @@ class LeadWebhookController extends Controller
      */
     public function whatsapp(Request $request, string $tenant_code): JsonResponse
     {
-        // Pre-encoded to a flat string rather than passed as nested context
-        // arrays: Monolog's context normalizer aborts past 9 levels of
-        // nesting, and a real WhatsApp payload (entry[].changes[].value
-        // .messages[].text.body, plus the 'all'/'headers' wrapper keys) goes
-        // past that — the very fields we need to see get silently replaced
-        // with "Over 9 levels deep, aborting normalization".
-        Log::channel('whatsapp')->info('WA INCOMING '.json_encode([
-            'all' => $request->all(),
-            'headers' => $request->headers->all(),
-        ]));
+        // Privacy/retention fix (L1-shaped finding): a minimal, non-payload
+        // diagnostic summary — never the raw request body, headers, message
+        // text, or full phone number, none of which any code/test/runbook
+        // in this app actually depends on (see the finding's Impact
+        // Analysis) — replaces what used to be a full $request->all()/
+        // headers dump on every single inbound call, written unconditionally
+        // to an unrotated log file.
+        Log::channel('whatsapp')->info('WA INCOMING', $this->summarizeWhatsappIncoming($request, $tenant_code));
 
         try {
             $source = $this->resolveSource($tenant_code, LeadSourceType::Whatsapp);
@@ -651,6 +649,52 @@ class LeadWebhookController extends Controller
             ->where('external_thread_id', $externalThreadId)
             ->first()
             ?->lead;
+    }
+
+    /**
+     * The approved WA INCOMING diagnostic contract (privacy/retention
+     * fix, L1-shaped finding) — structural visibility only: how many
+     * entries arrived and, for each message actually parseable out of
+     * them, its type/id/timestamp and whether it carried body text, plus
+     * the sender's phone number masked to its last 4 digits. Never the
+     * message body/caption itself, never headers, never the raw
+     * contacts/profile payload, never the full phone number.
+     *
+     * @return array<string, mixed>
+     */
+    private function summarizeWhatsappIncoming(Request $request, string $tenant_code): array
+    {
+        $entries = $request->array('entry');
+        $messages = [];
+
+        foreach ($entries as $entry) {
+            foreach (($entry['changes'] ?? []) as $change) {
+                foreach (($change['value']['messages'] ?? []) as $message) {
+                    $messages[] = [
+                        'message_type' => $message['type'] ?? null,
+                        'has_body' => is_string($message['text']['body'] ?? null) && $message['text']['body'] !== '',
+                        'wamid' => $message['id'] ?? null,
+                        'timestamp' => $message['timestamp'] ?? null,
+                        'phone_last4' => $this->maskPhoneLast4($message['from'] ?? null),
+                    ];
+                }
+            }
+        }
+
+        return [
+            'tenant_code' => $tenant_code,
+            'entry_count' => count($entries),
+            'messages' => $messages,
+        ];
+    }
+
+    private function maskPhoneLast4(mixed $phone): ?string
+    {
+        if (! is_string($phone) || $phone === '') {
+            return null;
+        }
+
+        return '****'.substr($phone, -4);
     }
 
     /**

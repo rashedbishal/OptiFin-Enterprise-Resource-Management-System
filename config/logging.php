@@ -66,9 +66,10 @@ return [
         ],
 
         'whatsapp' => [
-            'driver' => 'single',
+            'driver' => 'daily',
             'path' => storage_path('logs/whatsapp.log'),
             'level' => env('LOG_LEVEL', 'debug'),
+            'max_files' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
         ],
 

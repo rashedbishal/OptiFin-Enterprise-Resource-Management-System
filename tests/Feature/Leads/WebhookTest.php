@@ -10,6 +10,7 @@ use App\Models\LeadSource;
 use App\Models\Message;
 use App\Services\LeadMergeService;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 
 test('a facebook webhook verify challenge succeeds with the correct token', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
@@ -341,6 +342,61 @@ test('a whatsapp message creates a lead', function () {
     expect($lead)->not->toBeNull();
     expect($lead->phone)->toBe('8801700000000');
     expect($lead->name)->toBe('WhatsApp User 8801700000000');
+});
+
+test('the whatsapp log channel rotates daily with bounded retention instead of growing forever', function () {
+    expect(config('logging.channels.whatsapp.driver'))->toBe('daily');
+    expect(config('logging.channels.whatsapp.max_files'))->not->toBeNull();
+});
+
+test('a whatsapp webhook logs only the approved minimal diagnostic fields, never the raw payload, headers, body text, or full phone number', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => ['phone_number_id' => '123', 'access_token' => 'x', 'verify_token' => 'y'],
+    ]);
+
+    Log::shouldReceive('channel')->with('whatsapp')->andReturnSelf();
+    Log::shouldReceive('info')
+        ->once()
+        ->withArgs(function (string $message, array $context) use ($tenant): bool {
+            expect($message)->toBe('WA INCOMING');
+            expect($context['tenant_code'])->toBe($tenant->tenant_code);
+            expect($context['entry_count'])->toBe(1);
+            expect($context['messages'])->toHaveCount(1);
+
+            $loggedMessage = $context['messages'][0];
+            expect($loggedMessage['message_type'])->toBe('text');
+            expect($loggedMessage['has_body'])->toBeTrue();
+            expect($loggedMessage['wamid'])->toBe('wamid.ABC');
+            expect($loggedMessage['timestamp'])->toBe('1700000000');
+            expect($loggedMessage['phone_last4'])->toBe('****4567');
+
+            $encoded = json_encode($context);
+            expect($encoded)->not->toContain('Super secret message content');
+            expect($encoded)->not->toContain('15551234567');
+            expect($encoded)->not->toContain('headers');
+
+            return true;
+        });
+
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), [
+        'entry' => [['changes' => [['value' => [
+            'messages' => [[
+                'from' => '15551234567',
+                'id' => 'wamid.ABC',
+                'type' => 'text',
+                'timestamp' => '1700000000',
+                'text' => ['body' => 'Super secret message content'],
+            ]],
+        ]]]]],
+    ])->assertOk();
+
+    // Message processing itself is unaffected by the logging change.
+    $lead = Lead::where('tenant_id', $tenant->id)->firstOrFail();
+    expect($lead->phone)->toBe('15551234567');
 });
 
 test('a whatsapp message with a contacts profile name uses that name instead of the generic fallback', function () {
