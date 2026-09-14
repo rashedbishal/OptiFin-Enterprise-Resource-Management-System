@@ -1284,8 +1284,8 @@ class Index extends Component
                 foreach ($leads as $lead) {
                     fputcsv($handle, [
                         $lead->identifier,
-                        $lead->name,
-                        $lead->email,
+                        $this->sanitizeCsvCell($lead->name),
+                        $this->sanitizeCsvCell($lead->email),
                         $lead->phone,
                         $lead->source->type->label(),
                         $lead->status->name,
@@ -1299,6 +1299,40 @@ class Index extends Component
 
             fclose($handle);
         }, 'leads.csv', ['Content-Type' => 'text/csv']);
+    }
+
+    /**
+     * CSV/formula-injection guard for export(): name/email ultimately
+     * originate from attacker-controllable input on at least one Lead
+     * ingestion path each (ProcessEmailLeadSource's unvalidated
+     * From-header personal name; Laravel's own `email` validation rule
+     * accepts a leading =/+/- in the local part, e.g. "=1+1@evil.com") —
+     * a value starting with =, +, -, @, a tab, or a CR is interpreted as a
+     * formula by Excel/LibreOffice/Google Sheets when this CSV is opened.
+     * Unlike FacebookLeadAdsExport's XLSX export (C6), which forces a real
+     * cell-type flag via PhpSpreadsheet's StringValueBinder, plain CSV has
+     * no such metadata channel — the only way to signal "this is text, not
+     * a formula" is the leading-apostrophe convention every major
+     * spreadsheet application already respects. phone is deliberately NOT
+     * sanitized here: its own validation regex only ever permits digits,
+     * spaces, parens, +, and - (no letters/@/quotes), so a genuine
+     * executable formula can never reach it — sanitizing it too would only
+     * change how an ordinary "+"-prefixed international phone number
+     * displays, with no security benefit.
+     */
+    private function sanitizeCsvCell(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        foreach (["\t", "\r", '=', '+', '-', '@'] as $trigger) {
+            if (str_starts_with($value, $trigger)) {
+                return "'".$value;
+            }
+        }
+
+        return $value;
     }
 
     /**

@@ -104,6 +104,57 @@ test('the export writes each lead\'s exact csv row, including relationship-deriv
     ]);
 });
 
+test('a lead name beginning with a formula-trigger character is neutralized in the export', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'name' => '=HYPERLINK("http://evil.example/","Click")',
+    ]);
+
+    $component = Livewire::actingAs($clientAdmin)->test(Index::class)->call('completeInitialLoad')->call('export');
+
+    expect(exportedCsvRows($component)[1][1])->toBe('\'=HYPERLINK("http://evil.example/","Click")');
+});
+
+test('a lead email beginning with a formula-trigger character is neutralized in the export', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'email' => '=1+1@evil.com',
+    ]);
+
+    $component = Livewire::actingAs($clientAdmin)->test(Index::class)->call('completeInitialLoad')->call('export');
+
+    expect(exportedCsvRows($component)[1][2])->toBe("'=1+1@evil.com");
+});
+
+test('an ordinary lead name and email are exported unchanged, with no spurious prefix', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'name' => 'Jane Doe',
+        'email' => 'jane@example.com',
+    ]);
+
+    $component = Livewire::actingAs($clientAdmin)->test(Index::class)->call('completeInitialLoad')->call('export');
+
+    $row = exportedCsvRows($component)[1];
+    expect($row[1])->toBe('Jane Doe');
+    expect($row[2])->toBe('jane@example.com');
+});
+
+test('a lead name containing a comma and quote is still correctly csv-quoted alongside the formula sanitizer', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'name' => "O'Brien, Inc.",
+    ]);
+
+    $component = Livewire::actingAs($clientAdmin)->test(Index::class)->call('completeInitialLoad')->call('export');
+
+    expect(exportedCsvRows($component)[1][1])->toBe("O'Brien, Inc.");
+});
+
 test('the export writes "Unassigned" for a lead with no assigned user', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     Lead::factory()->create(['tenant_id' => $tenant->id, 'assigned_to' => null]);
