@@ -293,32 +293,67 @@ class LeadSources extends Component
 
     /**
      * Simple checkbox toggle — unlike toggleLeadStatus(), there's no
-     * ordering to preserve and no "leads currently use this" block, only
-     * the one invariant the tenant must always satisfy: at least one
-     * currency enabled, since LeadSources::create()/save() below refuse to
-     * let a tenant with zero create a new Lead Source at all, and every
-     * lead's Est. Budget / Deal Value dropdown needs at least one option.
+     * ordering to preserve, only the one invariant the tenant must always
+     * satisfy: at least one currency enabled, since LeadSources::create()/
+     * save() below refuse to let a tenant with zero create a new Lead
+     * Source at all, and every lead's Est. Budget / Deal Value dropdown
+     * needs at least one option.
+     *
+     * TOCTOU fix: the removal branch's count check and detach() are now
+     * atomic — DB::transaction() + Tenant::lockForUpdate() on the tenant
+     * row (the same "lock the stable parent row" idiom already used by
+     * every other TOCTOU fix in this module, including
+     * Platform\Clients\LeadSources::toggleLeadStatus() above), with the
+     * enabled-currency IDs re-read from the locked instance before
+     * re-evaluating whether removal is still safe. toggleCurrency() is the
+     * only application path that ever removes a tenant's currency (see
+     * that method's own analysis) — no other writer needs to participate.
+     * The initial unlocked read below only decides which branch to take;
+     * it is never used to make the actual removal decision, which is
+     * re-read fresh under the lock. The addition branch is deliberately
+     * left outside the lock — mirroring toggleLeadStatus()'s addition
+     * branch exactly — since adding a currency can never violate the
+     * "at least one enabled" invariant.
      */
     public function toggleCurrency(string $currencyId): void
     {
         Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
 
         $currentIds = $this->tenant->currencies()->pluck('currencies.id')->all();
-        $alreadySelected = in_array($currencyId, $currentIds, true);
 
-        if ($alreadySelected && count($currentIds) <= 1) {
-            Flux::toast(variant: 'danger', text: __('A client must have at least one enabled currency.'));
+        if (! in_array($currencyId, $currentIds, true)) {
+            $this->tenant->currencies()->attach($currencyId);
+
+            unset($this->selectedCurrencies);
 
             return;
         }
 
-        if ($alreadySelected) {
-            $this->tenant->currencies()->detach($currencyId);
-        } else {
-            $this->tenant->currencies()->attach($currencyId);
-        }
+        $detached = DB::transaction(function () use ($currencyId): bool {
+            $tenant = Tenant::whereKey($this->tenant->id)->lockForUpdate()->firstOrFail();
 
-        unset($this->selectedCurrencies);
+            $currentIds = $tenant->currencies()->pluck('currencies.id')->all();
+
+            if (! in_array($currencyId, $currentIds, true)) {
+                // Already removed by a concurrent call since the unlocked
+                // read above — nothing left to do.
+                return false;
+            }
+
+            if (count($currentIds) <= 1) {
+                Flux::toast(variant: 'danger', text: __('A client must have at least one enabled currency.'));
+
+                return false;
+            }
+
+            $tenant->currencies()->detach($currencyId);
+
+            return true;
+        });
+
+        if ($detached) {
+            unset($this->selectedCurrencies);
+        }
     }
 
     /**

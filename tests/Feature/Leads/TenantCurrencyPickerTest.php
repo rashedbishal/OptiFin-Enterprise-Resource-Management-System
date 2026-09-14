@@ -5,6 +5,7 @@ use App\Livewire\Platform\Clients\LeadSources;
 use App\Models\Currency;
 use App\Models\PlatformUser;
 use App\Models\Tenant;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
 test('a freshly created tenant has exactly one currency enabled', function () {
@@ -53,6 +54,56 @@ test('the last remaining currency cannot be disabled', function () {
 
     expect($tenant->fresh()->currencies)->toHaveCount(1);
     expect($tenant->fresh()->currencies->first()->id)->toBe($onlyCurrency->id);
+});
+
+test('two concurrent removals of a tenant\'s last two currencies never leave it with zero enabled', function () {
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+    $tenant = Tenant::factory()->create();
+    $currencyA = $tenant->currencies()->first();
+    $currencyB = Currency::factory()->create(['code' => 'XCB', 'name' => 'Test Currency B']);
+    $tenant->currencies()->attach($currencyB->id);
+
+    expect($tenant->fresh()->currencies)->toHaveCount(2);
+
+    // Mounted separately from the call under test — Livewire's own
+    // mount-time reads (allCurrencies()/selectedCurrencies()) also touch
+    // the "currencies" table, so capturing from mount onward would
+    // intercept the wrong query and silently fail to reproduce the race.
+    $component = Livewire::actingAs($motherAdmin, 'platform')->test(LeadSources::class, ['tenant' => $tenant]);
+
+    // Deterministic failure injection, the same technique this module's
+    // own prior TOCTOU closures use: intercept toggleCurrency()'s own
+    // first currency-ID read (its unlocked branch-decision read — the
+    // exact query the original, unfixed method relied on for its entire
+    // count check) and, from that interception, simulate a concurrent
+    // process independently committing its own removal of the OTHER
+    // currency in that gap — a raw, unguarded detach(), deliberately
+    // bypassing the method entirely, exactly as a second real concurrent
+    // request would. Against unfixed code, this call's own stale
+    // $currentIds (captured before the concurrent detach) still shows
+    // count() == 2, so it proceeds to remove A too — zero remain. Against
+    // the fix, the removal branch's locked re-read correctly observes
+    // only A left and refuses via the existing "at least one" toast —
+    // A survives, B (removed independently, outside any protocol) does
+    // not.
+    $intercepted = false;
+
+    DB::listen(function ($query) use (&$intercepted, $tenant, $currencyB): void {
+        if ($intercepted || ! str_starts_with($query->sql, 'select "currencies"."id"')) {
+            return;
+        }
+
+        $intercepted = true;
+        $tenant->currencies()->detach($currencyB->id);
+    });
+
+    $component->call('toggleCurrency', $currencyA->id)
+        ->assertDispatched('toast-show');
+
+    $remaining = $tenant->fresh()->currencies;
+
+    expect($remaining)->toHaveCount(1);
+    expect($remaining->first()->id)->toBe($currencyA->id);
 });
 
 test('a tenant with zero currencies cannot open the new lead source modal', function () {
