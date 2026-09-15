@@ -73,10 +73,18 @@ class LeadWebhookController extends Controller
      */
     public function facebookMessenger(Request $request, string $tenant_code): JsonResponse
     {
+        $entries = $request->array('entry');
+
+        if ($this->exceedsInboundMessageCap($this->countMessagingItems($entries))) {
+            Log::warning("Rejected Facebook Messenger webhook for tenant [{$tenant_code}]: inbound message cap exceeded.");
+
+            return response()->json(['status' => 'ok']);
+        }
+
         try {
             $source = null;
 
-            foreach ($request->array('entry') as $entry) {
+            foreach ($entries as $entry) {
                 foreach (($entry['messaging'] ?? []) as $messaging) {
                     $source ??= $this->resolveSource($tenant_code, LeadSourceType::FacebookMessenger);
 
@@ -170,10 +178,18 @@ class LeadWebhookController extends Controller
      */
     public function instagram(Request $request, string $tenant_code): JsonResponse
     {
+        $entries = $request->array('entry');
+
+        if ($this->exceedsInboundMessageCap($this->countMessagingItems($entries))) {
+            Log::warning("Rejected Instagram webhook for tenant [{$tenant_code}]: inbound message cap exceeded.");
+
+            return response()->json(['status' => 'ok']);
+        }
+
         try {
             $source = $this->resolveSource($tenant_code, LeadSourceType::Instagram);
 
-            foreach ($request->array('entry') as $entry) {
+            foreach ($entries as $entry) {
                 foreach (($entry['messaging'] ?? []) as $messaging) {
                     // Feature #15 — see facebookMessenger()'s identical
                     // check; Instagram Messaging shares the same
@@ -264,12 +280,26 @@ class LeadWebhookController extends Controller
         // Analysis) — replaces what used to be a full $request->all()/
         // headers dump on every single inbound call, written unconditionally
         // to an unrotated log file.
-        Log::channel('whatsapp')->info('WA INCOMING', $this->summarizeWhatsappIncoming($request, $tenant_code));
+        $incomingSummary = $this->summarizeWhatsappIncoming($request, $tenant_code);
+
+        Log::channel('whatsapp')->info('WA INCOMING', $incomingSummary);
+
+        // L2 — reuses summarizeWhatsappIncoming()'s already-computed
+        // message list rather than walking the payload a second time; its
+        // 'messages' entry is already exactly one row per value.messages[]
+        // item (never value.statuses[]), so no separate counting pass is
+        // needed for this channel.
+        if ($this->exceedsInboundMessageCap(count($incomingSummary['messages']))) {
+            Log::channel('whatsapp')->warning("Rejected WhatsApp webhook for tenant [{$tenant_code}]: inbound message cap exceeded.");
+
+            return response()->json(['status' => 'ok']);
+        }
 
         try {
             $source = $this->resolveSource($tenant_code, LeadSourceType::Whatsapp);
+            $entries = $request->array('entry');
 
-            foreach ($request->array('entry') as $entry) {
+            foreach ($entries as $entry) {
                 foreach (($entry['changes'] ?? []) as $change) {
                     // Feature #15 — the Cloud API's own delivery/read/failed
                     // status callback for a message THIS app sent, keyed
@@ -714,6 +744,51 @@ class LeadWebhookController extends Controller
             ->where('channel', $channel)
             ->where('external_message_id', $externalMessageId)
             ->exists();
+    }
+
+    /**
+     * L2 — a single accepted webhook request must not be able to trigger
+     * unbounded synchronous processing based solely on how many logical
+     * messages its JSON payload claims to contain. Checked BEFORE
+     * resolveSource()/existingLeadForConversation()/append*Message()/
+     * createLead() — a pure count against already-parsed request data, no
+     * DB/API access, no tenant resolution, no per-message work. Config-
+     * driven ('webhooks.max_inbound_messages_per_request', default 100 —
+     * no repository/provider evidence supports a specific number; 100
+     * mirrors this app's own existing App\Livewire\Tenant\Leads\Index::
+     * MAX_BULK_SELECTION precedent for "a reasonable single-request work
+     * ceiling," not a documented platform limit).
+     */
+    private function exceedsInboundMessageCap(int $count): bool
+    {
+        return $count > (int) config('webhooks.max_inbound_messages_per_request');
+    }
+
+    /**
+     * Counts Messenger/Instagram entry[].messaging[] items that represent
+     * an actual inbound message — excluding delivery/read receipts, which
+     * are cheap (no Lead/Conversation/Message work) and handled by a
+     * separate code path. Summed across every entry[] in the request, not
+     * per-entry: nothing stops an attacker splitting the same total
+     * message count across many entries to evade a per-entry-only cap.
+     *
+     * @param  array<int, mixed>  $entries
+     */
+    private function countMessagingItems(array $entries): int
+    {
+        $count = 0;
+
+        foreach ($entries as $entry) {
+            foreach (($entry['messaging'] ?? []) as $messaging) {
+                if (isset($messaging['delivery']) || isset($messaging['read'])) {
+                    continue;
+                }
+
+                $count++;
+            }
+        }
+
+        return $count;
     }
 
     /**
