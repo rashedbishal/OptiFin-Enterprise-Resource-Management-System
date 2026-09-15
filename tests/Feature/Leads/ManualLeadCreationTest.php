@@ -1,12 +1,16 @@
 <?php
 
+use App\Enums\AutoDistributionMethod;
+use App\Enums\LeadDistributionMode;
 use App\Enums\LeadSourceType;
+use App\Events\LeadReceived;
 use App\Livewire\Tenant\Leads\Index;
 use App\Models\Lead;
 use App\Models\LeadSource;
 use App\Models\TenantUser;
 use App\Notifications\FollowUpUpdatedNotification;
 use App\Notifications\MeetingUpdatedNotification;
+use Illuminate\Support\Facades\Event;
 use Livewire\Livewire;
 
 test('a client admin can create a manual lead with full CRM details', function () {
@@ -304,4 +308,112 @@ test('a meeting date in the past is rejected', function () {
         ->assertHasErrors(['leadMeetingDate' => 'after_or_equal']);
 
     expect(Lead::where('tenant_id', $tenant->id)->exists())->toBeFalse();
+});
+
+/**
+ * M9 — a Client Admin leaving the assignee dropdown blank previously left
+ * every manual lead unassigned regardless of the tenant's distribution
+ * settings (LeadAssignmentService::autoAssign() was structurally
+ * unreachable — see CreateManualLead's own docblock history). This proves
+ * the new else-branch actually reaches autoAssign() and its existing,
+ * unmodified round-robin picking logic. A single eligible candidate is
+ * used deliberately, so the result is unambiguous regardless of
+ * last_assigned_at ordering.
+ */
+test('a client admin leaving the assignee blank auto-distributes the lead when the tenant uses automatic distribution', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $tenant->update(['lead_distribution_mode' => LeadDistributionMode::Automatic, 'auto_distribution_method' => AutoDistributionMethod::RoundRobin]);
+    $rep = clientUserWithLeadPermission($tenant);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class)->call('completeInitialLoad')
+        ->call('createLead')
+        ->set('leadName', 'Auto Distributed Lead')
+        ->set('leadPhone', '+8801700000095')
+        ->call('saveLead')
+        ->assertHasNoErrors();
+
+    $lead = Lead::where('tenant_id', $tenant->id)->where('name', 'Auto Distributed Lead')->firstOrFail();
+
+    expect($lead->assigned_to)->toBe($rep->id);
+});
+
+/**
+ * M9 — explicit assignment must always win over automatic distribution.
+ * $explicitAssignee is a Client Admin — structurally excluded from
+ * LeadAssignmentService::eligibleUsers() (user_type = ClientUser only) —
+ * so a lead ending up assigned to them is proof autoAssign() could not
+ * have produced that result; $autoDistributionCandidate is the sole
+ * eligible round-robin candidate, present only to prove it was NOT
+ * picked instead. This is deterministic and does not depend on
+ * last_assigned_at ordering.
+ */
+test('a client admin\'s explicit assignee choice is preserved even when the tenant uses automatic distribution', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $tenant->update(['lead_distribution_mode' => LeadDistributionMode::Automatic, 'auto_distribution_method' => AutoDistributionMethod::RoundRobin]);
+    $autoDistributionCandidate = clientUserWithLeadPermission($tenant);
+    $explicitAssignee = TenantUser::factory()->clientAdmin()->create(['tenant_id' => $tenant->id]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class)->call('completeInitialLoad')
+        ->call('createLead')
+        ->set('leadName', 'Explicitly Assigned Lead')
+        ->set('leadPhone', '+8801700000096')
+        ->set('leadAssigneeId', $explicitAssignee->id)
+        ->call('saveLead')
+        ->assertHasNoErrors();
+
+    $lead = Lead::where('tenant_id', $tenant->id)->where('name', 'Explicitly Assigned Lead')->firstOrFail();
+
+    expect($lead->assigned_to)->toBe($explicitAssignee->id);
+    expect($lead->assigned_to)->not->toBe($autoDistributionCandidate->id);
+});
+
+/**
+ * M9 — the tenant default (Manual distribution, unchanged by this
+ * closure) must continue to leave a blank-assignee manual lead
+ * unassigned, exactly as before this change: LeadAssignmentService::
+ * autoAssign() no-ops immediately when lead_distribution_mode !==
+ * Automatic — see its own existing, unmodified guard clause.
+ */
+test('a client admin leaving the assignee blank stays unassigned when the tenant uses manual distribution', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    expect($tenant->lead_distribution_mode)->toBe(LeadDistributionMode::Manual);
+    clientUserWithLeadPermission($tenant);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class)->call('completeInitialLoad')
+        ->call('createLead')
+        ->set('leadName', 'Still Unassigned Lead')
+        ->set('leadPhone', '+8801700000097')
+        ->call('saveLead')
+        ->assertHasNoErrors();
+
+    $lead = Lead::where('tenant_id', $tenant->id)->where('name', 'Still Unassigned Lead')->firstOrFail();
+
+    expect($lead->assigned_to)->toBeNull();
+});
+
+/**
+ * M9 — manual lead creation must continue to never fire LeadReceived,
+ * regardless of whether the new autoAssign() branch runs — mirrors
+ * CreateLeadFromImportTest.php's identically-shaped CSV proof
+ * ('LeadReceived and LeadUpdated never fire for a CSV import row').
+ */
+test('manual lead creation never fires LeadReceived', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $tenant->update(['lead_distribution_mode' => LeadDistributionMode::Automatic, 'auto_distribution_method' => AutoDistributionMethod::RoundRobin]);
+    clientUserWithLeadPermission($tenant);
+
+    Event::fake([LeadReceived::class]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class)->call('completeInitialLoad')
+        ->call('createLead')
+        ->set('leadName', 'Silent Manual Lead')
+        ->set('leadPhone', '+8801700000098')
+        ->call('saveLead')
+        ->assertHasNoErrors();
+
+    Event::assertNotDispatched(LeadReceived::class);
 });

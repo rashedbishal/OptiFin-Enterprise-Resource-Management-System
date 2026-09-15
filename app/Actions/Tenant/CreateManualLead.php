@@ -82,6 +82,8 @@ class CreateManualLead
 
             if ($assignee) {
                 $this->assignmentService->assign($lead, $assignee, $createdBy);
+            } else {
+                $this->assignmentService->autoAssign($lead);
             }
 
             // Manual leads never fire LeadReceived (see
