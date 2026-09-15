@@ -2139,9 +2139,27 @@ class Show extends Component
     /**
      * Feature #15 — manual resend after a CONFIRMED platform send failure
      * only (never automatic — see SendOutboundMessage's own retry-policy
-     * docblock). Always creates a brand-new Message row; the original
-     * failed row is left exactly as it is, a permanent record of that
-     * attempt, never mutated or reused for the new attempt.
+     * docblock). Creates a brand-new Message row; the original failed row's
+     * own status/failure_reason are left exactly as they were, a permanent
+     * record of that attempt.
+     *
+     * At most ONE resend may ever be created per Failed row — enforced by
+     * locking that row (Message::lockForUpdate()) inside one DB::
+     * transaction() and checking/setting its own resend_message_id, the
+     * same "lock the row before a may-I-do-this check" idiom already used
+     * by LeadCustomFieldDefinition::delete(), Platform\LeadManagement\
+     * Settings::deleteStatus()/deleteCurrency(), and Platform\Clients\
+     * LeadSources::toggleLeadStatus()/toggleCurrency() — not a new pattern.
+     * If THIS resend itself later fails, it becomes its own independently
+     * resendable Failed row under the exact same rule, so "retry after a
+     * resend also fails" falls out of the existing per-row Resend-button
+     * rendering without any special-cased chain logic.
+     *
+     * SendOutboundMessage is deliberately dispatched only after
+     * DB::transaction() has already returned a non-null Message — i.e.
+     * only once the transaction has actually committed — never from
+     * inside the closure, mirroring sendMessage()'s own create-then-
+     * dispatch ordering.
      */
     public function resendMessage(string $messageId): void
     {
@@ -2155,37 +2173,62 @@ class Show extends Component
             return;
         }
 
-        $failedMessage = $this->lead->messages()
-            ->where('id', $messageId)
-            ->where('direction', MessageDirection::Outbound)
-            ->where('status', MessageStatus::Failed)
-            ->first();
+        $resend = DB::transaction(function () use ($messageId): ?Message {
+            $failedMessage = Message::lockForUpdate()
+                ->where('id', $messageId)
+                ->where('lead_id', $this->lead->id)
+                ->where('direction', MessageDirection::Outbound)
+                ->where('status', MessageStatus::Failed)
+                ->first();
 
-        if ($failedMessage === null) {
+            if ($failedMessage === null) {
+                return null;
+            }
+
+            if ($failedMessage->resend_message_id !== null) {
+                Flux::toast(variant: 'warning', text: __('This message has already been resent.'));
+
+                return null;
+            }
+
+            $conversation = $failedMessage->conversation;
+            $eligibility = app(OutboundEligibilityService::class)->evaluate($conversation);
+
+            if (! $eligibility->eligible) {
+                Flux::toast(variant: 'danger', text: $eligibility->reason);
+
+                return null;
+            }
+
+            $resend = Message::create([
+                'tenant_id' => $conversation->tenant_id,
+                'conversation_id' => $conversation->id,
+                'lead_id' => $conversation->lead_id,
+                'channel' => $conversation->channel,
+                'direction' => MessageDirection::Outbound,
+                'message_type' => MessageType::Text,
+                'body' => $failedMessage->body,
+                'status' => MessageStatus::Pending,
+                'status_updated_at' => now(),
+                'sent_by' => Auth::id(),
+            ]);
+
+            // Raw update, not $failedMessage->update(): mirrors
+            // LeadMergeService's own reasoning for merged_into_lead_id —
+            // resend_message_id must only ever be set by this one code
+            // path, never accidentally accepted through a model
+            // create()/update() payload elsewhere.
+            DB::table('messages')->where('id', $failedMessage->id)->update([
+                'resend_message_id' => $resend->id,
+                'updated_at' => now(),
+            ]);
+
+            return $resend;
+        });
+
+        if (! $resend instanceof Message) {
             return;
         }
-
-        $conversation = $failedMessage->conversation;
-        $eligibility = app(OutboundEligibilityService::class)->evaluate($conversation);
-
-        if (! $eligibility->eligible) {
-            Flux::toast(variant: 'danger', text: $eligibility->reason);
-
-            return;
-        }
-
-        $resend = Message::create([
-            'tenant_id' => $conversation->tenant_id,
-            'conversation_id' => $conversation->id,
-            'lead_id' => $conversation->lead_id,
-            'channel' => $conversation->channel,
-            'direction' => MessageDirection::Outbound,
-            'message_type' => MessageType::Text,
-            'body' => $failedMessage->body,
-            'status' => MessageStatus::Pending,
-            'status_updated_at' => now(),
-            'sent_by' => Auth::id(),
-        ]);
 
         SendOutboundMessage::dispatch($resend);
 

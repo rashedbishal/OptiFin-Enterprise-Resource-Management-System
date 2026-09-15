@@ -36,11 +36,13 @@ use Illuminate\Support\Carbon;
  * @property MessageStatus|null $status
  * @property Carbon|null $status_updated_at
  * @property string|null $failure_reason
+ * @property string|null $resend_message_id
  * @property string|null $sent_by
  * @property array<string, mixed>|null $metadata
  * @property-read Conversation $conversation
  * @property-read Lead $lead
  * @property-read TenantUser|null $sentBy
+ * @property-read Message|null $resend
  */
 #[Fillable([
     'tenant_id', 'conversation_id', 'lead_id', 'channel', 'direction', 'message_type', 'body',
@@ -89,5 +91,21 @@ class Message extends Model
     public function sentBy(): BelongsTo
     {
         return $this->belongsTo(TenantUser::class, 'sent_by');
+    }
+
+    /**
+     * Set on a Failed message the moment Show::resendMessage() creates a
+     * resend for it — null means "not yet resent." Points forward to the
+     * new resend row, the same shape as Lead::mergedInto()/
+     * merged_into_lead_id. `resend_message_id` is deliberately left out of
+     * #[Fillable] above, same trap/pattern as `merged_into_lead_id`: it
+     * must only ever be set by resendMessage()'s own raw update, never
+     * from a create()/update() payload.
+     *
+     * @return BelongsTo<Message, $this>
+     */
+    public function resend(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'resend_message_id');
     }
 }
