@@ -48,11 +48,39 @@ class LeadCsvImport implements ShouldQueue, ToModel, WithChunkReading, WithEvent
     ) {}
 
     /**
+     * M6 — lazily resolved on the first model() call of each freshly
+     * deserialized ReadChunk job execution (chunkSize() = 200 rows), then
+     * reused for the remainder of that same chunk — NOT across the whole
+     * import: verified against the installed maatwebsite/excel source
+     * (vendor/maatwebsite/excel/src/Jobs/ReadChunk.php) that each chunk is
+     * dispatched as its own separately queued, separately serialized job,
+     * so a fresh LeadCsvImport instance (these three properties back at
+     * null) is what every chunk actually starts from in production — no
+     * BeforeImport/cross-serialization-boundary state is relied on here.
+     * Confirmed safe to cache for the life of any import: LeadImport has
+     * no delete path anywhere in the application, Tenant has no delete
+     * path anywhere in the application, and LeadSource can never be
+     * deleted while any LeadImport references it (Platform\Clients\
+     * LeadSources::delete()'s own dependent-data guard checks exactly
+     * that). TenantUser is deliberately NOT cached here — see the comment
+     * directly above its resolution inside model() below.
+     */
+    private ?LeadImport $resolvedImport = null;
+
+    private ?Tenant $resolvedTenant = null;
+
+    private ?LeadSource $resolvedSource = null;
+
+    /**
      * @param  array<string, mixed>  $row
      */
     public function model(array $row): null
     {
-        $import = LeadImport::find($this->leadImportId);
+        if ($this->resolvedImport === null) {
+            $this->resolvedImport = LeadImport::find($this->leadImportId);
+        }
+
+        $import = $this->resolvedImport;
 
         if ($import === null) {
             return null;
@@ -62,8 +90,26 @@ class LeadCsvImport implements ShouldQueue, ToModel, WithChunkReading, WithEvent
             $import->update(['status' => LeadImportStatus::Processing, 'started_at' => now()]);
         }
 
-        $tenant = Tenant::find($import->tenant_id);
-        $source = LeadSource::find($import->source_id);
+        if ($this->resolvedTenant === null) {
+            $this->resolvedTenant = Tenant::find($import->tenant_id);
+        }
+
+        if ($this->resolvedSource === null) {
+            $this->resolvedSource = LeadSource::find($import->source_id);
+        }
+
+        $tenant = $this->resolvedTenant;
+        $source = $this->resolvedSource;
+
+        // Deliberately NOT cached alongside $tenant/$source above: unlike
+        // LeadImport/Tenant/LeadSource (all provably undeletable for the
+        // life of any import — see this class's own property docblock),
+        // a TenantUser has no delete guard at all (Tenant\Users\Index::
+        // delete()) and lead_imports.imported_by is nullOnDelete() —
+        // deletion mid-import is a real, application-permitted scenario.
+        // Re-resolved fresh every row, exactly as before this change, so
+        // a mid-chunk deletion is still caught on the very next row
+        // rather than silently reused from a stale cached reference.
         $importedBy = TenantUser::find($import->imported_by);
 
         // Tenant isolation is explicit here, not assumed: this runs inside

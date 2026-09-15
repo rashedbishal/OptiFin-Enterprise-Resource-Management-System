@@ -50,17 +50,33 @@ class LeadScoringService
      * the new score, or null when the tenant has no active rules at all
      * (see the class docblock and .ai/rules — null means "not scored",
      * distinct from a real computed 0).
+     *
+     * $trustLoadedRelations (M6, default false — every existing caller is
+     * unaffected): opt-in only, for a caller that can prove by
+     * construction its $lead's source/status relations were JUST set from
+     * fresh, correctly-resolved instances in this same unbroken execution
+     * (currently only CreateLeadFromImport::processRow(), whose $lead is
+     * always newly Lead::create()'d, never reused/passed around). Skips
+     * the reload below via loadMissing() instead of load(). Never set
+     * true for a $lead that could have arrived with a stale cached
+     * relation from elsewhere in the request — see the load() note below.
      */
-    public function computeFor(Lead $lead, string $trigger, ?TenantUser $triggeredBy = null): ?int
+    public function computeFor(Lead $lead, string $trigger, ?TenantUser $triggeredBy = null, bool $trustLoadedRelations = false): ?int
     {
-        // load(), not loadMissing(): $lead often arrives already carrying a
-        // STALE cached source/status relation from earlier in the same
-        // request (e.g. Show::updateStatus() just changed status_id and
-        // saved, but the old LeadStatus instance is still sitting in the
-        // relation cache) — loadMissing() would skip reloading it and
-        // LeadScoringField::Status/SourceType would then evaluate against
-        // yesterday's value.
-        $lead->load(['source', 'status']);
+        // load(), not loadMissing(), BY DEFAULT: $lead often arrives already
+        // carrying a STALE cached source/status relation from earlier in
+        // the same request (e.g. Show::updateStatus() just changed
+        // status_id and saved, but the old LeadStatus instance is still
+        // sitting in the relation cache) — loadMissing() would skip
+        // reloading it and LeadScoringField::Status/SourceType would then
+        // evaluate against yesterday's value. $trustLoadedRelations is the
+        // sole, explicit, opt-in exception to this — see its own docblock
+        // above.
+        if ($trustLoadedRelations) {
+            $lead->loadMissing(['source', 'status']);
+        } else {
+            $lead->load(['source', 'status']);
+        }
 
         $rules = LeadScoringRule::query()
             ->where('tenant_id', $lead->tenant_id)

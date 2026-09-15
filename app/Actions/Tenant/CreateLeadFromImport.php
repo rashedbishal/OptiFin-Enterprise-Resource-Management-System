@@ -186,6 +186,16 @@ class CreateLeadFromImport
                 'deal_value_currency_id' => $dealValueCurrencyId,
             ]);
 
+            // M6 — $lead is freshly created, in this same unbroken
+            // execution, from exactly these two already-resolved
+            // instances: setting them directly lets computeFor() below
+            // skip its own source/status reload for this call only (via
+            // its opt-in $trustLoadedRelations parameter), with no risk
+            // of the stale-relation scenario that parameter's default
+            // (still used by every other caller) exists to guard against.
+            $lead->setRelation('source', $source);
+            $lead->setRelation('status', $status);
+
             // assignee is null|false|TenantUser at this point; false was
             // already turned into a row failure above, so only null|TenantUser
             // reach here.
@@ -201,7 +211,7 @@ class CreateLeadFromImport
             // auto-assignment/new-lead notifications per row at import
             // scale) — this mirrors CreateManualLead's own workaround for
             // the same reason: it's the only path to an initial score.
-            $this->scoringService->computeFor($lead, 'lead_received');
+            $this->scoringService->computeFor($lead, 'lead_received', trustLoadedRelations: true);
 
             $this->recordRow($import, $rowNumber, LeadImportRowStatus::Imported, $row, null, $normalizedEmail, $normalizedPhone, null, $lead->id);
         });

@@ -349,6 +349,40 @@ test('an imported lead is scored immediately using computeFor with the lead_rece
     expect($lead->lead_score)->toBe(10);
 });
 
+/**
+ * M6 regression: computeFor()'s $trustLoadedRelations path relies on
+ * $lead->setRelation('status', $status)/setRelation('source', $source) —
+ * set with the exact instances CreateLeadFromImport already resolved,
+ * moments earlier — providing correct data for LeadScoringField::Status
+ * (`$lead->status->slug`) and LeadScoringField::SourceType
+ * (`$lead->source?->type->value`) specifically, the two scoring fields
+ * this change could plausibly have broken. Unlike the HasEmail-based test
+ * above (which never touches either relation), this one directly proves
+ * both are correctly populated, not merely present-but-wrong or null.
+ */
+test('status- and source-type-based scoring rules match correctly against the resolved relations (M6 setRelation regression)', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin, 'source' => $source, 'import' => $import] = setUpLeadImport();
+    LeadScoringRule::factory()->create([
+        'tenant_id' => $tenant->id,
+        'field' => LeadScoringField::Status->value,
+        'operator' => LeadScoringOperator::Equals->value,
+        'value' => leadStatus('new')->slug,
+        'points' => 15,
+    ]);
+    LeadScoringRule::factory()->create([
+        'tenant_id' => $tenant->id,
+        'field' => LeadScoringField::SourceType->value,
+        'operator' => LeadScoringOperator::Equals->value,
+        'value' => LeadSourceType::CsvImport->value,
+        'points' => 20,
+    ]);
+
+    app(CreateLeadFromImport::class)->handle($import, $tenant, $source, $clientAdmin, 1, ['name' => 'Relation Scored', 'email' => 'relationscored@example.com']);
+
+    $lead = Lead::where('tenant_id', $tenant->id)->firstOrFail();
+    expect($lead->lead_score)->toBe(35);
+});
+
 test('LeadReceived and LeadUpdated never fire for a CSV import row', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin, 'source' => $source, 'import' => $import] = setUpLeadImport();
     Event::fake([LeadReceived::class, LeadUpdated::class]);
