@@ -21,6 +21,7 @@ use App\Jobs\ReconcileOutboundMessageStatus;
 use App\Models\Conversation;
 use App\Models\Lead;
 use App\Models\LeadSource;
+use App\Models\Message;
 use App\Models\Tenant;
 use App\Models\WebsiteForm;
 use Carbon\CarbonInterface;
@@ -94,8 +95,13 @@ class LeadWebhookController extends Controller
                     $messageText = $messaging['message']['text'] ?? null;
                     $attachments = $this->extractMessagingAttachments($messaging);
                     $sentAt = $this->messagingTimestamp($messaging);
+                    $externalMessageId = $this->extractInboundMessageId($messaging);
 
-                    $this->withDedupeLock($source->id, $senderId, function () use ($source, $senderId, $messageText, $messaging, $attachments, $sentAt): void {
+                    $this->withDedupeLock($source->id, $senderId, function () use ($source, $senderId, $messageText, $messaging, $attachments, $sentAt, $externalMessageId): void {
+                        if ($this->alreadyRecordedMessage($source, MessageChannel::Messenger, $externalMessageId)) {
+                            return;
+                        }
+
                         $existingLead = $this->existingLeadForConversation($source, MessageChannel::Messenger, $senderId)
                             ?? Lead::query()
                                 ->where('source_id', $source->id)
@@ -182,8 +188,13 @@ class LeadWebhookController extends Controller
                     $messageText = $messaging['message']['text'] ?? null;
                     $attachments = $this->extractMessagingAttachments($messaging);
                     $sentAt = $this->messagingTimestamp($messaging);
+                    $externalMessageId = $this->extractInboundMessageId($messaging);
 
-                    $this->withDedupeLock($source->id, $senderId, function () use ($source, $senderId, $messageText, $messaging, $attachments, $sentAt): void {
+                    $this->withDedupeLock($source->id, $senderId, function () use ($source, $senderId, $messageText, $messaging, $attachments, $sentAt, $externalMessageId): void {
+                        if ($this->alreadyRecordedMessage($source, MessageChannel::Instagram, $externalMessageId)) {
+                            return;
+                        }
+
                         $existingLead = $this->existingLeadForConversation($source, MessageChannel::Instagram, $senderId)
                             ?? Lead::query()
                                 ->where('source_id', $source->id)
@@ -277,8 +288,13 @@ class LeadWebhookController extends Controller
                         $sentAt = isset($message['timestamp'])
                             ? Carbon::createFromTimestamp((int) $message['timestamp'])
                             : now();
+                        $externalMessageId = $this->extractInboundMessageId($message);
 
-                        $handleMessage = function () use ($source, $senderPhone, $senderId, $messageText, $message, $attachment, $sentAt, $change): void {
+                        $handleMessage = function () use ($source, $senderPhone, $senderId, $messageText, $message, $attachment, $sentAt, $change, $externalMessageId): void {
+                            if ($this->alreadyRecordedMessage($source, MessageChannel::Whatsapp, $externalMessageId)) {
+                                return;
+                            }
+
                             $existingLead = $this->existingLeadForConversation($source, MessageChannel::Whatsapp, $senderPhone)
                                 ?? (is_string($senderPhone) && $senderPhone !== ''
                                     ? Lead::query()->where('source_id', $source->id)->where('phone', $senderPhone)->whereNull('merged_into_lead_id')->first()
@@ -663,6 +679,41 @@ class LeadWebhookController extends Controller
             ->where('external_thread_id', $externalThreadId)
             ->first()
             ?->lead;
+    }
+
+    /**
+     * Redelivery-idempotency gate — checked as the FIRST statement inside
+     * each channel's own withDedupeLock() closure, before
+     * existingLeadForConversation(), before appendFacebookMessage()/
+     * appendInstagramMessage()/appendWhatsappMessage(), and before
+     * createLead(): Meta/WhatsApp Cloud API webhooks are documented
+     * at-least-once delivery, and a genuine redelivery of the same inbound
+     * message must not append a second copy onto Lead.message/
+     * source_data['messages'], must not create a second normalized
+     * Message row, and must not create a second LeadAttachment/dispatch a
+     * second DownloadLeadAttachment job. Mirrors processFacebookLeadAd()'s
+     * own alreadyProcessed check exactly — same "durable existence check,
+     * first thing inside the existing sender-scoped lock" idiom, reusing
+     * the real messages_external_id_unique(tenant_id, channel,
+     * external_message_id) index rather than a new table/column.
+     *
+     * A null $externalMessageId (a payload that never carried a platform
+     * message id — "purely opportunistic," per RecordInboundMessage's own
+     * docblock) always returns false here, preserving today's existing,
+     * already-accepted behavior for that case unchanged — never
+     * synthesizing an identifier from body/sender/timestamp.
+     */
+    private function alreadyRecordedMessage(LeadSource $source, MessageChannel $channel, ?string $externalMessageId): bool
+    {
+        if ($externalMessageId === null) {
+            return false;
+        }
+
+        return Message::query()
+            ->where('tenant_id', $source->tenant_id)
+            ->where('channel', $channel)
+            ->where('external_message_id', $externalMessageId)
+            ->exists();
     }
 
     /**

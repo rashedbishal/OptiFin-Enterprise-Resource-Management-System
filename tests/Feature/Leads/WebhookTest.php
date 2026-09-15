@@ -4,6 +4,7 @@ use App\Enums\LeadSourceType;
 use App\Enums\TenantStatus;
 use App\Events\LeadReceived;
 use App\Events\LeadUpdated;
+use App\Jobs\DownloadLeadAttachment;
 use App\Models\Conversation;
 use App\Models\Lead;
 use App\Models\LeadSource;
@@ -11,6 +12,7 @@ use App\Models\Message;
 use App\Services\LeadMergeService;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 
 test('a facebook webhook verify challenge succeeds with the correct token', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
@@ -735,4 +737,240 @@ test('a website form submission with no Origin header is accepted when allowed_d
     ], ['X-Api-Key' => 'test-key-123'])->assertOk();
 
     expect(Lead::where('tenant_id', $tenant->id)->where('email', 'server-side@example.com')->exists())->toBeTrue();
+});
+
+/**
+ * Redelivery-idempotency gate (alreadyRecordedMessage()) — Meta/WhatsApp
+ * webhooks are documented at-least-once delivery. These tests send the
+ * SAME message.mid/id twice, unlike every "follow-up message... appended
+ * instead of duplicated" test above (which deliberately sends a second,
+ * DIFFERENT message with no id at all, to prove two distinct messages
+ * still both append). The two deliveries below are two separate,
+ * sequential postJson() calls — by the time the second call starts, the
+ * first request has already fully returned, so the per-sender
+ * Cache::lock() from the first call has already released (Illuminate\
+ * Cache\Lock::block() releases in a finally block the instant its
+ * callback returns, not after the lock's TTL) — this is the realistic
+ * "redelivery after the dedupe lock has already released" case, not a
+ * same-instant race.
+ */
+test('a duplicate facebook messenger message (same mid) is not appended twice', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::FacebookMessenger,
+        'config' => ['page_id' => '123', 'verify_token' => 'secret-token'],
+    ]);
+
+    $payload = [
+        'entry' => [[
+            'messaging' => [[
+                'sender' => ['id' => 'psid-dup'],
+                'message' => ['mid' => 'mid.DUPLICATE-1', 'text' => 'Hello there'],
+            ]],
+        ]],
+    ];
+
+    $this->postJson(route('api.webhook.facebook', $tenant->tenant_code), $payload)->assertOk();
+
+    $lead = Lead::where('tenant_id', $tenant->id)->firstOrFail();
+    expect($lead->message)->toBe('Hello there');
+    expect($lead->source_data['messages'])->toHaveCount(1);
+    expect(Message::where('lead_id', $lead->id)->count())->toBe(1);
+
+    $this->postJson(route('api.webhook.facebook', $tenant->tenant_code), $payload)->assertOk();
+
+    $lead->refresh();
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(1);
+    expect($lead->message)->toBe('Hello there');
+    expect($lead->source_data['messages'])->toHaveCount(1);
+    expect(Message::where('lead_id', $lead->id)->count())->toBe(1);
+});
+
+test('a duplicate instagram dm (same mid) is not appended twice', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Instagram,
+        'config' => ['instagram_account_id' => '456', 'verify_token' => 'secret-token'],
+    ]);
+
+    $payload = [
+        'entry' => [[
+            'messaging' => [[
+                'sender' => ['id' => 'igsid-dup'],
+                'message' => ['mid' => 'mid.DUPLICATE-2', 'text' => 'Hi, is this available?'],
+            ]],
+        ]],
+    ];
+
+    $this->postJson(route('api.webhook.instagram', $tenant->tenant_code), $payload)->assertOk();
+
+    $lead = Lead::where('tenant_id', $tenant->id)->firstOrFail();
+    expect($lead->message)->toBe('Hi, is this available?');
+    expect($lead->source_data['messages'])->toHaveCount(1);
+    expect(Message::where('lead_id', $lead->id)->count())->toBe(1);
+
+    $this->postJson(route('api.webhook.instagram', $tenant->tenant_code), $payload)->assertOk();
+
+    $lead->refresh();
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(1);
+    expect($lead->message)->toBe('Hi, is this available?');
+    expect($lead->source_data['messages'])->toHaveCount(1);
+    expect(Message::where('lead_id', $lead->id)->count())->toBe(1);
+});
+
+test('a duplicate whatsapp message (same id) delivered after the dedupe lock has already released is not appended twice', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => ['phone_number_id' => '123', 'access_token' => 'x', 'verify_token' => 'y'],
+    ]);
+
+    $payload = [
+        'entry' => [[
+            'changes' => [[
+                'value' => [
+                    'messages' => [[
+                        'id' => 'wamid.DUPLICATE-1',
+                        'from' => '8801700000001',
+                        'text' => ['body' => 'Hi, interested in your product'],
+                    ]],
+                ],
+            ]],
+        ]],
+    ];
+
+    // First delivery: fully completes (and its dedupe lock releases) before
+    // the second postJson() call is ever made — not a same-instant race.
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), $payload)->assertOk();
+
+    $lead = Lead::where('tenant_id', $tenant->id)->firstOrFail();
+    expect($lead->message)->toBe('Hi, interested in your product');
+    expect($lead->source_data['messages'])->toHaveCount(1);
+    expect(Message::where('lead_id', $lead->id)->count())->toBe(1);
+
+    // Redelivery of the exact same message.
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), $payload)->assertOk();
+
+    $lead->refresh();
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(1);
+    expect($lead->message)->toBe('Hi, interested in your product');
+    expect($lead->source_data['messages'])->toHaveCount(1);
+    expect(Message::where('lead_id', $lead->id)->count())->toBe(1);
+});
+
+test('a duplicate whatsapp message with an attachment does not create a second attachment or queue a second download', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => ['phone_number_id' => '123', 'access_token' => 'x', 'verify_token' => 'y'],
+    ]);
+
+    $payload = [
+        'entry' => [[
+            'changes' => [[
+                'value' => [
+                    'messages' => [[
+                        'id' => 'wamid.DUPLICATE-ATTACH-1',
+                        'from' => '8801700000002',
+                        'type' => 'image',
+                        'image' => ['id' => 'MEDIA-DUPLICATE-1', 'caption' => 'See attached'],
+                    ]],
+                ],
+            ]],
+        ]],
+    ];
+
+    Queue::fake();
+
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), $payload)->assertOk();
+
+    $lead = Lead::where('tenant_id', $tenant->id)->firstOrFail();
+    expect($lead->attachments)->toHaveCount(1);
+    Queue::assertPushed(DownloadLeadAttachment::class, 1);
+
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), $payload)->assertOk();
+
+    $lead->refresh();
+    expect($lead->attachments)->toHaveCount(1);
+    Queue::assertPushed(DownloadLeadAttachment::class, 1);
+    expect(Message::where('lead_id', $lead->id)->count())->toBe(1);
+});
+
+test('a duplicate first-ever whatsapp message (no lead exists yet) creates exactly one lead and fires LeadReceived exactly once', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => ['phone_number_id' => '123', 'access_token' => 'x', 'verify_token' => 'y'],
+    ]);
+
+    $payload = [
+        'entry' => [[
+            'changes' => [[
+                'value' => [
+                    'messages' => [[
+                        'id' => 'wamid.DUPLICATE-FIRST-1',
+                        'from' => '8801700000003',
+                        'text' => ['body' => 'Hi, interested in your product'],
+                    ]],
+                ],
+            ]],
+        ]],
+    ];
+
+    Event::fake([LeadReceived::class, LeadUpdated::class]);
+
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), $payload)->assertOk();
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), $payload)->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(1);
+    Event::assertDispatched(LeadReceived::class, 1);
+    Event::assertNotDispatched(LeadUpdated::class);
+
+    $lead = Lead::where('tenant_id', $tenant->id)->first();
+    expect(Message::where('lead_id', $lead->id)->count())->toBe(1);
+});
+
+test('two genuinely different whatsapp messages (different ids) from the same sender both continue to append normally', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => ['phone_number_id' => '123', 'access_token' => 'x', 'verify_token' => 'y'],
+    ]);
+
+    $payload = [
+        'entry' => [[
+            'changes' => [[
+                'value' => [
+                    'messages' => [[
+                        'id' => 'wamid.DIFFERENT-1',
+                        'from' => '8801700000004',
+                        'text' => ['body' => 'First message'],
+                    ]],
+                ],
+            ]],
+        ]],
+    ];
+
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), $payload)->assertOk();
+
+    $payload['entry'][0]['changes'][0]['value']['messages'][0]['id'] = 'wamid.DIFFERENT-2';
+    $payload['entry'][0]['changes'][0]['value']['messages'][0]['text']['body'] = 'Second message';
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), $payload)->assertOk();
+
+    $lead = Lead::where('tenant_id', $tenant->id)->firstOrFail();
+    expect($lead->message)->toBe("First message\nSecond message");
+    expect($lead->source_data['messages'])->toHaveCount(2);
+    expect(Message::where('lead_id', $lead->id)->count())->toBe(2);
 });
