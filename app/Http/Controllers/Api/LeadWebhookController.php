@@ -855,8 +855,22 @@ class LeadWebhookController extends Controller
         // strand the lead being created. initialLeadStatus() is read from
         // this freshly-locked $tenant, never $source->tenant (which may
         // carry a stale cached relation).
+        //
+        // DEADLOCK-1 fix: FOR UPDATE, not FOR SHARE — Lead::create() below
+        // triggers Lead::nextIdentifier(), which independently takes its
+        // own FOR UPDATE on this exact same tenant row. Two concurrent
+        // callers each holding FOR SHARE and then both trying to upgrade to
+        // FOR UPDATE is a real, reproduced PostgreSQL deadlock (SQLSTATE
+        // 40P01); taking FOR UPDATE up front instead means every caller
+        // requests the same, strongest lock immediately, so contention
+        // becomes ordinary serialized blocking, never a circular wait —
+        // nextIdentifier()'s own FOR UPDATE then becomes a harmless re-lock
+        // of a row this transaction already holds exclusively. Every
+        // status-assigning writer reusing this same protocol still queues
+        // behind this lock exactly as before; only the lock's own strength
+        // changed, not the protocol.
         $lead = DB::transaction(function () use ($source, $attributes): Lead {
-            $tenant = Tenant::whereKey($source->tenant_id)->sharedLock()->firstOrFail();
+            $tenant = Tenant::whereKey($source->tenant_id)->lockForUpdate()->firstOrFail();
 
             return Lead::create(array_merge([
                 'tenant_id' => $source->tenant_id,

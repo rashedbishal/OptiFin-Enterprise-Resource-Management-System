@@ -44,7 +44,14 @@ class CreateManualLead
             // automated creation path already uses) rather than failing the
             // whole submission outright, since this Action has no channel
             // back to a form-field error.
-            $lockedTenant = Tenant::whereKey($tenant->id)->sharedLock()->firstOrFail();
+            //
+            // DEADLOCK-1 fix: FOR UPDATE, not FOR SHARE — see
+            // LeadWebhookController::createLead()'s identical comment for
+            // the full reasoning. Lead::create() below still triggers
+            // Lead::nextIdentifier()'s own FOR UPDATE on this same row; that
+            // is now a harmless re-lock instead of a lock-upgrade deadlock
+            // hazard against another concurrent creator for this tenant.
+            $lockedTenant = Tenant::whereKey($tenant->id)->lockForUpdate()->firstOrFail();
 
             $statusId = $lockedTenant->leadStatuses->contains('id', $data['status_id'])
                 ? $data['status_id']

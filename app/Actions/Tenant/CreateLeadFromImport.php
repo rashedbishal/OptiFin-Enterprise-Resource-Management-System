@@ -109,21 +109,29 @@ class CreateLeadFromImport
         }
 
         // TOCTOU fix: $status is now resolved inside the transaction below,
-        // immediately after taking a shared (FOR SHARE) coordination lock on
-        // the tenant row — see
+        // immediately after taking an exclusive (FOR UPDATE) coordination
+        // lock on the tenant row — see
         // Platform\Clients\LeadSources::toggleLeadStatus()'s own docblock
         // for the full readers/writer protocol. The other 5 resolutions
         // don't need the lock, but stay alongside $status inside the same
         // transaction so every resolution failure is still reported
         // together in one combined Failed row, exactly as before — only
         // moved from before the transaction to its first statements.
+        //
+        // DEADLOCK-1 fix: FOR UPDATE, not FOR SHARE — see
+        // LeadWebhookController::createLead()'s identical comment for the
+        // full reasoning. Lead::create() below still triggers
+        // Lead::nextIdentifier()'s own FOR UPDATE on this same row; that is
+        // now a harmless re-lock instead of a lock-upgrade deadlock hazard
+        // against another concurrent creator for this tenant (a second,
+        // concurrently-running import, or any other channel).
         DB::transaction(function () use ($import, $tenant, $source, $importedBy, $rowNumber, $row, $name, $email, $phone, $normalizedEmail, $normalizedPhone): void {
             // $status is resolved from this freshly-locked $lockedTenant,
             // never the outer $tenant parameter — $tenant may be reused
             // across every row in the same chunk (see App\Imports\LeadCsvImport)
             // and could carry a stale cached leadStatuses relation from an
             // earlier row, which would defeat the lock's purpose here.
-            $lockedTenant = Tenant::whereKey($tenant->id)->sharedLock()->firstOrFail();
+            $lockedTenant = Tenant::whereKey($tenant->id)->lockForUpdate()->firstOrFail();
 
             $status = $this->resolveStatus($lockedTenant, $row['status'] ?? null);
             $priority = $this->resolvePriority($row['priority'] ?? null);

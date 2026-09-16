@@ -187,8 +187,15 @@ class ProcessEmailLeadSource implements ShouldQueue
         // created. $tenant->initialLeadStatus() is read from this
         // freshly-locked instance, never $this->source->tenant (which may
         // carry a stale cached relation).
+        //
+        // DEADLOCK-1 fix: FOR UPDATE, not FOR SHARE — see
+        // LeadWebhookController::createLead()'s identical comment for the
+        // full reasoning. Lead::create() below still triggers
+        // Lead::nextIdentifier()'s own FOR UPDATE on this same row; that is
+        // now a harmless re-lock instead of a lock-upgrade deadlock hazard
+        // against another concurrent creator for this tenant.
         $lead = DB::transaction(function () use ($name, $email, $body, $header): Lead {
-            $tenant = Tenant::whereKey($this->source->tenant_id)->sharedLock()->firstOrFail();
+            $tenant = Tenant::whereKey($this->source->tenant_id)->lockForUpdate()->firstOrFail();
 
             return Lead::create([
                 'tenant_id' => $this->source->tenant_id,
