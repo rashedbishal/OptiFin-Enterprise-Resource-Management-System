@@ -25,12 +25,15 @@
                         @foreach (auth()->user()->tenant?->activeModules ?? [] as $module)
                             @if (auth()->user()->hasModulePermission($module->slug, 'view'))
                                 @if ($module->slug === 'lead-management')
-                                    {{-- Single module entry — every Lead Management page
-                                    (Leads, Lead Sources, Custom Fields, Source Costs,
-                                    Website Forms, Reports, ...) is a nested page reached
-                                    from the module's own dashboard hub at
-                                    lead-management.index, no longer flat sidebar items. --}}
-                                    <flux:sidebar.item icon="chat-bubble-left-right" :href="route('lead-management.index')" :current="request()->routeIs('lead-management.*', 'tenant-leads.*', 'tenant-lead-sources.*', 'tenant-lead-imports.*')" wire:navigate>
+                                    {{-- Single module entry — Client Admins land on the module's
+                                    own dashboard hub (lead-management.index), which links to
+                                    every nested page (Leads, Lead Sources, Custom Fields,
+                                    Source Costs, Website Forms, Reports). Staff/employee
+                                    users go straight to their Kanban board (tenant-leads.index
+                                    renders it for them) — the hub itself redirects them there
+                                    too, this just skips the hop. Both destinations stay under
+                                    the same highlighted entry (see :current). --}}
+                                    <flux:sidebar.item icon="chat-bubble-left-right" :href="auth()->user()->isClientAdmin() ? route('lead-management.index') : route('tenant-leads.index')" :current="request()->routeIs('lead-management.*', 'tenant-leads.*', 'tenant-lead-sources.*', 'tenant-lead-imports.*')" wire:navigate>
                                         {{ $module->name }}
                                     </flux:sidebar.item>
                                 @else

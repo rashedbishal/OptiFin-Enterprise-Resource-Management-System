@@ -116,19 +116,37 @@ test('every lead management nested page shows the hub as its breadcrumb parent',
     'website forms' => ['tenant-leads.website-forms', []],
 ]);
 
-test('a client user without update permission sees hub tiles but no manage hint', function () {
+test('a staff user hitting the hub is redirected to their kanban board', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
     $rep = clientUserWithLeadPermission($tenant, ['view']);
 
-    $response = $this->actingAs($rep)->get(route('lead-management.index'))->assertOk();
+    // The hub is the Client Admin's module dashboard — a staff/employee
+    // user works day-to-day on the Kanban board (tenant-leads.index renders
+    // it for non-admins), so the module entry point drops them straight
+    // there instead of showing admin catalog tiles they can't act on.
+    $this->actingAs($rep)->get(route('lead-management.index'))
+        ->assertRedirect(route('tenant-leads.index'));
+});
 
-    // Hub itself is viewable with module-view permission (the loosest gate
-    // of any nested page) — tiles to the Client-Admin-only catalog pages
-    // are still shown, but with a "who manages this" badge instead of an
-    // entry count (the badge's lock icon renders as an SVG, so assert on
-    // its visible label only).
-    expect($response->getContent())->toContain(route('tenant-leads.custom-fields'));
-    expect($response->getContent())->toContain('Client Admin');
+test('a staff user without even view permission is forbidden, not redirected', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant, []);
+
+    // The redirect branch sits AFTER the viewAny gate on purpose — a user
+    // with no module access gets the 403, never a redirect that could
+    // leak whether the module exists.
+    $this->actingAs($rep)->get(route('lead-management.index'))->assertForbidden();
+});
+
+test('the kanban board pushes a Lead Management breadcrumb for staff users', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant, ['view']);
+
+    $response = $this->actingAs($rep)->get(route('tenant-leads.index'));
+
+    $response->assertOk();
+    expect(substr_count($response->getContent(), 'aria-label="Breadcrumb"'))->toBe(1);
+    $response->assertSee(route('lead-management.index'), false);
 });
 
 test('a permitted client user can view their own lead but not the leads index for others', function () {

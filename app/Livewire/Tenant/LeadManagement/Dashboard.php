@@ -30,6 +30,17 @@ class Dashboard extends Component
     public function mount(): void
     {
         Gate::authorize('viewAny', Lead::class);
+
+        // The hub is the Client Admin's module dashboard. Staff/employee
+        // users (non-admins) work their leads day-to-day on the Kanban
+        // board (tenant-leads.index renders it for them), so the module
+        // entry point drops them straight there instead of showing admin
+        // catalog tiles they can't act on. Admin-only gate inside the
+        // branch is deliberate: this runs AFTER viewAny, so a staff user
+        // without even view permission still gets the 403, not a redirect.
+        if (! Auth::user()->isClientAdmin()) {
+            $this->redirect(route('tenant-leads.index'), navigate: true);
+        }
     }
 
     /**
@@ -57,9 +68,10 @@ class Dashboard extends Component
     /**
      * The Client-Admin-only bar every catalog page below the hub enforces
      * on arrival (LeadCustomFieldDefinitionPolicy / LeadSourceCostPolicy /
-     * WebsiteFormPolicy::viewAny all share it) — used only to soften those
-     * tiles' entry-count badge into a "who manages this" hint. Route
-     * access itself is always enforced server-side by the destination page.
+     * WebsiteFormPolicy::viewAny all share it). The owner role always holds
+     * the module's full permission set (granted by AssignModuleToTenant),
+     * so this is true for every admin who can actually reach the hub —
+     * staff users are redirected away in mount() before the view renders.
      */
     #[Computed]
     public function canManageCatalogs(): bool
