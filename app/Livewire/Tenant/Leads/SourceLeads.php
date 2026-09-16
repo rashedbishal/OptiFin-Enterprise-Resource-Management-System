@@ -48,7 +48,11 @@ class SourceLeads extends Component
 
     public function mount(LeadSource $leadSource): void
     {
-        Gate::authorize('viewAny', Lead::class);
+        // Instance-level, not class-level: LeadSourcePolicy::view() already
+        // checks both tenant ownership and the lead-management/view module
+        // permission — mirrors Leads\Show::mount()'s own Gate::authorize
+        // ('view', $lead) pattern, which this component previously lacked.
+        Gate::authorize('view', $leadSource);
 
         abort_unless($leadSource->type === LeadSourceType::FacebookLeadAds, 404);
 
@@ -110,7 +114,7 @@ class SourceLeads extends Component
     {
         $names = [];
 
-        foreach ($this->baseQuery()->get(['id', 'source_data', 'source_id', 'tenant_id']) as $lead) {
+        foreach ($this->baseQuery()->orderBy('id')->get(['id', 'source_data', 'source_id', 'tenant_id']) as $lead) {
             foreach (array_keys($lead->leadAdFieldValues()) as $name) {
                 if (! in_array($name, $names, true)) {
                     $names[] = $name;
@@ -144,10 +148,18 @@ class SourceLeads extends Component
     private function baseQuery(): Builder
     {
         return $this->applyAssignmentScope(
-            // whereNull('merged_into_lead_id'): keeps a lead merged into
-            // another one (see App\Services\LeadMergeService) out of this
-            // spreadsheet view and its export, same as Index::filteredQuery().
-            Lead::query()->where('source_id', $this->leadSource->id)->whereNull('merged_into_lead_id')
+            // tenant_id scoped explicitly, same discipline as every other
+            // query in this module (e.g. Index::filteredQuery()) — mount()'s
+            // Gate::authorize('view', $leadSource) already rejects a
+            // cross-tenant $leadSource before this is ever built, but the
+            // query itself must never rely on that alone: whereNull(
+            // 'merged_into_lead_id') keeps a lead merged into another one
+            // (see App\Services\LeadMergeService) out of this spreadsheet
+            // view and its export, same as Index::filteredQuery().
+            Lead::query()
+                ->where('tenant_id', Auth::user()->tenant_id)
+                ->where('source_id', $this->leadSource->id)
+                ->whereNull('merged_into_lead_id')
         );
     }
 

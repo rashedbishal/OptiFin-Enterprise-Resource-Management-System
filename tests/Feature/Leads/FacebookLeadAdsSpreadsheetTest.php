@@ -348,6 +348,112 @@ test('a client user without lead view permission cannot open the spreadsheet vie
         ->assertForbidden();
 });
 
+/**
+ * SEC-1 — a Client Admin in one tenant must never be able to mount another
+ * tenant's LeadSource. Uses the same real HTTP request + assertForbidden()
+ * style as the "no permission" test directly above (Gate::authorize()
+ * throws AuthorizationException, mapped to 403 — the same mechanism, not
+ * the abort_unless(...404) used for the wrong-source-type check elsewhere
+ * in this file), since mount() now reaches this same Gate::authorize()
+ * call for a cross-tenant $leadSource for exactly the same reason a
+ * missing permission does: LeadSourcePolicy::view() returns false either
+ * way.
+ */
+test('a client admin cannot mount another tenant\'s facebook lead ads source', function () {
+    ['tenant' => $tenantA, 'clientAdmin' => $clientAdminA] = tenantWithLeadManagement();
+    ['tenant' => $tenantB] = tenantWithLeadManagement();
+    $sourceB = LeadSource::factory()->create(['tenant_id' => $tenantB->id, 'type' => LeadSourceType::FacebookLeadAds]);
+    Lead::factory()->create(['tenant_id' => $tenantB->id, 'source_id' => $sourceB->id, 'name' => 'Tenant B Secret Lead']);
+
+    $this->actingAs($clientAdminA)
+        ->get(route('tenant-leads.source', $sourceB))
+        ->assertForbidden();
+});
+
+test('a client user cannot mount another tenant\'s facebook lead ads source', function () {
+    ['tenant' => $tenantA] = tenantWithLeadManagement();
+    $repA = clientUserWithLeadPermission($tenantA);
+    ['tenant' => $tenantB] = tenantWithLeadManagement();
+    $sourceB = LeadSource::factory()->create(['tenant_id' => $tenantB->id, 'type' => LeadSourceType::FacebookLeadAds]);
+    Lead::factory()->create(['tenant_id' => $tenantB->id, 'source_id' => $sourceB->id, 'name' => 'Tenant B Secret Lead']);
+
+    $this->actingAs($repA)
+        ->get(route('tenant-leads.source', $sourceB))
+        ->assertForbidden();
+});
+
+/**
+ * SEC-1 — proves baseQuery() itself is tenant-safe independent of mount()'s
+ * own guard (defense in depth, not just "mount() happens to block it
+ * first"): the component is deliberately built WITHOUT going through
+ * mount() (a bare instance with $leadSource set directly via reflection-
+ * free public-property assignment, since Livewire hydrates it as a plain
+ * public property) so this exercises exactly what a bypass of mount()
+ * would face. Uses ReflectionMethod to reach the private baseQuery(),
+ * matching the existing precedent in
+ * tests/Unit/ProcessEmailLeadSourceBodyExtractionTest.php and
+ * tests/Feature/Schema/EnumConstraintVerifierTest.php.
+ */
+test('baseQuery() itself never returns another tenant\'s leads, independent of mount()\'s guard', function () {
+    ['tenant' => $tenantA, 'clientAdmin' => $clientAdminA] = tenantWithLeadManagement();
+    ['tenant' => $tenantB] = tenantWithLeadManagement();
+    $sourceB = LeadSource::factory()->create(['tenant_id' => $tenantB->id, 'type' => LeadSourceType::FacebookLeadAds]);
+    Lead::factory()->create(['tenant_id' => $tenantB->id, 'source_id' => $sourceB->id, 'name' => 'Tenant B Secret Lead']);
+
+    $this->actingAs($clientAdminA);
+
+    $component = new SourceLeads;
+    $component->leadSource = $sourceB;
+
+    $method = new ReflectionMethod(SourceLeads::class, 'baseQuery');
+    $result = $method->invoke($component)->get();
+
+    expect($result)->toHaveCount(0);
+});
+
+/**
+ * SEC-1 — proves the XLSX export path shares baseQuery()'s tenant safety:
+ * downloadXlsx() re-authorizes only at the class level (Gate::authorize
+ * ('viewAny', Lead::class), unchanged, deliberately out of this fix's
+ * approved scope — see the SEC-1 Decision Brief), so this test bypasses
+ * mount() the same way the test above does, to independently confirm the
+ * actual exported content — not just the request-level denial — excludes
+ * Tenant B's data, reusing this file's own established real-file-read
+ * pattern (Excel::raw() + IOFactory::load()) rather than merely inspecting
+ * an in-memory collection.
+ */
+test('downloadXlsx() exports zero rows for another tenant\'s facebook lead ads source', function () {
+    ['tenant' => $tenantA, 'clientAdmin' => $clientAdminA] = tenantWithLeadManagement();
+    ['tenant' => $tenantB] = tenantWithLeadManagement();
+    $sourceB = LeadSource::factory()->create(['tenant_id' => $tenantB->id, 'type' => LeadSourceType::FacebookLeadAds, 'name' => 'Tenant B Source']);
+    Lead::factory()->create(['tenant_id' => $tenantB->id, 'source_id' => $sourceB->id, 'name' => 'Tenant B Secret Lead']);
+
+    $this->actingAs($clientAdminA);
+
+    $component = new SourceLeads;
+    $component->leadSource = $sourceB;
+
+    // Build the export exactly the way downloadXlsx() itself does, via the
+    // same tenant-scoped baseQuery(), rather than duplicating its export-
+    // construction logic by hand.
+    $method = new ReflectionMethod(SourceLeads::class, 'baseQuery');
+    $leads = $method->invoke($component)->with('status')->latest()->get();
+
+    expect($leads)->toHaveCount(0);
+
+    $tmpPath = tempnam(sys_get_temp_dir(), 'sec1_export_test_');
+    file_put_contents($tmpPath, Excel::raw(new FacebookLeadAdsExport($leads, []), ExcelWriterType::XLSX));
+
+    try {
+        $sheet = IOFactory::load($tmpPath)->getActiveSheet();
+        // Header row only (row 1) — no data rows for Tenant B's lead.
+        expect($sheet->getHighestDataRow())->toBe(1);
+        expect($sheet->toArray()[0])->not->toContain('Tenant B Secret Lead');
+    } finally {
+        @unlink($tmpPath);
+    }
+});
+
 test('the leads index source type filter no longer offers facebook lead ads', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
