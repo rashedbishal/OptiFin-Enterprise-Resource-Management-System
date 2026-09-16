@@ -263,15 +263,15 @@ test('rendering the reports page issues a bounded number of queries regardless o
     expect($queryCount)->toBeLessThan(20);
 });
 
-test('the sidebar shows the Reports & Analytics link to a Client Admin with the module', function () {
+test('the module hub shows the Reports & Analytics link to a Client Admin with the module', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
 
-    $this->actingAs($clientAdmin)->get(route('dashboard'))->assertSee(route('tenant-leads.reports'), false);
+    $this->actingAs($clientAdmin)->get(route('lead-management.index'))->assertSee(route('tenant-leads.reports'), false);
 });
 
-test('the sidebar hides the Reports & Analytics link from a Client User', function () {
+test('the module hub hides the Reports & Analytics link from a Client User', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
     $rep = clientUserWithLeadPermission($tenant, ['view']);
 
-    $this->actingAs($rep)->get(route('dashboard'))->assertDontSee(route('tenant-leads.reports'), false);
+    $this->actingAs($rep)->get(route('lead-management.index'))->assertDontSee(route('tenant-leads.reports'), false);
 });

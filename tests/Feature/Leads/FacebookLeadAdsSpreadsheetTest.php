@@ -523,11 +523,10 @@ test('a facebook lead ads lead\'s "Back to Leads" button returns to its own sour
 
     expect($content)->toContain('href="'.route('tenant-leads.source', $source).'"');
 
-    // The sidebar nav item and the breadcrumb ("Dashboard > Leads > ...")
-    // both always link to tenant-leads.index regardless of source type, so
-    // this only proves the *button* isn't also pointing there: exactly
-    // those two occurrences, not a third for the button.
-    expect(substr_count($content, 'href="'.route('tenant-leads.index').'"'))->toBe(2);
+    // Only the breadcrumb's "Leads" parent links to tenant-leads.index —
+    // the module sidebar item points at the module hub, and this lead's
+    // back button points at its own source spreadsheet.
+    expect(substr_count($content, 'href="'.route('tenant-leads.index').'"'))->toBe(1);
 });
 
 test('every other lead source type\'s "Back to Leads" button still returns to the main table', function () {
@@ -536,8 +535,9 @@ test('every other lead source type\'s "Back to Leads" button still returns to th
 
     $content = $this->actingAs($clientAdmin)->get(route('tenant-leads.show', $lead))->assertOk()->getContent();
 
-    // Sidebar nav item + breadcrumb + button, all pointing at the main table.
-    expect(substr_count($content, 'href="'.route('tenant-leads.index').'"'))->toBe(3);
+    // Breadcrumb parent + back button, both pointing at the main table
+    // (the module sidebar item points at the module hub instead).
+    expect(substr_count($content, 'href="'.route('tenant-leads.index').'"'))->toBe(2);
 });
 
 test('a client admin can delete an empty facebook lead ads source', function () {

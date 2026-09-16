@@ -1,9 +1,4 @@
-@push('breadcrumbs')
-    <x-breadcrumbs :items="[
-        ['label' => __('Dashboard'), 'href' => route('dashboard')],
-        ['label' => __('Leads')],
-    ]" />
-@endpush
+@include('partials.lead-management-breadcrumbs', ['leadManagementTrail' => [['label' => __('Leads')]]])
 
 <div
     class="flex flex-1 flex-col h-full min-h-0 overflow-hidden"

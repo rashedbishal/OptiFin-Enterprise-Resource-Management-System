@@ -6,6 +6,7 @@ use App\Livewire\Tenant\Dashboard;
 use App\Livewire\Tenant\LeadCustomFields\Index as LeadCustomFieldsIndex;
 use App\Livewire\Tenant\LeadImports\Index as LeadImportsIndex;
 use App\Livewire\Tenant\LeadImports\Show as LeadImportsShow;
+use App\Livewire\Tenant\LeadManagement\Dashboard as LeadManagementDashboard;
 use App\Livewire\Tenant\LeadReports\Index as LeadReportsIndex;
 use App\Livewire\Tenant\Leads\Index as LeadsIndex;
 use App\Livewire\Tenant\Leads\Show as LeadsShow;
@@ -29,9 +30,12 @@ Route::middleware(['auth', 'verified', 'tenant.identify', 'tenant.active'])->gro
     Route::livewire('modules/{module:slug}', ModulePlaceholder::class)->name('modules.show');
     Route::get('notifications/{notification}/open', NotificationRedirectController::class)->name('tenant-notifications.open');
 
-    Route::middleware('module:lead-management')->group(function () {
-        Route::livewire('lead-sources', LeadSourcesIndex::class)->name('tenant-lead-sources.index');
+    Route::middleware('module:lead-management')->prefix('lead-management')->group(function () {
+        // Module hub: dashboard linking into every nested page below.
+        Route::livewire('/', LeadManagementDashboard::class)->name('lead-management.index');
+
         Route::livewire('leads', LeadsIndex::class)->name('tenant-leads.index');
+        Route::livewire('lead-sources', LeadSourcesIndex::class)->name('tenant-lead-sources.index');
         Route::livewire('leads/sources/{leadSource}', LeadsSourceLeads::class)->name('tenant-leads.source');
         Route::livewire('leads/scoring-rules', LeadScoringIndex::class)->name('tenant-leads.scoring-rules');
         Route::livewire('leads/tags', LeadTagsIndex::class)->name('tenant-leads.tags');

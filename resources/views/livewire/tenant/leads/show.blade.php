@@ -1,10 +1,7 @@
-@push('breadcrumbs')
-    <x-breadcrumbs :items="[
-        ['label' => __('Dashboard'), 'href' => route('dashboard')],
-        ['label' => __('Leads'), 'href' => route('tenant-leads.index')],
-        ['label' => $lead->name],
-    ]" />
-@endpush
+@include('partials.lead-management-breadcrumbs', ['leadManagementTrail' => [
+    ['label' => __('Leads'), 'href' => route('tenant-leads.index')],
+    ['label' => $lead->name],
+]])
 
 <div class="flex flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8 overflow-y-auto min-h-0" wire:init="completeInitialLoad">
     @include('livewire.tenant.leads.partials.lead-hero', ['lead' => $lead, 'canDelete' => $this->canDelete])

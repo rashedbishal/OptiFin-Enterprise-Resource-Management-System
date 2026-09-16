@@ -25,7 +25,12 @@
                         @foreach (auth()->user()->tenant?->activeModules ?? [] as $module)
                             @if (auth()->user()->hasModulePermission($module->slug, 'view'))
                                 @if ($module->slug === 'lead-management')
-                                    <flux:sidebar.item icon="chat-bubble-left-right" :href="route('tenant-leads.index')" :current="request()->routeIs('tenant-leads.*', 'tenant-lead-sources.*')" wire:navigate>
+                                    {{-- Single module entry — every Lead Management page
+                                    (Leads, Lead Sources, Custom Fields, Source Costs,
+                                    Website Forms, Reports, ...) is a nested page reached
+                                    from the module's own dashboard hub at
+                                    lead-management.index, no longer flat sidebar items. --}}
+                                    <flux:sidebar.item icon="chat-bubble-left-right" :href="route('lead-management.index')" :current="request()->routeIs('lead-management.*', 'tenant-leads.*', 'tenant-lead-sources.*', 'tenant-lead-imports.*')" wire:navigate>
                                         {{ $module->name }}
                                     </flux:sidebar.item>
                                 @else
@@ -55,23 +60,6 @@
                             <flux:sidebar.item icon="shield-check" :href="route('tenant-roles.index')" :current="request()->routeIs('tenant-roles.index')" wire:navigate>
                                 {{ __('Roles') }}
                             </flux:sidebar.item>
-                            @if (auth()->user()->tenant?->hasModule('lead-management'))
-                                <flux:sidebar.item icon="signal" :href="route('tenant-lead-sources.index')" :current="request()->routeIs('tenant-lead-sources.index')" wire:navigate>
-                                    {{ __('Lead Sources') }}
-                                </flux:sidebar.item>
-                                <flux:sidebar.item icon="squares-plus" :href="route('tenant-leads.custom-fields')" :current="request()->routeIs('tenant-leads.custom-fields')" wire:navigate>
-                                    {{ __('Custom Fields') }}
-                                </flux:sidebar.item>
-                                <flux:sidebar.item icon="banknotes" :href="route('tenant-leads.source-costs')" :current="request()->routeIs('tenant-leads.source-costs')" wire:navigate>
-                                    {{ __('Source Costs') }}
-                                </flux:sidebar.item>
-                                <flux:sidebar.item icon="document-text" :href="route('tenant-leads.website-forms')" :current="request()->routeIs('tenant-leads.website-forms')" wire:navigate>
-                                    {{ __('Website Forms') }}
-                                </flux:sidebar.item>
-                                <flux:sidebar.item icon="chart-bar" :href="route('tenant-leads.reports')" :current="request()->routeIs('tenant-leads.reports')" wire:navigate>
-                                    {{ __('Reports & Analytics') }}
-                                </flux:sidebar.item>
-                            @endif
                         @endif
                     @endauth
                 </flux:sidebar.group>

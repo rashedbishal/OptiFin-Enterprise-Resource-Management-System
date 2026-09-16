@@ -1,11 +1,8 @@
-@push('breadcrumbs')
-    <x-breadcrumbs :items="[
-        ['label' => __('Dashboard'), 'href' => route('dashboard')],
-        ['label' => __('Leads'), 'href' => route('tenant-leads.index')],
-        ['label' => __('Import Leads'), 'href' => route('tenant-lead-imports.index')],
-        ['label' => $leadImport->original_filename],
-    ]" />
-@endpush
+@include('partials.lead-management-breadcrumbs', ['leadManagementTrail' => [
+    ['label' => __('Leads'), 'href' => route('tenant-leads.index')],
+    ['label' => __('Import Leads'), 'href' => route('tenant-lead-imports.index')],
+    ['label' => $leadImport->original_filename],
+]])
 
 <div
     class="flex flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8 overflow-y-auto min-h-0"

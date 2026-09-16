@@ -166,7 +166,7 @@ test('rendering the cost per lead card does not N+1 per-source lookups', functio
     expect($queryCount)->toBeLessThanOrEqual(8);
 });
 
-test('the reports page renders the cost per lead card, disclaimer, and manage-source-costs link', function () {
+test('the reports page renders the cost per lead card, disclaimer, and source-costs link', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds, 'name' => 'FB Ads']);
     $currency = enableCurrency($tenant);
@@ -183,7 +183,7 @@ test('the reports page renders the cost per lead card, disclaimer, and manage-so
         ->set('fromDate', '2026-09-15')
         ->set('toDate', '2026-10-31')
         ->assertSee('Cost per Lead')
-        ->assertSee('Manage Source Costs')
+        ->assertSee(route('tenant-leads.source-costs'), false)
         ->assertSee('September 2026')
         ->assertSee('FB Ads');
 });

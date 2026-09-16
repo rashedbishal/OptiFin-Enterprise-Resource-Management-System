@@ -59,6 +59,10 @@ test('a client admin can view the lead management pages', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
 
+    $hubResponse = $this->actingAs($clientAdmin)->get(route('lead-management.index'));
+    $hubResponse->assertOk();
+    expect(substr_count($hubResponse->getContent(), 'aria-label="Breadcrumb"'))->toBe(1);
+
     $indexResponse = $this->actingAs($clientAdmin)->get(route('tenant-leads.index'));
     $indexResponse->assertOk();
     expect(substr_count($indexResponse->getContent(), 'aria-label="Breadcrumb"'))->toBe(1);
@@ -68,8 +72,63 @@ test('a client admin can view the lead management pages', function () {
     $showResponse = $this->actingAs($clientAdmin)->get(route('tenant-leads.show', $lead));
     $showResponse
         ->assertOk()
-        ->assertSeeInOrder(['Dashboard', 'Leads', $lead->name]);
+        ->assertSeeInOrder(['Dashboard', 'Lead Management', 'Leads', $lead->name]);
     expect(substr_count($showResponse->getContent(), 'aria-label="Breadcrumb"'))->toBe(1);
+});
+
+test('the lead management hub links to every nested module page', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+
+    $response = $this->actingAs($clientAdmin)->get(route('lead-management.index'))->assertOk();
+
+    $content = $response->getContent();
+
+    foreach (
+        [
+            'tenant-leads.index',
+            'tenant-lead-sources.index',
+            'tenant-leads.custom-fields',
+            'tenant-leads.source-costs',
+            'tenant-leads.website-forms',
+        ] as $routeName
+    ) {
+        expect($content)->toContain('href="'.route($routeName).'"');
+    }
+});
+
+test('every lead management nested page shows the hub as its breadcrumb parent', function (string $route, array $routeParams) {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+
+    $response = $this->actingAs($clientAdmin)->get(route($route, ...$routeParams));
+
+    $response->assertOk();
+
+    // The shared top-bar breadcrumb (exactly one <nav aria-label>) must
+    // show Dashboard > Lead Management > <page> — the hub route itself
+    // nested between the root and the page label.
+    expect(substr_count($response->getContent(), 'aria-label="Breadcrumb"'))->toBe(1);
+    $response->assertSee(route('lead-management.index'), false);
+})->with([
+    'lead details' => ['tenant-leads.index', []],
+    'lead sources' => ['tenant-lead-sources.index', []],
+    'custom fields' => ['tenant-leads.custom-fields', []],
+    'source costs' => ['tenant-leads.source-costs', []],
+    'website forms' => ['tenant-leads.website-forms', []],
+]);
+
+test('a client user without update permission sees hub tiles but no manage hint', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant, ['view']);
+
+    $response = $this->actingAs($rep)->get(route('lead-management.index'))->assertOk();
+
+    // Hub itself is viewable with module-view permission (the loosest gate
+    // of any nested page) — tiles to the Client-Admin-only catalog pages
+    // are still shown, but with a "who manages this" badge instead of an
+    // entry count (the badge's lock icon renders as an SVG, so assert on
+    // its visible label only).
+    expect($response->getContent())->toContain(route('tenant-leads.custom-fields'));
+    expect($response->getContent())->toContain('Client Admin');
 });
 
 test('a permitted client user can view their own lead but not the leads index for others', function () {

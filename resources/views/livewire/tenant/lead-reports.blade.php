@@ -1,10 +1,4 @@
-@push('breadcrumbs')
-    <x-breadcrumbs :items="[
-        ['label' => __('Dashboard'), 'href' => route('dashboard')],
-        ['label' => __('Leads'), 'href' => route('tenant-leads.index')],
-        ['label' => __('Reports & Analytics')],
-    ]" />
-@endpush
+@include('partials.lead-management-breadcrumbs', ['leadManagementTrail' => [['label' => __('Reports & Analytics')]]])
 
 <div class="flex flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8 overflow-y-auto min-h-0">
     <div>
@@ -149,8 +143,11 @@
         <flux:card>
             <div class="mb-4 flex items-start justify-between gap-3">
                 <flux:heading size="lg">{{ __('Cost per Lead') }}</flux:heading>
-                <flux:button size="sm" variant="ghost" :href="route('tenant-leads.source-costs')" wire:navigate>
-                    {{ __('Manage Source Costs') }}
+                {{-- The Source Costs page is a sibling page of this one inside
+                the Lead Management module (not a Leads sub-page), so the
+                button reads as navigation between module pages. --}}
+                <flux:button size="sm" variant="ghost" icon-trailing="arrow-right" :href="route('tenant-leads.source-costs')" wire:navigate>
+                    {{ __('Source Costs') }}
                 </flux:button>
             </div>
 
