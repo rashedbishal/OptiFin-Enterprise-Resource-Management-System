@@ -25,6 +25,7 @@ use App\Models\Message;
 use App\Models\Tenant;
 use App\Models\WebsiteForm;
 use Carbon\CarbonInterface;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -445,13 +446,33 @@ class LeadWebhookController extends Controller
 
         $this->assertAllowedWebsiteFormDomain($request, $source);
 
-        $this->createLead($source, [
-            'name' => $request->input('name', 'Website Visitor'),
-            'email' => $request->input('email'),
-            'phone' => $request->input('phone'),
-            'message' => $request->input('message'),
-            'source_data' => $request->except(['name', 'email', 'phone', 'message']),
-        ]);
+        $name = $request->input('name', 'Website Visitor');
+        $email = $request->input('email');
+        $phone = $request->input('phone');
+        $message = $request->input('message');
+        $extra = $request->except(['name', 'email', 'phone', 'message']);
+
+        // REL-2 fix: see withWebsiteFormIdempotency()'s own docblock — a
+        // double-click or client-side retry submitting this exact same
+        // content again within the short window is not a second lead.
+        $this->withWebsiteFormIdempotency(
+            $source->tenant_id,
+            $source->id,
+            [
+                'name' => $name,
+                'email' => is_string($email) ? mb_strtolower($email) : $email,
+                'phone' => $phone,
+                'message' => $message,
+                'extra' => $extra,
+            ],
+            fn (): Lead => $this->createLead($source, [
+                'name' => $name,
+                'email' => $email,
+                'phone' => $phone,
+                'message' => $message,
+                'source_data' => $extra,
+            ]),
+        );
 
         return response()->json(['status' => 'ok']);
     }
@@ -479,39 +500,64 @@ class LeadWebhookController extends Controller
             return response()->json(['status' => 'ok']);
         }
 
-        $lead = $this->createLead(
-            $form->leadSource,
-            array_merge($result['attributes'], [
-                // A point-in-time snapshot, never a hard FK from Lead to
-                // WebsiteForm — see WebsiteForm's own docblock for why:
-                // deleting a form must never touch any existing Lead.
-                'source_data' => [
-                    'website_form_id' => $form->id,
-                    'website_form_name' => $form->name,
-                ],
-            ]),
-            $result['customFieldValues'],
-        );
+        $email = $result['attributes']['email'] ?? null;
 
-        // Feature #14 — recorded AFTER the Lead exists, once per configured
-        // and explicitly-granted consent type. $result['consentGrants'] only
-        // ever contains types ValidateWebsiteFormSubmission derived from
-        // this specific form's own server-stored field configuration and
-        // validated as an explicit true — never anything client-controlled.
-        foreach ($result['consentGrants'] as $grant) {
-            app(RecordLeadConsent::class)->handle(
-                lead: $lead,
-                type: $grant['type'],
-                status: ConsentStatus::Granted,
-                source: ConsentSource::WebsiteForm,
-                websiteFormId: $form->id,
-                websiteFormName: $form->name,
-                policyVersion: $grant['policyVersion'],
-                policyUrl: $grant['policyUrl'],
-                ipAddress: $request->ip(),
-                userAgent: $request->userAgent(),
-            );
-        }
+        // REL-2 fix: see withWebsiteFormIdempotency()'s own docblock. The
+        // fingerprint covers the entire logical submission — Lead creation
+        // AND consent recording together, both inside $create() below — so
+        // a duplicate request skips both, never just the Lead.
+        $this->withWebsiteFormIdempotency(
+            $form->tenant_id,
+            $form->id,
+            [
+                'name' => $result['attributes']['name'],
+                'email' => is_string($email) ? mb_strtolower($email) : $email,
+                'phone' => $result['attributes']['phone'] ?? null,
+                'message' => $result['attributes']['message'] ?? null,
+                'customFieldValues' => $result['customFieldValues'],
+                'consentGrants' => array_map(fn (array $grant): string => $grant['type']->value, $result['consentGrants']),
+            ],
+            function () use ($request, $form, $result): Lead {
+                $lead = $this->createLead(
+                    $form->leadSource,
+                    array_merge($result['attributes'], [
+                        // A point-in-time snapshot, never a hard FK from
+                        // Lead to WebsiteForm — see WebsiteForm's own
+                        // docblock for why: deleting a form must never
+                        // touch any existing Lead.
+                        'source_data' => [
+                            'website_form_id' => $form->id,
+                            'website_form_name' => $form->name,
+                        ],
+                    ]),
+                    $result['customFieldValues'],
+                );
+
+                // Feature #14 — recorded AFTER the Lead exists, once per
+                // configured and explicitly-granted consent type.
+                // $result['consentGrants'] only ever contains types
+                // ValidateWebsiteFormSubmission derived from this specific
+                // form's own server-stored field configuration and
+                // validated as an explicit true — never anything
+                // client-controlled.
+                foreach ($result['consentGrants'] as $grant) {
+                    app(RecordLeadConsent::class)->handle(
+                        lead: $lead,
+                        type: $grant['type'],
+                        status: ConsentStatus::Granted,
+                        source: ConsentSource::WebsiteForm,
+                        websiteFormId: $form->id,
+                        websiteFormName: $form->name,
+                        policyVersion: $grant['policyVersion'],
+                        policyUrl: $grant['policyUrl'],
+                        ipAddress: $request->ip(),
+                        userAgent: $request->userAgent(),
+                    );
+                }
+
+                return $lead;
+            },
+        );
 
         return response()->json(['status' => 'ok']);
     }
@@ -537,6 +583,121 @@ class LeadWebhookController extends Controller
         abort_unless($form->tenant_id === $tenant->id, 404);
 
         return $form;
+    }
+
+    /**
+     * REL-2 fix: idempotency guard for a website-form submission — both
+     * websiteForm() (legacy, API-key) and websiteFormSubmit() (builder,
+     * per-form token) funnel through here. A short-lived cache lock plus a
+     * short-lived durable "already processed" marker, mirroring
+     * withDedupeLock()/alreadyRecordedMessage()'s own "lock, then check a
+     * durable marker before doing the work" idiom — with one deliberate
+     * difference: the marker EXPIRES rather than lasting forever. Unlike a
+     * Messenger external_message_id or a Facebook Lead Ads leadgen_id,
+     * there is no stable external identifier for a website-form submission
+     * to dedupe on permanently, and the same person submitting the same
+     * form content again later is a legitimate, expected action — matching
+     * LeadDuplicateDetectionService's own deliberate design (cross-time
+     * content duplicates are a soft-linked, human-reviewed concern, never
+     * something silently blocked at creation time).
+     *
+     * $scopeId is the LeadSource id for the legacy path (source-wide — the
+     * only scoping boundary that path has) and the WebsiteForm id for the
+     * builder path (per-form, tighter than its own shared source — two
+     * different forms attributing to the same shared source are still two
+     * different logical submissions).
+     *
+     * $create() must run the ENTIRE logical submission for that request —
+     * Lead creation and, for the builder path, consent recording together
+     * — never just createLead() alone, so a duplicate request skips both.
+     * createLead() itself is untouched and called exactly as before from
+     * inside $create().
+     *
+     * Fails OPEN on a lock-acquisition timeout: rather than silently
+     * dropping a genuine submission (irrecoverable data loss) or surfacing
+     * an error to a real visitor for what is, from their side, an ordinary
+     * form submission, this proceeds to run $create() without idempotency
+     * protection for that one request and logs a warning — a known,
+     * pre-existing risk (today's un-deduplicated behavior), not a new
+     * regression.
+     *
+     * @param  array<string, mixed>  $fingerprintContent
+     * @param  callable(): ?Lead  $create
+     */
+    private function withWebsiteFormIdempotency(string $tenantId, string $scopeId, array $fingerprintContent, callable $create): ?Lead
+    {
+        $fingerprint = self::fingerprintWebsiteFormSubmission($fingerprintContent);
+        $markerKey = "website-form-submission-processed:{$tenantId}:{$scopeId}:{$fingerprint}";
+
+        try {
+            return Cache::lock("{$markerKey}:lock", 10)->block(5, function () use ($markerKey, $create): ?Lead {
+                if (Cache::has($markerKey)) {
+                    return null;
+                }
+
+                $lead = $create();
+
+                // 20s: long enough to catch a slow client timeout-then-
+                // retry (a typical browser/mobile fetch timeout is in the
+                // 10-30s range) and an ordinary double-click, short enough
+                // that a visitor deliberately resubmitting the exact same
+                // content on purpose is never meaningfully blocked.
+                Cache::put($markerKey, true, now()->addSeconds(20));
+
+                return $lead;
+            });
+        } catch (LockTimeoutException) {
+            Log::warning("Website form idempotency lock timed out for tenant [{$tenantId}], scope [{$scopeId}]; proceeding without duplicate protection for this request.");
+
+            return $create();
+        }
+    }
+
+    /**
+     * Deterministic content fingerprint for a website-form submission —
+     * canonicalized so the same logical content always hashes identically
+     * regardless of array key order, and only its hash (never the raw
+     * payload) is used as a cache key. Deliberately excludes anything
+     * request-specific (IP, headers, timestamps) that could legitimately
+     * differ between two HTTP requests carrying the exact same logical
+     * submission.
+     *
+     * @param  array<string, mixed>  $content
+     */
+    private static function fingerprintWebsiteFormSubmission(array $content): string
+    {
+        return hash('sha256', json_encode(
+            self::canonicalizeForFingerprint($content),
+            JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR,
+        ));
+    }
+
+    /**
+     * Recursively sorts array keys and normalizes blank/whitespace-only
+     * strings to null, so two submissions that differ only in field order
+     * or incidental whitespace still fingerprint identically.
+     */
+    private static function canonicalizeForFingerprint(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            $canonical = [];
+
+            foreach ($value as $key => $item) {
+                $canonical[$key] = self::canonicalizeForFingerprint($item);
+            }
+
+            ksort($canonical);
+
+            return $canonical;
+        }
+
+        if (is_string($value)) {
+            $trimmed = trim($value);
+
+            return $trimmed === '' ? null : $trimmed;
+        }
+
+        return $value;
     }
 
     /**

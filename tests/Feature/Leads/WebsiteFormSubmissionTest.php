@@ -3,6 +3,7 @@
 use App\Enums\LeadSourceType;
 use App\Enums\WebsiteFormFixedField;
 use App\Events\LeadReceived;
+use App\Http\Controllers\Api\LeadWebhookController;
 use App\Models\Lead;
 use App\Models\LeadCustomFieldDefinition;
 use App\Models\LeadCustomFieldValue;
@@ -10,8 +11,22 @@ use App\Models\LeadSource;
 use App\Models\Tenant;
 use App\Models\WebsiteForm;
 use App\Models\WebsiteFormField;
+use Illuminate\Contracts\Cache\Lock as LockContract;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
+
+// REL-2's idempotency-window tests use $this->travel() to simulate elapsed
+// time without a real sleep. travel()/travelTo() only auto-reset Carbon's
+// frozen test-now when called with a callback — a plain $this->travel(N)
+// ->seconds() leaves it shifted for every later test in the same process
+// otherwise. Resetting after EVERY test in this file (not just the ones
+// that travel) guards against a failed assertion skipping an end-of-test
+// travelBack() call too.
+afterEach(function () {
+    $this->travelBack();
+});
 
 /**
  * Creates (or reuses) the tenant's shared "Website Form" LeadSource and a
@@ -285,4 +300,203 @@ test('the per-tenant rate limit blocks abuse spread across several forms, each s
     $this->postJson(route('api.webhook.website-form.submit', [$tenant->tenant_code, 'tenant-limit-token-5']), [
         'name' => 'One Too Many',
     ])->assertStatus(429);
+});
+
+// REL-2 — website-form create-time idempotency.
+
+test('an exact immediate duplicate legacy submission creates only one lead', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::WebsiteForm,
+        'config' => ['api_key' => 'dup-key'],
+    ]);
+
+    $payload = ['name' => 'Dup Visitor', 'email' => 'dup@example.com', 'message' => 'hello'];
+
+    $this->postJson(route('api.webhook.website-form', $tenant->tenant_code), $payload, ['X-Api-Key' => 'dup-key'])->assertOk();
+    $this->postJson(route('api.webhook.website-form', $tenant->tenant_code), $payload, ['X-Api-Key' => 'dup-key'])->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->where('email', 'dup@example.com')->count())->toBe(1);
+});
+
+test('an exact immediate duplicate builder-form submission creates only one lead', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    createWebsiteFormWithToken($tenant, 'dup-builder-token');
+
+    $payload = ['name' => 'Dup Builder Visitor'];
+
+    $this->postJson(route('api.webhook.website-form.submit', [$tenant->tenant_code, 'dup-builder-token']), $payload)->assertOk();
+    $this->postJson(route('api.webhook.website-form.submit', [$tenant->tenant_code, 'dup-builder-token']), $payload)->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->where('name', 'Dup Builder Visitor')->count())->toBe(1);
+});
+
+test('a legacy retry a few seconds later, still within the idempotency window, does not create a second lead', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::WebsiteForm,
+        'config' => ['api_key' => 'window-key'],
+    ]);
+
+    $payload = ['name' => 'Window Visitor', 'email' => 'window@example.com'];
+
+    $this->postJson(route('api.webhook.website-form', $tenant->tenant_code), $payload, ['X-Api-Key' => 'window-key'])->assertOk();
+
+    $this->travel(5)->seconds();
+
+    $this->postJson(route('api.webhook.website-form', $tenant->tenant_code), $payload, ['X-Api-Key' => 'window-key'])->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->where('email', 'window@example.com')->count())->toBe(1);
+});
+
+test('a builder-form retry a few seconds later, still within the idempotency window, does not create a second lead', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    createWebsiteFormWithToken($tenant, 'window-builder-token');
+
+    $payload = ['name' => 'Window Builder Visitor'];
+
+    $this->postJson(route('api.webhook.website-form.submit', [$tenant->tenant_code, 'window-builder-token']), $payload)->assertOk();
+
+    $this->travel(5)->seconds();
+
+    $this->postJson(route('api.webhook.website-form.submit', [$tenant->tenant_code, 'window-builder-token']), $payload)->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->where('name', 'Window Builder Visitor')->count())->toBe(1);
+});
+
+test('the same submission content after the idempotency window has elapsed is accepted as a new lead', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    createWebsiteFormWithToken($tenant, 'expired-window-token');
+
+    $payload = ['name' => 'Later Visitor'];
+
+    $this->postJson(route('api.webhook.website-form.submit', [$tenant->tenant_code, 'expired-window-token']), $payload)->assertOk();
+
+    // Past the 20s marker TTL — a deliberate later resubmission of the
+    // exact same content must be treated as a new, legitimate submission.
+    $this->travel(21)->seconds();
+
+    $this->postJson(route('api.webhook.website-form.submit', [$tenant->tenant_code, 'expired-window-token']), $payload)->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->where('name', 'Later Visitor')->count())->toBe(2);
+});
+
+test('the same contact submitted to two different website forms is accepted both times', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $formA = createWebsiteFormWithToken($tenant, 'form-a-token');
+    $formB = createWebsiteFormWithToken($tenant, 'form-b-token');
+    expect($formA->lead_source_id)->toBe($formB->lead_source_id);
+
+    $payload = ['name' => 'Cross Form Visitor'];
+
+    $this->postJson(route('api.webhook.website-form.submit', [$tenant->tenant_code, 'form-a-token']), $payload)->assertOk();
+    $this->postJson(route('api.webhook.website-form.submit', [$tenant->tenant_code, 'form-b-token']), $payload)->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->where('name', 'Cross Form Visitor')->count())->toBe(2);
+});
+
+test('the same contact submitted to two different tenants is accepted both times', function () {
+    ['tenant' => $tenantA] = tenantWithLeadManagement();
+    ['tenant' => $tenantB] = tenantWithLeadManagement();
+    createWebsiteFormWithToken($tenantA, 'shared-token-a');
+    createWebsiteFormWithToken($tenantB, 'shared-token-b');
+
+    $payload = ['name' => 'Shared Visitor'];
+
+    $this->postJson(route('api.webhook.website-form.submit', [$tenantA->tenant_code, 'shared-token-a']), $payload)->assertOk();
+    $this->postJson(route('api.webhook.website-form.submit', [$tenantB->tenant_code, 'shared-token-b']), $payload)->assertOk();
+
+    expect(Lead::where('tenant_id', $tenantA->id)->where('name', 'Shared Visitor')->count())->toBe(1);
+    expect(Lead::where('tenant_id', $tenantB->id)->where('name', 'Shared Visitor')->count())->toBe(1);
+});
+
+test('two genuinely different payloads on the same website form are both accepted', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    createWebsiteFormWithToken($tenant, 'distinct-payloads-token');
+
+    $this->postJson(route('api.webhook.website-form.submit', [$tenant->tenant_code, 'distinct-payloads-token']), ['name' => 'Visitor One'])->assertOk();
+    $this->postJson(route('api.webhook.website-form.submit', [$tenant->tenant_code, 'distinct-payloads-token']), ['name' => 'Visitor Two'])->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->whereIn('name', ['Visitor One', 'Visitor Two'])->count())->toBe(2);
+});
+
+test('a suppressed duplicate submission does not fire LeadReceived a second time', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    createWebsiteFormWithToken($tenant, 'event-once-token');
+
+    $payload = ['name' => 'Event Visitor'];
+
+    Event::fake([LeadReceived::class]);
+
+    $this->postJson(route('api.webhook.website-form.submit', [$tenant->tenant_code, 'event-once-token']), $payload)->assertOk();
+    $this->postJson(route('api.webhook.website-form.submit', [$tenant->tenant_code, 'event-once-token']), $payload)->assertOk();
+
+    Event::assertDispatchedTimes(LeadReceived::class, 1);
+});
+
+test('a suppressed duplicate submission produces no second lead row at all, so no duplicate per-lead side effect (assignment/scoring) can exist', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $form = createWebsiteFormWithToken($tenant, 'no-side-effect-token');
+    WebsiteFormField::factory()->fixed(WebsiteFormFixedField::Email)->create(['tenant_id' => $tenant->id, 'website_form_id' => $form->id]);
+
+    $payload = ['name' => 'Side Effect Visitor', 'email' => 'sideeffect@example.com'];
+
+    $this->postJson(route('api.webhook.website-form.submit', [$tenant->tenant_code, 'no-side-effect-token']), $payload)->assertOk();
+    $this->postJson(route('api.webhook.website-form.submit', [$tenant->tenant_code, 'no-side-effect-token']), $payload)->assertOk();
+
+    $leads = Lead::where('tenant_id', $tenant->id)->where('email', 'sideeffect@example.com')->get();
+    expect($leads)->toHaveCount(1);
+});
+
+test('a failed logical submission does not leave a false idempotency marker that blocks a successful retry', function () {
+    $controller = new LeadWebhookController;
+    $method = new ReflectionMethod($controller, 'withWebsiteFormIdempotency');
+    $method->setAccessible(true);
+
+    $content = ['name' => 'Reflection Visitor', 'email' => 'reflection@example.com'];
+
+    expect(fn () => $method->invoke($controller, 'tenant-reflect', 'scope-reflect', $content, function (): never {
+        throw new RuntimeException('simulated createLead() failure');
+    }))->toThrow(RuntimeException::class, 'simulated createLead() failure');
+
+    $secondCallRan = false;
+
+    $method->invoke($controller, 'tenant-reflect', 'scope-reflect', $content, function () use (&$secondCallRan): null {
+        $secondCallRan = true;
+
+        return null;
+    });
+
+    expect($secondCallRan)->toBeTrue();
+});
+
+test('a website-form idempotency lock timeout fails open and still creates the lead', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::WebsiteForm,
+        'config' => ['api_key' => 'lock-timeout-key'],
+    ]);
+
+    $realCache = Cache::getFacadeRoot();
+
+    Cache::shouldReceive('lock')->once()->andReturnUsing(function (string $name, int $seconds) use ($realCache): LockContract {
+        if (str_contains($name, 'website-form-submission-processed:')) {
+            $lock = Mockery::mock(LockContract::class);
+            $lock->shouldReceive('block')->once()->andThrow(new LockTimeoutException);
+
+            return $lock;
+        }
+
+        return $realCache->lock($name, $seconds);
+    });
+
+    $this->postJson(route('api.webhook.website-form', $tenant->tenant_code), [
+        'name' => 'Lock Timeout Visitor',
+        'email' => 'locktimeout@example.com',
+    ], ['X-Api-Key' => 'lock-timeout-key'])->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->where('email', 'locktimeout@example.com')->exists())->toBeTrue();
 });
