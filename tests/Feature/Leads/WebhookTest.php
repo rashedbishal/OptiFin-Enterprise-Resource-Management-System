@@ -10,9 +10,49 @@ use App\Models\Lead;
 use App\Models\LeadSource;
 use App\Models\Message;
 use App\Services\LeadMergeService;
+use Illuminate\Contracts\Cache\Lock as LockContract;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
+
+/**
+ * REL-1 — a real Cache::lock()->block() timeout takes the full configured
+ * blockSeconds (5s in production) to actually occur, which would make a
+ * committed regression test that waits for one both slow and, at CI scale,
+ * a real cost — per the approved architecture brief, these tests instead
+ * mock exactly the one Cache::lock() call for one specific sender/phone
+ * identifier to throw the SAME real Illuminate\Contracts\Cache\
+ * LockTimeoutException a genuine timeout produces, immediately — proving
+ * the controller's catch-and-continue logic against the real exception
+ * class, without waiting for a real 5-8s timeout. Every other lock key in
+ * these tests delegates to the real, unmocked cache store (captured via
+ * Cache::getFacadeRoot() before the mock is installed), so unrelated
+ * items are processed through completely real locking, exactly as
+ * production does. The one genuine, real (not mocked) lock-timeout
+ * reproduction — using two real, separate processes, per the
+ * investigation's own methodology — was performed once, manually, outside
+ * this committed suite; see the REL-1 Implementation Report.
+ *
+ * $realCache MUST be captured via Cache::getFacadeRoot() BEFORE
+ * Cache::shouldReceive() swaps the facade root to a mock — fetching it
+ * from inside this function (after the swap) would return the mock
+ * itself, not the real store.
+ *
+ * @return LockContract
+ */
+function realOrThrowingLock(mixed $realCache, string $name, int $seconds, ?string $owner, string $blockedNeedle): mixed
+{
+    if (str_contains($name, $blockedNeedle)) {
+        $lock = Mockery::mock(LockContract::class);
+        $lock->shouldReceive('block')->once()->andThrow(new LockTimeoutException);
+
+        return $lock;
+    }
+
+    return $realCache->lock($name, $seconds, $owner);
+}
 
 test('a facebook webhook verify challenge succeeds with the correct token', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
@@ -1309,4 +1349,379 @@ test('a null-external-id message under the inbound message cap is processed exac
     $lead = Lead::where('tenant_id', $tenant->id)->firstOrFail();
     expect($lead->message)->toBe('No id field on this message');
     expect(Message::where('lead_id', $lead->id)->first()->external_message_id)->toBeNull();
+});
+
+// --- REL-1: per-item exception isolation ------------------------------
+
+test('a whatsapp middle-item lock timeout does not drop the trailing message, and the failure is logged without leaking message content', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => ['phone_number_id' => '123', 'access_token' => 'x', 'verify_token' => 'y'],
+    ]);
+
+    $realCache = Cache::getFacadeRoot();
+
+    Cache::shouldReceive('lock')
+        ->andReturnUsing(fn (string $name, int $seconds = 0, ?string $owner = null): mixed => realOrThrowingLock($realCache, $name, $seconds, $owner, '8801700000002'));
+
+    Log::shouldReceive('channel')->with('whatsapp')->andReturnSelf();
+    Log::shouldReceive('info');
+    Log::shouldReceive('error')
+        ->once()
+        ->withArgs(function (string $message, array $context): bool {
+            expect($message)->toBe('WA ITEM PROCESSING FAILED');
+            expect($context['sender_id'])->toBe('8801700000002');
+            expect($context['external_message_id'])->toBe('wamid.ITEM-2');
+
+            $encoded = json_encode($context);
+            expect($encoded)->not->toContain('This text must never reach the log');
+
+            return true;
+        });
+
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), [
+        'entry' => [['changes' => [['value' => ['messages' => [
+            ['id' => 'wamid.ITEM-1', 'from' => '8801700000001', 'text' => ['body' => 'Item 1']],
+            ['id' => 'wamid.ITEM-2', 'from' => '8801700000002', 'text' => ['body' => 'This text must never reach the log']],
+            ['id' => 'wamid.ITEM-3', 'from' => '8801700000003', 'text' => ['body' => 'Item 3']],
+        ]]]]]],
+    ])->assertOk()->assertExactJson(['status' => 'ok']);
+
+    expect(Lead::where('tenant_id', $tenant->id)->where('phone', '8801700000001')->exists())->toBeTrue();
+    expect(Lead::where('tenant_id', $tenant->id)->where('phone', '8801700000002')->exists())->toBeFalse();
+    expect(Lead::where('tenant_id', $tenant->id)->where('phone', '8801700000003')->exists())->toBeTrue();
+});
+
+test('a whatsapp first-item lock timeout does not prevent the second item from processing', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => ['phone_number_id' => '123', 'access_token' => 'x', 'verify_token' => 'y'],
+    ]);
+
+    $realCache = Cache::getFacadeRoot();
+
+    Cache::shouldReceive('lock')
+        ->andReturnUsing(fn (string $name, int $seconds = 0, ?string $owner = null): mixed => realOrThrowingLock($realCache, $name, $seconds, $owner, '8801700000091'));
+
+    Log::shouldReceive('channel')->with('whatsapp')->andReturnSelf();
+    Log::shouldReceive('info');
+    Log::shouldReceive('error')->once();
+
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), [
+        'entry' => [['changes' => [['value' => ['messages' => [
+            ['id' => 'wamid.ORDER-1', 'from' => '8801700000091', 'text' => ['body' => 'First item fails']],
+            ['id' => 'wamid.ORDER-2', 'from' => '8801700000092', 'text' => ['body' => 'Second item must still process']],
+        ]]]]]],
+    ])->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->where('phone', '8801700000091')->exists())->toBeFalse();
+    expect(Lead::where('tenant_id', $tenant->id)->where('phone', '8801700000092')->exists())->toBeTrue();
+});
+
+test('a whatsapp item that failed once can still be processed on a later, unblocked redelivery', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => ['phone_number_id' => '123', 'access_token' => 'x', 'verify_token' => 'y'],
+    ]);
+
+    $realCache = Cache::getFacadeRoot();
+
+    Cache::shouldReceive('lock')
+        ->andReturnUsing(fn (string $name, int $seconds = 0, ?string $owner = null): mixed => realOrThrowingLock($realCache, $name, $seconds, $owner, '8801700000099'));
+
+    Log::shouldReceive('channel')->with('whatsapp')->andReturnSelf();
+    Log::shouldReceive('info');
+    Log::shouldReceive('error')->once();
+
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), [
+        'entry' => [['changes' => [['value' => ['messages' => [[
+            'id' => 'wamid.REDELIVER-1',
+            'from' => '8801700000099',
+            'text' => ['body' => 'First attempt fails'],
+        ]]]]]]],
+    ])->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->where('phone', '8801700000099')->exists())->toBeFalse();
+
+    // Redelivery: explicitly restore the real, unmocked cache store before
+    // the second request — Cache::shouldReceive('lock') above stays
+    // installed for the rest of the test otherwise, which would make the
+    // "redelivery" request fail identically to the first. Swapping back
+    // the real instance proves the message now succeeds on its own
+    // merits, with no duplicate-processing risk from the first, failed
+    // attempt (it never got far enough to create any durable record — see
+    // the Implementation Report's retry/idempotency verification).
+    Cache::swap($realCache);
+
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), [
+        'entry' => [['changes' => [['value' => ['messages' => [[
+            'id' => 'wamid.REDELIVER-1',
+            'from' => '8801700000099',
+            'text' => ['body' => 'Redelivered attempt succeeds'],
+        ]]]]]]],
+    ])->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->where('phone', '8801700000099')->count())->toBe(1);
+});
+
+test('a facebook messenger middle-item lock timeout does not drop the trailing message, and the failure is logged without leaking message content', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::FacebookMessenger,
+        'config' => ['page_id' => '123', 'verify_token' => 'secret-token'],
+    ]);
+
+    // Items 1 and 3 are follow-ups on ALREADY-NAMED existing leads — this
+    // deliberately avoids appendFacebookMessage()'s own conditional
+    // fetchFacebookProfile() call (only triggered when the lead still
+    // carries its placeholder "Facebook User {id}" name), keeping this
+    // test's only Cache:: touchpoint the one being verified.
+    $lead1 = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'name' => 'Existing Contact One', 'source_data' => ['facebook_user_id' => 'psid-rel1-1']]);
+    $lead3 = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'name' => 'Existing Contact Three', 'source_data' => ['facebook_user_id' => 'psid-rel1-3']]);
+
+    $realCache = Cache::getFacadeRoot();
+
+    Cache::shouldReceive('lock')
+        ->andReturnUsing(fn (string $name, int $seconds = 0, ?string $owner = null): mixed => realOrThrowingLock($realCache, $name, $seconds, $owner, 'psid-rel1-2'));
+
+    Log::shouldReceive('error')
+        ->once()
+        ->withArgs(function (string $message): bool {
+            expect($message)->toContain('Facebook Messenger webhook item processing failed');
+            expect($message)->toContain('psid-rel1-2');
+            expect($message)->not->toContain('This text must never reach the log');
+
+            return true;
+        });
+
+    $this->postJson(route('api.webhook.facebook', $tenant->tenant_code), [
+        'entry' => [[
+            'messaging' => [
+                ['sender' => ['id' => 'psid-rel1-1'], 'message' => ['mid' => 'mid-rel1-1', 'text' => 'Item 1']],
+                ['sender' => ['id' => 'psid-rel1-2'], 'message' => ['mid' => 'mid-rel1-2', 'text' => 'This text must never reach the log']],
+                ['sender' => ['id' => 'psid-rel1-3'], 'message' => ['mid' => 'mid-rel1-3', 'text' => 'Item 3']],
+            ],
+        ]],
+    ])->assertOk()->assertExactJson(['status' => 'ok']);
+
+    expect($lead1->fresh()->message)->toContain('Item 1');
+    expect(Lead::where('tenant_id', $tenant->id)->where('source_data->facebook_user_id', 'psid-rel1-2')->exists())->toBeFalse();
+    expect($lead3->fresh()->message)->toContain('Item 3');
+});
+
+test('a facebook messenger first-item lock timeout does not prevent the second item from processing', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::FacebookMessenger,
+        'config' => ['page_id' => '123', 'verify_token' => 'secret-token'],
+    ]);
+
+    // Item 2 is an existing-lead follow-up (already-real name) — same
+    // reasoning as the middle-item test above: keeps this test's only
+    // Cache:: touchpoint the withDedupeLock() call being verified.
+    $lead2 = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'name' => 'Existing Contact Two', 'source_data' => ['facebook_user_id' => 'psid-order-2']]);
+
+    $realCache = Cache::getFacadeRoot();
+
+    Cache::shouldReceive('lock')
+        ->andReturnUsing(fn (string $name, int $seconds = 0, ?string $owner = null): mixed => realOrThrowingLock($realCache, $name, $seconds, $owner, 'psid-order-1'));
+
+    Log::shouldReceive('error')->once();
+
+    $this->postJson(route('api.webhook.facebook', $tenant->tenant_code), [
+        'entry' => [[
+            'messaging' => [
+                ['sender' => ['id' => 'psid-order-1'], 'message' => ['mid' => 'mid-order-1', 'text' => 'First item fails']],
+                ['sender' => ['id' => 'psid-order-2'], 'message' => ['mid' => 'mid-order-2', 'text' => 'Second item must still process']],
+            ],
+        ]],
+    ])->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->where('source_data->facebook_user_id', 'psid-order-1')->exists())->toBeFalse();
+    expect($lead2->fresh()->message)->toContain('Second item must still process');
+});
+
+test('a facebook messenger item that failed once can still be processed on a later, unblocked redelivery', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::FacebookMessenger,
+        'config' => ['page_id' => '123', 'verify_token' => 'secret-token'],
+    ]);
+
+    $realCache = Cache::getFacadeRoot();
+
+    Cache::shouldReceive('lock')
+        ->andReturnUsing(fn (string $name, int $seconds = 0, ?string $owner = null): mixed => realOrThrowingLock($realCache, $name, $seconds, $owner, 'psid-redeliver'));
+
+    Log::shouldReceive('error')->once();
+
+    $this->postJson(route('api.webhook.facebook', $tenant->tenant_code), [
+        'entry' => [['messaging' => [
+            ['sender' => ['id' => 'psid-redeliver'], 'message' => ['mid' => 'mid-redeliver-1', 'text' => 'First attempt fails']],
+        ]]],
+    ])->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->where('source_data->facebook_user_id', 'psid-redeliver')->exists())->toBeFalse();
+
+    Cache::swap($realCache);
+
+    $this->postJson(route('api.webhook.facebook', $tenant->tenant_code), [
+        'entry' => [['messaging' => [
+            ['sender' => ['id' => 'psid-redeliver'], 'message' => ['mid' => 'mid-redeliver-1', 'text' => 'Redelivered attempt succeeds']],
+        ]]],
+    ])->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->where('source_data->facebook_user_id', 'psid-redeliver')->count())->toBe(1);
+});
+
+test('an instagram middle-item lock timeout does not drop the trailing message, and the failure is logged without leaking message content', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Instagram,
+        'config' => ['page_id' => '123', 'verify_token' => 'secret-token'],
+    ]);
+
+    $lead1 = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'name' => 'Existing Contact One', 'source_data' => ['instagram_user_id' => 'igsid-rel1-1']]);
+    $lead3 = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'name' => 'Existing Contact Three', 'source_data' => ['instagram_user_id' => 'igsid-rel1-3']]);
+
+    $realCache = Cache::getFacadeRoot();
+
+    Cache::shouldReceive('lock')
+        ->andReturnUsing(fn (string $name, int $seconds = 0, ?string $owner = null): mixed => realOrThrowingLock($realCache, $name, $seconds, $owner, 'igsid-rel1-2'));
+
+    Log::shouldReceive('error')
+        ->once()
+        ->withArgs(function (string $message): bool {
+            expect($message)->toContain('Instagram webhook item processing failed');
+            expect($message)->toContain('igsid-rel1-2');
+            expect($message)->not->toContain('This text must never reach the log');
+
+            return true;
+        });
+
+    $this->postJson(route('api.webhook.instagram', $tenant->tenant_code), [
+        'entry' => [[
+            'messaging' => [
+                ['sender' => ['id' => 'igsid-rel1-1'], 'message' => ['mid' => 'mid-ig-rel1-1', 'text' => 'Item 1']],
+                ['sender' => ['id' => 'igsid-rel1-2'], 'message' => ['mid' => 'mid-ig-rel1-2', 'text' => 'This text must never reach the log']],
+                ['sender' => ['id' => 'igsid-rel1-3'], 'message' => ['mid' => 'mid-ig-rel1-3', 'text' => 'Item 3']],
+            ],
+        ]],
+    ])->assertOk()->assertExactJson(['status' => 'ok']);
+
+    expect($lead1->fresh()->message)->toContain('Item 1');
+    expect(Lead::where('tenant_id', $tenant->id)->where('source_data->instagram_user_id', 'igsid-rel1-2')->exists())->toBeFalse();
+    expect($lead3->fresh()->message)->toContain('Item 3');
+});
+
+test('an instagram first-item lock timeout does not prevent the second item from processing', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Instagram,
+        'config' => ['page_id' => '123', 'verify_token' => 'secret-token'],
+    ]);
+
+    // Item 2 is an existing-lead follow-up — same reasoning as the
+    // Messenger equivalent above.
+    $lead2 = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'name' => 'Existing Contact Two', 'source_data' => ['instagram_user_id' => 'igsid-order-2']]);
+
+    $realCache = Cache::getFacadeRoot();
+
+    Cache::shouldReceive('lock')
+        ->andReturnUsing(fn (string $name, int $seconds = 0, ?string $owner = null): mixed => realOrThrowingLock($realCache, $name, $seconds, $owner, 'igsid-order-1'));
+
+    Log::shouldReceive('error')->once();
+
+    $this->postJson(route('api.webhook.instagram', $tenant->tenant_code), [
+        'entry' => [[
+            'messaging' => [
+                ['sender' => ['id' => 'igsid-order-1'], 'message' => ['mid' => 'mid-ig-order-1', 'text' => 'First item fails']],
+                ['sender' => ['id' => 'igsid-order-2'], 'message' => ['mid' => 'mid-ig-order-2', 'text' => 'Second item must still process']],
+            ],
+        ]],
+    ])->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->where('source_data->instagram_user_id', 'igsid-order-1')->exists())->toBeFalse();
+    expect($lead2->fresh()->message)->toContain('Second item must still process');
+});
+
+test('an instagram item that failed once can still be processed on a later, unblocked redelivery', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Instagram,
+        'config' => ['page_id' => '123', 'verify_token' => 'secret-token'],
+    ]);
+
+    $realCache = Cache::getFacadeRoot();
+
+    Cache::shouldReceive('lock')
+        ->andReturnUsing(fn (string $name, int $seconds = 0, ?string $owner = null): mixed => realOrThrowingLock($realCache, $name, $seconds, $owner, 'igsid-redeliver'));
+
+    Log::shouldReceive('error')->once();
+
+    $this->postJson(route('api.webhook.instagram', $tenant->tenant_code), [
+        'entry' => [['messaging' => [
+            ['sender' => ['id' => 'igsid-redeliver'], 'message' => ['mid' => 'mid-ig-redeliver-1', 'text' => 'First attempt fails']],
+        ]]],
+    ])->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->where('source_data->instagram_user_id', 'igsid-redeliver')->exists())->toBeFalse();
+
+    Cache::swap($realCache);
+
+    $this->postJson(route('api.webhook.instagram', $tenant->tenant_code), [
+        'entry' => [['messaging' => [
+            ['sender' => ['id' => 'igsid-redeliver'], 'message' => ['mid' => 'mid-ig-redeliver-1', 'text' => 'Redelivered attempt succeeds']],
+        ]]],
+    ])->assertOk();
+
+    expect(Lead::where('tenant_id', $tenant->id)->where('source_data->instagram_user_id', 'igsid-redeliver')->count())->toBe(1);
+});
+
+test('a whatsapp redelivery of an already-successfully-processed item does not create a duplicate lead', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => ['phone_number_id' => '123', 'access_token' => 'x', 'verify_token' => 'y'],
+    ]);
+
+    $payload = [
+        'entry' => [['changes' => [['value' => ['messages' => [[
+            'id' => 'wamid.ALREADY-OK-1',
+            'from' => '8801700000199',
+            'text' => ['body' => 'Original message'],
+        ]]]]]]],
+    ];
+
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), $payload)->assertOk();
+    expect(Lead::where('tenant_id', $tenant->id)->where('phone', '8801700000199')->count())->toBe(1);
+
+    // Redelivery of the exact same message id — alreadyRecordedMessage()
+    // must still skip it, exactly as before this fix; REL-1's per-item
+    // catch does not change this pre-existing idempotency guarantee.
+    $this->postJson(route('api.webhook.whatsapp', $tenant->tenant_code), $payload)->assertOk();
+    expect(Lead::where('tenant_id', $tenant->id)->where('phone', '8801700000199')->count())->toBe(1);
 });

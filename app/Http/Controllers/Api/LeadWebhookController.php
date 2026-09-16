@@ -88,63 +88,87 @@ class LeadWebhookController extends Controller
                 foreach (($entry['messaging'] ?? []) as $messaging) {
                     $source ??= $this->resolveSource($tenant_code, LeadSourceType::FacebookMessenger);
 
-                    // Feature #15 — a `messaging[]` entry is either a
-                    // message, a delivery receipt, or a read receipt, never
-                    // more than one — handled and dispatched for
-                    // reconciliation separately from message processing
-                    // below, then skipped.
-                    if (isset($messaging['delivery']) || isset($messaging['read'])) {
-                        $this->dispatchMessengerStatusReconciliation($source, MessageChannel::Messenger, $messaging);
-
-                        continue;
-                    }
-
+                    // REL-1 fix: this item's own sender/message identifiers
+                    // are resolved BEFORE the per-item try block below, not
+                    // inside it, so they're always available for the catch's
+                    // log line even if the exception originates from the
+                    // very first statement inside the try (e.g. a lock
+                    // timeout, which happens before any of this item's own
+                    // business logic runs).
                     $senderId = (string) ($messaging['sender']['id'] ?? 'unknown');
-                    $messageText = $messaging['message']['text'] ?? null;
-                    $attachments = $this->extractMessagingAttachments($messaging);
-                    $sentAt = $this->messagingTimestamp($messaging);
                     $externalMessageId = $this->extractInboundMessageId($messaging);
 
-                    $this->withDedupeLock($source->id, $senderId, function () use ($source, $senderId, $messageText, $messaging, $attachments, $sentAt, $externalMessageId): void {
-                        if ($this->alreadyRecordedMessage($source, MessageChannel::Messenger, $externalMessageId)) {
-                            return;
+                    // REL-1 fix: per-item exception isolation, mirroring
+                    // App\Jobs\ProcessEmailLeadSource::handle()'s own
+                    // per-message try/catch inside its foreach — a failure
+                    // processing ONE messaging[] item (a lock timeout, a DB
+                    // error) must not silently drop every item after it in
+                    // the same request. Reusing the exact same outer-catch
+                    // log wording pattern already established elsewhere in
+                    // this file, just scoped to one item instead of the
+                    // whole request. Deliberately does NOT also wrap the
+                    // separate changes[]/leadgen loop below — that already
+                    // has its own per-item protection via
+                    // handleFacebookLeadAd()'s internal try/catch.
+                    try {
+                        // Feature #15 — a `messaging[]` entry is either a
+                        // message, a delivery receipt, or a read receipt, never
+                        // more than one — handled and dispatched for
+                        // reconciliation separately from message processing
+                        // below, then skipped.
+                        if (isset($messaging['delivery']) || isset($messaging['read'])) {
+                            $this->dispatchMessengerStatusReconciliation($source, MessageChannel::Messenger, $messaging);
+
+                            continue;
                         }
 
-                        $existingLead = $this->existingLeadForConversation($source, MessageChannel::Messenger, $senderId)
-                            ?? Lead::query()
-                                ->where('source_id', $source->id)
-                                ->where('source_data->facebook_user_id', $senderId)
-                                ->whereNull('merged_into_lead_id')
-                                ->first();
+                        $messageText = $messaging['message']['text'] ?? null;
+                        $attachments = $this->extractMessagingAttachments($messaging);
+                        $sentAt = $this->messagingTimestamp($messaging);
 
-                        if ($existingLead instanceof Lead) {
-                            $this->appendFacebookMessage($existingLead, $messageText, $messaging, $attachments, $senderId, $source, $sentAt);
+                        $this->withDedupeLock($source->id, $senderId, function () use ($source, $senderId, $messageText, $messaging, $attachments, $sentAt, $externalMessageId): void {
+                            if ($this->alreadyRecordedMessage($source, MessageChannel::Messenger, $externalMessageId)) {
+                                return;
+                            }
 
-                            $source->update(['last_synced_at' => now()]);
+                            $existingLead = $this->existingLeadForConversation($source, MessageChannel::Messenger, $senderId)
+                                ?? Lead::query()
+                                    ->where('source_id', $source->id)
+                                    ->where('source_data->facebook_user_id', $senderId)
+                                    ->whereNull('merged_into_lead_id')
+                                    ->first();
 
-                            return;
-                        }
+                            if ($existingLead instanceof Lead) {
+                                $this->appendFacebookMessage($existingLead, $messageText, $messaging, $attachments, $senderId, $source, $sentAt);
 
-                        $profile = $this->fetchFacebookProfile($source, $senderId);
+                                $source->update(['last_synced_at' => now()]);
 
-                        $lead = $this->createLead($source, [
-                            'name' => $profile['name'] ?? "Facebook User {$senderId}",
-                            'message' => $messageText,
-                            'source_data' => [
-                                'facebook_user_id' => $senderId,
-                                'facebook_profile_pic' => $profile['profile_pic'],
-                                'messages' => [$messaging],
-                            ],
-                        ]);
+                                return;
+                            }
 
-                        $this->recordInboundMessage($lead, $source, MessageChannel::Messenger, $senderId, $messageText, $messaging);
+                            $profile = $this->fetchFacebookProfile($source, $senderId);
 
-                        $this->logIfMultipleAttachments($attachments, $lead);
+                            $lead = $this->createLead($source, [
+                                'name' => $profile['name'] ?? "Facebook User {$senderId}",
+                                'message' => $messageText,
+                                'source_data' => [
+                                    'facebook_user_id' => $senderId,
+                                    'facebook_profile_pic' => $profile['profile_pic'],
+                                    'messages' => [$messaging],
+                                ],
+                            ]);
 
-                        foreach ($attachments as $attachment) {
-                            $this->createPendingAttachmentAndDispatch($lead, LeadSourceType::FacebookMessenger, $attachment, $senderId, $source, $sentAt);
-                        }
-                    });
+                            $this->recordInboundMessage($lead, $source, MessageChannel::Messenger, $senderId, $messageText, $messaging);
+
+                            $this->logIfMultipleAttachments($attachments, $lead);
+
+                            foreach ($attachments as $attachment) {
+                                $this->createPendingAttachmentAndDispatch($lead, LeadSourceType::FacebookMessenger, $attachment, $senderId, $source, $sentAt);
+                            }
+                        });
+                    } catch (Throwable $e) {
+                        Log::error("Facebook Messenger webhook item processing failed for tenant [{$tenant_code}], sender [{$senderId}], message [{$externalMessageId}]: {$e->getMessage()}");
+                    }
                 }
 
                 foreach (($entry['changes'] ?? []) as $change) {
@@ -191,61 +215,72 @@ class LeadWebhookController extends Controller
 
             foreach ($entries as $entry) {
                 foreach (($entry['messaging'] ?? []) as $messaging) {
-                    // Feature #15 — see facebookMessenger()'s identical
-                    // check; Instagram Messaging shares the same
-                    // entry[].messaging[] delivery/read shape.
-                    if (isset($messaging['delivery']) || isset($messaging['read'])) {
-                        $this->dispatchMessengerStatusReconciliation($source, MessageChannel::Instagram, $messaging);
-
-                        continue;
-                    }
-
+                    // REL-1 fix: identifiers resolved before the per-item
+                    // try block — see facebookMessenger()'s identical
+                    // comment for why.
                     $senderId = (string) ($messaging['sender']['id'] ?? 'unknown');
-                    $messageText = $messaging['message']['text'] ?? null;
-                    $attachments = $this->extractMessagingAttachments($messaging);
-                    $sentAt = $this->messagingTimestamp($messaging);
                     $externalMessageId = $this->extractInboundMessageId($messaging);
 
-                    $this->withDedupeLock($source->id, $senderId, function () use ($source, $senderId, $messageText, $messaging, $attachments, $sentAt, $externalMessageId): void {
-                        if ($this->alreadyRecordedMessage($source, MessageChannel::Instagram, $externalMessageId)) {
-                            return;
+                    // REL-1 fix: per-item exception isolation — see
+                    // facebookMessenger()'s identical comment for the full
+                    // reasoning.
+                    try {
+                        // Feature #15 — see facebookMessenger()'s identical
+                        // check; Instagram Messaging shares the same
+                        // entry[].messaging[] delivery/read shape.
+                        if (isset($messaging['delivery']) || isset($messaging['read'])) {
+                            $this->dispatchMessengerStatusReconciliation($source, MessageChannel::Instagram, $messaging);
+
+                            continue;
                         }
 
-                        $existingLead = $this->existingLeadForConversation($source, MessageChannel::Instagram, $senderId)
-                            ?? Lead::query()
-                                ->where('source_id', $source->id)
-                                ->where('source_data->instagram_user_id', $senderId)
-                                ->whereNull('merged_into_lead_id')
-                                ->first();
+                        $messageText = $messaging['message']['text'] ?? null;
+                        $attachments = $this->extractMessagingAttachments($messaging);
+                        $sentAt = $this->messagingTimestamp($messaging);
 
-                        if ($existingLead instanceof Lead) {
-                            $this->appendInstagramMessage($existingLead, $messageText, $messaging, $attachments, $senderId, $source, $sentAt);
+                        $this->withDedupeLock($source->id, $senderId, function () use ($source, $senderId, $messageText, $messaging, $attachments, $sentAt, $externalMessageId): void {
+                            if ($this->alreadyRecordedMessage($source, MessageChannel::Instagram, $externalMessageId)) {
+                                return;
+                            }
 
-                            $source->update(['last_synced_at' => now()]);
+                            $existingLead = $this->existingLeadForConversation($source, MessageChannel::Instagram, $senderId)
+                                ?? Lead::query()
+                                    ->where('source_id', $source->id)
+                                    ->where('source_data->instagram_user_id', $senderId)
+                                    ->whereNull('merged_into_lead_id')
+                                    ->first();
 
-                            return;
-                        }
+                            if ($existingLead instanceof Lead) {
+                                $this->appendInstagramMessage($existingLead, $messageText, $messaging, $attachments, $senderId, $source, $sentAt);
 
-                        $profile = $this->fetchInstagramProfile($source, $senderId);
+                                $source->update(['last_synced_at' => now()]);
 
-                        $lead = $this->createLead($source, [
-                            'name' => $profile['name'] ?? "Instagram User {$senderId}",
-                            'message' => $messageText,
-                            'source_data' => [
-                                'instagram_user_id' => $senderId,
-                                'instagram_profile_pic' => $profile['profile_pic'],
-                                'messages' => [$messaging],
-                            ],
-                        ]);
+                                return;
+                            }
 
-                        $this->recordInboundMessage($lead, $source, MessageChannel::Instagram, $senderId, $messageText, $messaging);
+                            $profile = $this->fetchInstagramProfile($source, $senderId);
 
-                        $this->logIfMultipleAttachments($attachments, $lead);
+                            $lead = $this->createLead($source, [
+                                'name' => $profile['name'] ?? "Instagram User {$senderId}",
+                                'message' => $messageText,
+                                'source_data' => [
+                                    'instagram_user_id' => $senderId,
+                                    'instagram_profile_pic' => $profile['profile_pic'],
+                                    'messages' => [$messaging],
+                                ],
+                            ]);
 
-                        foreach ($attachments as $attachment) {
-                            $this->createPendingAttachmentAndDispatch($lead, LeadSourceType::Instagram, $attachment, $senderId, $source, $sentAt);
-                        }
-                    });
+                            $this->recordInboundMessage($lead, $source, MessageChannel::Instagram, $senderId, $messageText, $messaging);
+
+                            $this->logIfMultipleAttachments($attachments, $lead);
+
+                            foreach ($attachments as $attachment) {
+                                $this->createPendingAttachmentAndDispatch($lead, LeadSourceType::Instagram, $attachment, $senderId, $source, $sentAt);
+                            }
+                        });
+                    } catch (Throwable $e) {
+                        Log::error("Instagram webhook item processing failed for tenant [{$tenant_code}], sender [{$senderId}], message [{$externalMessageId}]: {$e->getMessage()}");
+                    }
                 }
             }
         } catch (Throwable $e) {
@@ -354,15 +389,32 @@ class LeadWebhookController extends Controller
                             }
                         };
 
-                        // No phone means no possible dedupe key to lock on
-                        // (the lookup above already returns null unconditionally
-                        // in that case) — run straight through rather than
-                        // locking on a shared placeholder key that would
-                        // needlessly serialize unrelated senders.
-                        if (is_string($senderPhone) && $senderPhone !== '') {
-                            $this->withDedupeLock($source->id, $senderPhone, $handleMessage);
-                        } else {
-                            $handleMessage();
+                        // REL-1 fix: per-item exception isolation — see
+                        // facebookMessenger()'s identical comment for the
+                        // full reasoning. Deliberately does NOT also wrap
+                        // the separate statuses[] reconciliation loop above
+                        // — REL-1 is scoped to inbound MESSAGE items, per
+                        // the finding's own title; statuses[] is a distinct
+                        // loop over a distinct array, not part of the same
+                        // per-message-item boundary.
+                        try {
+                            // No phone means no possible dedupe key to lock on
+                            // (the lookup above already returns null unconditionally
+                            // in that case) — run straight through rather than
+                            // locking on a shared placeholder key that would
+                            // needlessly serialize unrelated senders.
+                            if (is_string($senderPhone) && $senderPhone !== '') {
+                                $this->withDedupeLock($source->id, $senderPhone, $handleMessage);
+                            } else {
+                                $handleMessage();
+                            }
+                        } catch (Throwable $e) {
+                            Log::channel('whatsapp')->error('WA ITEM PROCESSING FAILED', [
+                                'tenant_code' => $tenant_code,
+                                'sender_id' => $senderId,
+                                'external_message_id' => $externalMessageId,
+                                'error' => $e->getMessage(),
+                            ]);
                         }
                     }
                 }
