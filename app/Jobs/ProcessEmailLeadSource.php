@@ -2,14 +2,20 @@
 
 namespace App\Jobs;
 
+use App\Enums\EmailPartialFailureStage;
+use App\Enums\FailedEmailMessageStatus;
 use App\Enums\LeadAttachmentStatus;
 use App\Events\LeadReceived;
 use App\Events\LeadUpdated;
+use App\Exceptions\EmailMessagePartiallyProcessed;
+use App\Models\FailedEmailMessage;
 use App\Models\Lead;
 use App\Models\LeadSource;
 use App\Models\Tenant;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\ConcurrencyErrorDetector;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\Middleware\WithoutOverlapping;
 use Illuminate\Support\Carbon;
@@ -18,6 +24,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use IMAP\Connection;
+use RuntimeException;
 use Symfony\Component\Mime\MimeTypes;
 use Throwable;
 
@@ -59,13 +66,48 @@ class ProcessEmailLeadSource implements ShouldQueue
     ];
 
     /**
+     * EMAIL-LOSS-1 — how many total attempts (the original poll attempt
+     * plus subsequent leads:retry-failed-emails attempts) a failed message
+     * gets before its FailedEmailMessage row is marked Exhausted and never
+     * retried again. Deliberately small and uniform across every failure
+     * class (see FailedEmailMessage's own docblock — failure_class is
+     * informational only, never used to shortcut this ceiling): a message
+     * that fails the same way 5 times, cheaply and without any IMAP-side
+     * risk each attempt, has told us everything a 6th identical attempt
+     * would.
+     */
+    private const MAX_RETRY_ATTEMPTS = 5;
+
+    /**
+     * EMAIL-LOSS-1 — retry backoff in minutes, multiplied by the attempt
+     * count already made (attempt 1 failed -> retry in 15m; attempt 2
+     * failed -> retry in 30m; ...). Matches this source's own default
+     * fetch_interval_minutes (15) as the smallest reasonable spacing —
+     * retrying faster than the tenant's own configured poll cadence would
+     * gain nothing, since nothing about the failure's cause would have
+     * changed that quickly.
+     */
+    private const RETRY_BACKOFF_MINUTES = 15;
+
+    /**
      * IMAP fetches over a slow or throttled connection can occasionally push
      * a full batch past the queue worker's default 60s timeout even at the
      * message cap above; this gives it headroom instead of failing outright.
      */
     public int $timeout = 180;
 
-    public function __construct(public LeadSource $source) {}
+    /**
+     * EMAIL-LOSS-1 — $retryFailedMessageIds is null for every normal
+     * leads:fetch-emails-dispatched run (unchanged default behavior: poll
+     * UNSEEN). App\Console\Commands\RetryFailedEmailMessages is the only
+     * caller that ever passes a populated list, switching handle() to
+     * handleRetries() instead of the UNSEEN search — see that method's own
+     * docblock for why this still safely reuses middleware() below rather
+     * than needing its own separate concurrency guard.
+     *
+     * @param  array<int, string>|null  $retryFailedMessageIds
+     */
+    public function __construct(public LeadSource $source, public ?array $retryFailedMessageIds = null) {}
 
     /**
      * Without this, a job that overruns its source's fetch_interval_minutes
@@ -79,6 +121,12 @@ class ProcessEmailLeadSource implements ShouldQueue
      * lock, it can't hold it any longer than it would have been allowed to
      * run anyway.
      *
+     * EMAIL-LOSS-1: keyed on $this->source->id regardless of whether this
+     * is a normal poll or a retry run — a retry run for a source and a
+     * normal poll run for the SAME source can therefore never execute
+     * concurrently either, which is exactly the guarantee handleRetries()
+     * relies on instead of taking its own separate lock.
+     *
      * @return array<int, WithoutOverlapping>
      */
     public function middleware(): array
@@ -89,8 +137,7 @@ class ProcessEmailLeadSource implements ShouldQueue
     public function handle(): void
     {
         $config = $this->source->config ?? [];
-
-        $mailbox = sprintf('{%s:%d/imap/ssl}INBOX', $config['imap_host'] ?? '', $config['imap_port'] ?? 993);
+        $mailbox = $this->mailboxConnectionString($config);
 
         $inbox = @imap_open($mailbox, $config['imap_username'] ?? '', $config['imap_password'] ?? '');
 
@@ -108,45 +155,408 @@ class ProcessEmailLeadSource implements ShouldQueue
             return;
         }
 
-        $messageNumbers = imap_search($inbox, 'UNSEEN') ?: [];
-        sort($messageNumbers);
-        $messageNumbers = array_slice($messageNumbers, 0, self::MAX_MESSAGES_PER_RUN);
+        $uidvalidity = $this->mailboxUidValidity($inbox, $mailbox);
 
-        foreach ($messageNumbers as $messageNumber) {
-            try {
-                $this->createLeadFromEmail($inbox, (int) $messageNumber);
-            } catch (Throwable $e) {
-                Log::error("Failed to process email message [{$messageNumber}] on lead source [{$this->source->id}]: {$e->getMessage()}");
-            }
-
-            // Flagged \Seen even on failure above — a message that can't be
-            // parsed won't suddenly parse successfully on a later run, so
-            // leaving it unseen would mean re-fetching and re-failing on
-            // the exact same message every run from now on, permanently
-            // blocking every *other* unseen message queued behind it
-            // (imap_search results are processed in ascending order) and
-            // never letting last_synced_at advance. The lead is lost, but
-            // logged above, and this source keeps working.
-            imap_setflag_full($inbox, (string) $messageNumber, '\\Seen');
+        if ($this->retryFailedMessageIds !== null) {
+            $this->handleRetries($inbox, $uidvalidity);
+        } else {
+            $this->handleUnseenMessages($inbox, $uidvalidity);
         }
 
         imap_errors();
         imap_alerts();
         imap_close($inbox);
 
-        $this->source->update(['last_synced_at' => now()]);
+        // Retry runs deliberately never touch last_synced_at — it drives
+        // FetchEmailLeads::isDue()'s normal poll cadence, and a retry run
+        // advancing it would needlessly delay the next real poll.
+        if ($this->retryFailedMessageIds === null) {
+            $this->source->update(['last_synced_at' => now()]);
+        }
     }
 
-    private function createLeadFromEmail(Connection $inbox, int $messageNumber): void
+    /**
+     * @param  array<string, mixed>  $config
+     */
+    private function mailboxConnectionString(array $config): string
     {
-        $header = imap_headerinfo($inbox, $messageNumber);
+        return sprintf('{%s:%d/imap/ssl}INBOX', $config['imap_host'] ?? '', $config['imap_port'] ?? 993);
+    }
 
-        if ($header === false) {
-            Log::error("Unable to read headers for message [{$messageNumber}] on lead source [{$this->source->id}].");
+    /**
+     * EMAIL-LOSS-1 — a UID (see resolveUid()/handleRetries()) is only
+     * meaningful in combination with the UIDVALIDITY it was observed under
+     * (RFC 3501); a mailbox rebuild reassigns UIDVALIDITY, silently making
+     * every previously-recorded UID potentially refer to a different
+     * message. Captured once per run and stamped onto every new failure
+     * record, so a later retry can detect a mismatch and refuse to replay
+     * rather than risk touching the wrong message. Returns 0 (a value no
+     * real mailbox uses) if the STATUS check itself fails — a genuinely
+     * new failure recorded with uidvalidity=0 simply can never match a
+     * later real UIDVALIDITY, which fails a future retry closed (refuses
+     * to replay) rather than open, the safe direction for this check.
+     */
+    private function mailboxUidValidity(Connection $inbox, string $mailbox): int
+    {
+        $status = imap_status($inbox, $mailbox, SA_UIDVALIDITY);
+
+        return $status !== false ? (int) $status->uidvalidity : 0;
+    }
+
+    /**
+     * The normal poll path — unchanged in spirit from before EMAIL-LOSS-1:
+     * search UNSEEN, cap at MAX_MESSAGES_PER_RUN, process each. What
+     * changed: a per-message failure is now durably recorded (see
+     * tryRecordNewFailure()) BEFORE \Seen is applied, not just logged —
+     * and \Seen is only applied at all once that recording has actually
+     * succeeded, so a message can never end up \Seen with no corresponding
+     * local recovery record (the one ordering EMAIL-LOSS-1's own Decision
+     * Brief called critical). If recording itself fails, the message is
+     * deliberately left unseen — a rare, doubly-unlucky case, but the
+     * normal next scheduled run trying again is strictly safer than
+     * silently losing the only trace that anything happened.
+     */
+    private function handleUnseenMessages(Connection $inbox, int $uidvalidity): void
+    {
+        $messageNumbers = imap_search($inbox, 'UNSEEN') ?: [];
+        sort($messageNumbers);
+        $messageNumbers = array_slice($messageNumbers, 0, self::MAX_MESSAGES_PER_RUN);
+
+        foreach ($messageNumbers as $messageNumber) {
+            $messageNumber = (int) $messageNumber;
+            $header = imap_headerinfo($inbox, $messageNumber);
+
+            try {
+                if ($header === false) {
+                    throw new RuntimeException("Unable to read headers for message [{$messageNumber}] on lead source [{$this->source->id}].");
+                }
+
+                $this->createLeadFromEmail($inbox, $messageNumber, $header);
+            } catch (Throwable $e) {
+                Log::error("Failed to process email message [{$messageNumber}] on lead source [{$this->source->id}]: {$e->getMessage()}");
+
+                if (! $this->tryRecordNewFailure($inbox, $messageNumber, $uidvalidity, $header !== false ? $header : null, $e)) {
+                    continue;
+                }
+            }
+
+            // Flagged \Seen on both success and (now-durably-recorded)
+            // failure — a poison message that can't be parsed won't
+            // suddenly parse successfully on a later run, so leaving it
+            // unseen would mean re-fetching and re-failing on the exact
+            // same message every normal poll run forever, consuming a
+            // MAX_MESSAGES_PER_RUN slot and re-logging indefinitely.
+            // Recovery for a genuinely transient failure now happens
+            // through the dedicated leads:retry-failed-emails path
+            // instead of the normal UNSEEN search — see
+            // FailedEmailMessage's own docblock.
+            imap_setflag_full($inbox, (string) $messageNumber, '\\Seen');
+        }
+    }
+
+    /**
+     * EMAIL-LOSS-1 — durably records a brand-new failure (the message has
+     * no prior FailedEmailMessage row) so leads:retry-failed-emails can
+     * later find it. Resolves the message's UID lazily, only once a
+     * failure has actually occurred — the common (successful) case never
+     * pays for this extra IMAP round trip.
+     *
+     * @return bool true if the failure was durably recorded (safe to mark
+     *              \Seen — see handleUnseenMessages()'s own docblock),
+     *              false if it could not be, in which case the caller must
+     *              leave the message unseen.
+     */
+    private function tryRecordNewFailure(Connection $inbox, int $messageNumber, int $uidvalidity, ?object $header, Throwable $e): bool
+    {
+        $uid = imap_uid($inbox, $messageNumber);
+
+        if ($uid === false || $uid === 0) {
+            Log::error("Could not resolve a UID for message [{$messageNumber}] on lead source [{$this->source->id}]; its failure cannot be durably recorded. Leaving it unseen so the next scheduled run retries it.");
+
+            return false;
+        }
+
+        $partialLeadId = $e instanceof EmailMessagePartiallyProcessed ? $e->leadId : null;
+        // EMAIL-LOSS-1 (event-replay fix): captured alongside partialLeadId
+        // so a retry can tell an event-dispatch failure apart from an
+        // attachment failure and, when it's the event, fire the correct
+        // event class — see EmailMessagePartiallyProcessed's own docblock.
+        $partialStage = $e instanceof EmailMessagePartiallyProcessed ? $e->stage : null;
+        $isNewLead = $e instanceof EmailMessagePartiallyProcessed ? $e->isNewLead : null;
+        $reason = Str::limit($e->getMessage(), 1000);
+        $messageId = $header !== null ? $this->normalizeMessageId($header->message_id ?? null) : null;
+        $from = $header->from[0] ?? null;
+
+        try {
+            // updateOrCreate rather than a bare create(): the unique
+            // (lead_source_id, uidvalidity, imap_uid) key means a message
+            // that is somehow re-encountered here (e.g. imap_setflag_full()
+            // silently failed to actually apply on a prior run — PHP's IMAP
+            // functions return bool, not an exception, on failure) safely
+            // increments the existing record instead of throwing a
+            // constraint violation.
+            $existing = FailedEmailMessage::where('lead_source_id', $this->source->id)
+                ->where('uidvalidity', $uidvalidity)
+                ->where('imap_uid', $uid)
+                ->first();
+
+            if ($existing !== null) {
+                $existing->update([
+                    'attempts' => $existing->attempts + 1,
+                    'status' => FailedEmailMessageStatus::Failed,
+                    'failure_class' => $this->classifyFailure($header, $e),
+                    'failure_reason' => $reason,
+                    'partial_lead_id' => $partialLeadId,
+                    'partial_stage' => $partialStage,
+                    'is_new_lead' => $isNewLead,
+                    'last_attempted_at' => now(),
+                    'next_retry_at' => now()->addMinutes(self::RETRY_BACKOFF_MINUTES * ($existing->attempts + 1)),
+                ]);
+            } else {
+                FailedEmailMessage::create([
+                    'tenant_id' => $this->source->tenant_id,
+                    'lead_source_id' => $this->source->id,
+                    'message_id' => $messageId,
+                    'imap_uid' => $uid,
+                    'uidvalidity' => $uidvalidity,
+                    'status' => FailedEmailMessageStatus::Failed,
+                    'attempts' => 1,
+                    'failure_class' => $this->classifyFailure($header, $e),
+                    'failure_reason' => $reason,
+                    'partial_lead_id' => $partialLeadId,
+                    'partial_stage' => $partialStage,
+                    'is_new_lead' => $isNewLead,
+                    'first_failed_at' => now(),
+                    'last_attempted_at' => now(),
+                    'next_retry_at' => now()->addMinutes(self::RETRY_BACKOFF_MINUTES),
+                    'subject' => $header->subject ?? null,
+                    'from_email' => $from !== null ? "{$from->mailbox}@{$from->host}" : null,
+                ]);
+            }
+
+            return true;
+        } catch (Throwable $recordingFailure) {
+            Log::error("Additionally failed to durably record the above failure for message [{$messageNumber}] on lead source [{$this->source->id}]: {$recordingFailure->getMessage()}. Leaving this message unseen so the next scheduled run retries it.");
+
+            return false;
+        }
+    }
+
+    /**
+     * EMAIL-LOSS-1 — lightweight, deliberately not a rule engine (see this
+     * job's own Decision Brief §9): an unreadable header can never succeed
+     * on retry (the message's own structure hasn't changed), so it's
+     * classified distinctly; everything else is left to a plain,
+     * already-existing Laravel utility (ConcurrencyErrorDetector, the same
+     * one Illuminate\Database\Concerns\ManagesTransactions itself uses) for
+     * the one class of failure this session has directly, repeatedly
+     * proven is genuinely transient. Never used to change the retry
+     * ceiling itself — purely informational, for operator triage.
+     */
+    private function classifyFailure(?object $header, Throwable $e): string
+    {
+        if ($header === null) {
+            return 'permanent_unreadable_header';
+        }
+
+        if ((new ConcurrencyErrorDetector)->causedByConcurrencyError($e)) {
+            return 'transient_db_concurrency';
+        }
+
+        if ($e instanceof QueryException) {
+            return 'transient_db';
+        }
+
+        return 'unknown';
+    }
+
+    /**
+     * RFC 5322 Message-ID values are sender-assigned and occasionally
+     * missing or blank — never assumed present, never used as the sole
+     * identity (see the failed_email_messages migration's own docblock:
+     * the unique replay key is uid+uidvalidity, not this).
+     */
+    private function normalizeMessageId(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $trimmed = trim($value);
+
+        return $trimmed === '' ? null : $trimmed;
+    }
+
+    /**
+     * EMAIL-LOSS-1 — processes a specific, bounded list of previously-failed
+     * messages (by FailedEmailMessage id) instead of the normal UNSEEN
+     * search. Deliberately reuses this job's own middleware() rather than
+     * taking a new, separate lock: WithoutOverlapping is keyed on
+     * $this->source->id regardless of retry-vs-normal mode, so only one
+     * instance of this job — retry or normal poll — can ever be actively
+     * handle()-ing for a given source at a time. That single guarantee is
+     * exactly what Step 12 of the approved Implementation Approval asked
+     * for ("reuse existing source-level coordination"), and is sufficient
+     * on its own: it rules out two retry runs OR a retry run and a normal
+     * poll ever touching the same mailbox concurrently. The one additional
+     * safeguard kept is a cheap, defensive re-check of each record's own
+     * status inside retryOneMessage() — normally redundant given the
+     * guarantee above, kept only in case a future caller ever bypasses the
+     * queue/middleware path.
+     */
+    private function handleRetries(Connection $inbox, int $currentUidValidity): void
+    {
+        $records = FailedEmailMessage::query()
+            ->whereIn('id', $this->retryFailedMessageIds ?? [])
+            ->where('status', FailedEmailMessageStatus::Failed)
+            ->get();
+
+        foreach ($records as $record) {
+            $this->retryOneMessage($inbox, $currentUidValidity, $record);
+        }
+    }
+
+    private function retryOneMessage(Connection $inbox, int $currentUidValidity, FailedEmailMessage $record): void
+    {
+        if ($record->fresh()?->status !== FailedEmailMessageStatus::Failed) {
+            return;
+        }
+
+        if ($record->uidvalidity !== $currentUidValidity) {
+            $this->exhaustRecord($record, 'The mailbox UID validity changed since this failure was recorded; the original message can no longer be safely located.');
 
             return;
         }
 
+        $messageNumber = imap_msgno($inbox, $record->imap_uid);
+
+        if ($messageNumber === 0) {
+            $this->exhaustRecord($record, 'The original message could no longer be found in the mailbox (deleted or moved since this failure was recorded).');
+
+            return;
+        }
+
+        $header = imap_headerinfo($inbox, $messageNumber);
+
+        if ($header === false) {
+            $this->recordRetryFailure($record, 'Unable to re-read headers for this message on retry.');
+            imap_setflag_full($inbox, (string) $messageNumber, '\\Seen');
+
+            return;
+        }
+
+        $currentMessageId = $this->normalizeMessageId($header->message_id ?? null);
+
+        if ($record->message_id !== null && $currentMessageId !== null && $record->message_id !== $currentMessageId) {
+            $this->exhaustRecord($record, 'The Message-ID at this UID no longer matches what was originally recorded; refusing to replay what may be a different message.');
+
+            return;
+        }
+
+        try {
+            if ($record->partial_lead_id !== null) {
+                // The Lead/its text is already durably persisted from a
+                // prior attempt (see EmailMessagePartiallyProcessed's own
+                // docblock) — never Lead::create()/append again (would
+                // duplicate the message text). See
+                // eventAlreadyDispatchedFor()'s own docblock for exactly
+                // when the event itself is/isn't re-fired.
+                $lead = Lead::findOrFail($record->partial_lead_id);
+                $structure = imap_fetchstructure($inbox, $messageNumber);
+                $eventAlreadyDispatched = $this->eventAlreadyDispatchedFor($record);
+
+                $this->runPostPersistSteps(
+                    $lead,
+                    $eventAlreadyDispatched,
+                    (bool) $record->is_new_lead,
+                    $inbox,
+                    $messageNumber,
+                    $structure,
+                    $this->emailSentAt($header),
+                );
+            } else {
+                $lead = $this->createLeadFromEmail($inbox, $messageNumber, $header);
+            }
+
+            // Only reached once every required post-persist step has
+            // actually completed — runPostPersistSteps() throws (caught
+            // below) if either the event or the attachments step is still
+            // outstanding and fails again.
+            $record->update([
+                'status' => FailedEmailMessageStatus::Recovered,
+                'recovered_at' => now(),
+                'resolved_lead_id' => $lead->id,
+                'last_attempted_at' => now(),
+            ]);
+        } catch (EmailMessagePartiallyProcessed $e) {
+            $this->recordRetryFailure($record, $e->getMessage(), partialLeadId: $e->leadId, stage: $e->stage);
+        } catch (Throwable $e) {
+            $this->recordRetryFailure($record, $e->getMessage());
+        }
+
+        // Already \Seen from the original attempt — reasserting here is a
+        // harmless no-op, not a new behavior change.
+        imap_setflag_full($inbox, (string) $messageNumber, '\\Seen');
+    }
+
+    /**
+     * EMAIL-LOSS-1 (event-replay fix) — the exact decision retryOneMessage()
+     * relies on to never re-fire an event that already returned
+     * successfully: only a record whose LAST recorded stage is
+     * specifically Attachments means event() already dispatched on a
+     * prior attempt. Any other value — Event (never dispatched), or null
+     * (a record from before this fix existed, or one whose only failure
+     * so far was something other than EmailMessagePartiallyProcessed) —
+     * means the event must still be (re-)fired. Extracted as its own
+     * method so this one decision has exactly one place it's made, and so
+     * it can be verified directly without needing a real IMAP\Connection
+     * (see this fix's own Decision Brief §"Real IMAP limitation").
+     */
+    private function eventAlreadyDispatchedFor(FailedEmailMessage $record): bool
+    {
+        return $record->partial_stage === EmailPartialFailureStage::Attachments;
+    }
+
+    private function recordRetryFailure(FailedEmailMessage $record, string $reason, ?string $partialLeadId = null, ?EmailPartialFailureStage $stage = null): void
+    {
+        $attempts = $record->attempts + 1;
+        $exhausted = $attempts >= self::MAX_RETRY_ATTEMPTS;
+
+        $record->update([
+            'attempts' => $attempts,
+            'failure_reason' => Str::limit($reason, 1000),
+            'partial_lead_id' => $partialLeadId ?? $record->partial_lead_id,
+            // EMAIL-LOSS-1 (event-replay fix): advances (e.g. Event ->
+            // Attachments once the event finally succeeds and only
+            // attachments remain outstanding) or stays as-is — never
+            // cleared, since $stage is only passed when the retry attempt
+            // itself threw EmailMessagePartiallyProcessed again.
+            'partial_stage' => $stage ?? $record->partial_stage,
+            'last_attempted_at' => now(),
+            'status' => $exhausted ? FailedEmailMessageStatus::Exhausted : FailedEmailMessageStatus::Failed,
+            'next_retry_at' => $exhausted ? null : now()->addMinutes(self::RETRY_BACKOFF_MINUTES * $attempts),
+        ]);
+
+        Log::error(
+            "Retry failed for email message (FailedEmailMessage [{$record->id}]) on lead source [{$this->source->id}]: {$reason}"
+            .($exhausted ? ' — retry ceiling reached, marked exhausted.' : '')
+        );
+    }
+
+    private function exhaustRecord(FailedEmailMessage $record, string $reason): void
+    {
+        $record->update([
+            'status' => FailedEmailMessageStatus::Exhausted,
+            'failure_reason' => Str::limit($reason, 1000),
+            'last_attempted_at' => now(),
+            'next_retry_at' => null,
+        ]);
+
+        Log::error("Email message retry abandoned (FailedEmailMessage [{$record->id}]) on lead source [{$this->source->id}]: {$reason}");
+    }
+
+    private function createLeadFromEmail(Connection $inbox, int $messageNumber, object $header): Lead
+    {
         $structure = imap_fetchstructure($inbox, $messageNumber);
         $body = $structure !== false
             ? $this->extractBody($inbox, $messageNumber, $structure)
@@ -170,49 +580,91 @@ class ProcessEmailLeadSource implements ShouldQueue
 
         if ($existingLead instanceof Lead) {
             $this->appendEmailMessage($existingLead, $header, $body, $email);
+            $lead = $existingLead;
+            $isNewLead = false;
+        } else {
+            // TOCTOU fix: coordination lock — see
+            // Platform\Clients\LeadSources::toggleLeadStatus()'s own docblock
+            // for the full readers/writer protocol. Wrapped in its own
+            // transaction (this job has none otherwise) so the lock and the
+            // Lead::create() below commit atomically — a pipeline-status
+            // removal racing this exact window can never strand the lead being
+            // created. $tenant->initialLeadStatus() is read from this
+            // freshly-locked instance, never $this->source->tenant (which may
+            // carry a stale cached relation).
+            //
+            // DEADLOCK-1 fix: FOR UPDATE, not FOR SHARE — see
+            // LeadWebhookController::createLead()'s identical comment for the
+            // full reasoning. Lead::create() below still triggers
+            // Lead::nextIdentifier()'s own FOR UPDATE on this same row; that is
+            // now a harmless re-lock instead of a lock-upgrade deadlock hazard
+            // against another concurrent creator for this tenant.
+            $lead = DB::transaction(function () use ($name, $email, $body, $header): Lead {
+                $tenant = Tenant::whereKey($this->source->tenant_id)->lockForUpdate()->firstOrFail();
 
-            if ($structure !== false) {
-                $this->saveAttachments($inbox, $messageNumber, $structure, $existingLead, $sentAt);
-            }
-
-            return;
+                return Lead::create([
+                    'tenant_id' => $this->source->tenant_id,
+                    'source_id' => $this->source->id,
+                    'name' => $name,
+                    'email' => $email,
+                    'message' => trim($body['message']),
+                    'html_body' => $body['html'],
+                    'source_data' => ['subject' => $header->subject ?? null],
+                    'status_id' => $tenant->initialLeadStatus()?->id,
+                ]);
+            });
+            $isNewLead = true;
         }
 
-        // TOCTOU fix: coordination lock — see
-        // Platform\Clients\LeadSources::toggleLeadStatus()'s own docblock
-        // for the full readers/writer protocol. Wrapped in its own
-        // transaction (this job has none otherwise) so the lock and the
-        // Lead::create() below commit atomically — a pipeline-status
-        // removal racing this exact window can never strand the lead being
-        // created. $tenant->initialLeadStatus() is read from this
-        // freshly-locked instance, never $this->source->tenant (which may
-        // carry a stale cached relation).
-        //
-        // DEADLOCK-1 fix: FOR UPDATE, not FOR SHARE — see
-        // LeadWebhookController::createLead()'s identical comment for the
-        // full reasoning. Lead::create() below still triggers
-        // Lead::nextIdentifier()'s own FOR UPDATE on this same row; that is
-        // now a harmless re-lock instead of a lock-upgrade deadlock hazard
-        // against another concurrent creator for this tenant.
-        $lead = DB::transaction(function () use ($name, $email, $body, $header): Lead {
-            $tenant = Tenant::whereKey($this->source->tenant_id)->lockForUpdate()->firstOrFail();
+        // EMAIL-LOSS-1: everything above this point either fully committed
+        // (Lead::create()'s own transaction) or made no persisted change at
+        // all (a thrown exception from appendEmailMessage()'s own
+        // $lead->save() never partially applies — a single UPDATE is
+        // atomic). From here on $lead is guaranteed durably persisted —
+        // runPostPersistSteps() below handles everything after that point.
+        $this->runPostPersistSteps($lead, eventAlreadyDispatched: false, isNewLead: $isNewLead, inbox: $inbox, messageNumber: $messageNumber, structure: $structure, sentAt: $sentAt);
 
-            return Lead::create([
-                'tenant_id' => $this->source->tenant_id,
-                'source_id' => $this->source->id,
-                'name' => $name,
-                'email' => $email,
-                'message' => trim($body['message']),
-                'html_body' => $body['html'],
-                'source_data' => ['subject' => $header->subject ?? null],
-                'status_id' => $tenant->initialLeadStatus()?->id,
-            ]);
-        });
+        return $lead;
+    }
 
-        event(new LeadReceived($lead));
+    /**
+     * EMAIL-LOSS-1 (event-replay fix) — the two steps that must run after a
+     * Lead is already durably persisted (created or appended): firing its
+     * event, then saving attachments. Shared by createLeadFromEmail() (a
+     * fresh attempt, $eventAlreadyDispatched always false) and
+     * retryOneMessage()'s partial-lead branch ($eventAlreadyDispatched true
+     * only when the persisted FailedEmailMessage's own partial_stage says
+     * the event already succeeded on a prior attempt) — one place, so the
+     * two callers can never classify a failure differently.
+     *
+     * Each of the two steps has its OWN try/catch, not one shared one (the
+     * bug this fix exists to close): a failure is tagged with exactly
+     * which step it came from via EmailPartialFailureStage, so a retry
+     * never re-fires an event that already returned successfully (per
+     * ShouldQueue's own semantics, that already durably queued its
+     * listeners — see EmailPartialFailureStage's own docblock) and never
+     * skips re-firing one that never dispatched at all.
+     *
+     * $isNewLead is passed through, not re-derived, so a retry fires the
+     * SAME event class (LeadReceived vs LeadUpdated) the original attempt
+     * would have — see EmailMessagePartiallyProcessed's own docblock.
+     */
+    private function runPostPersistSteps(Lead $lead, bool $eventAlreadyDispatched, bool $isNewLead, Connection $inbox, int $messageNumber, object|false $structure, CarbonInterface $sentAt): void
+    {
+        if (! $eventAlreadyDispatched) {
+            try {
+                event($isNewLead ? new LeadReceived($lead) : new LeadUpdated($lead));
+            } catch (Throwable $e) {
+                throw new EmailMessagePartiallyProcessed($lead->id, EmailPartialFailureStage::Event, $isNewLead, $e);
+            }
+        }
 
-        if ($structure !== false) {
-            $this->saveAttachments($inbox, $messageNumber, $structure, $lead, $sentAt);
+        try {
+            if ($structure !== false) {
+                $this->saveAttachments($inbox, $messageNumber, $structure, $lead, $sentAt);
+            }
+        } catch (Throwable $e) {
+            throw new EmailMessagePartiallyProcessed($lead->id, EmailPartialFailureStage::Attachments, $isNewLead, $e);
         }
     }
 
@@ -225,6 +677,11 @@ class ProcessEmailLeadSource implements ShouldQueue
      * (only one slot exists; showing the latest message beats a stale
      * first one), and message is newline-appended the same way those
      * channels already do.
+     *
+     * EMAIL-LOSS-1: no longer fires LeadUpdated itself — createLeadFromEmail()
+     * now fires it (or LeadReceived) right after this returns, alongside the
+     * create-path's own event, so both paths share one post-persist
+     * try/catch boundary (see that method's own comment).
      */
     private function appendEmailMessage(Lead $lead, object $header, array $body, string $email): void
     {
@@ -249,8 +706,6 @@ class ProcessEmailLeadSource implements ShouldQueue
         $lead->source_data = $sourceData;
 
         $lead->save();
-
-        event(new LeadUpdated($lead));
     }
 
     /**

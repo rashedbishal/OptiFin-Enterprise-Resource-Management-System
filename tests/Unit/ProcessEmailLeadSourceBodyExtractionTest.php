@@ -2,6 +2,8 @@
 
 use App\Jobs\ProcessEmailLeadSource;
 use App\Models\LeadSource;
+use Illuminate\Database\DeadlockException;
+use Illuminate\Database\QueryException;
 
 /**
  * Builds a stdClass shaped like an `imap_fetchstructure()` node.
@@ -65,6 +67,22 @@ function attachmentTypeCategory(string $mime): string
     $method = new ReflectionMethod($job, 'attachmentTypeCategory');
 
     return $method->invoke($job, $mime);
+}
+
+function normalizeMessageId(mixed $value): ?string
+{
+    $job = new ProcessEmailLeadSource(new LeadSource);
+    $method = new ReflectionMethod($job, 'normalizeMessageId');
+
+    return $method->invoke($job, $value);
+}
+
+function classifyFailure(?object $header, Throwable $e): string
+{
+    $job = new ProcessEmailLeadSource(new LeadSource);
+    $method = new ReflectionMethod($job, 'classifyFailure');
+
+    return $method->invoke($job, $header, $e);
 }
 
 function attachmentExtension(?string $filename, string $mime): string
@@ -217,4 +235,45 @@ test('a genuinely blank paragraph break between two lines is preserved', functio
 test('excess blank lines collapse to a single blank line', function () {
     expect(stripAntiClippingPadding("First.\n\n\n\n\nSecond."))
         ->toBe("First.\n\nSecond.");
+});
+
+// EMAIL-LOSS-1
+
+test('a well-formed Message-ID header is preserved verbatim after trimming', function () {
+    expect(normalizeMessageId(' <abc123@example.com> '))->toBe('<abc123@example.com>');
+});
+
+test('a missing or non-string Message-ID normalizes to null', function () {
+    expect(normalizeMessageId(null))->toBeNull();
+    expect(normalizeMessageId(123))->toBeNull();
+});
+
+test('a blank or whitespace-only Message-ID normalizes to null', function () {
+    expect(normalizeMessageId(''))->toBeNull();
+    expect(normalizeMessageId('   '))->toBeNull();
+});
+
+test('a failure with no header at all is classified as a permanent unreadable-header failure', function () {
+    expect(classifyFailure(null, new RuntimeException('Unable to read headers')))
+        ->toBe('permanent_unreadable_header');
+});
+
+test('a genuine PostgreSQL deadlock is classified as transient DB concurrency', function () {
+    $header = new stdClass;
+    $deadlock = new DeadlockException('SQLSTATE[40P01]: deadlock detected');
+
+    expect(classifyFailure($header, $deadlock))->toBe('transient_db_concurrency');
+});
+
+test('a generic database query exception is classified as transient DB', function () {
+    $header = new stdClass;
+    $queryException = new QueryException('pgsql', 'select 1', [], new RuntimeException('connection refused'));
+
+    expect(classifyFailure($header, $queryException))->toBe('transient_db');
+});
+
+test('an unrecognized exception is classified as unknown, defaulting to retryable rather than assumed permanent', function () {
+    $header = new stdClass;
+
+    expect(classifyFailure($header, new RuntimeException('something unexpected')))->toBe('unknown');
 });
