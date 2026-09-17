@@ -146,20 +146,34 @@ test('an import spanning more than one chunk (250 rows) processes every row corr
  * the APPROVED, safer 3-of-4-cached design (TenantUser intentionally
  * excluded) — measured directly against this same real Postgres
  * connection: 20 simple rows produce 299 total queries (14.95/row)
- * through this exact Livewire flow.
+ * through this exact Livewire flow before DB-2.
+ *
+ * DB-2 — closing the CSV-import concurrent-duplicate-email race required
+ * an authoritative checkExistingLeadDuplicate() re-check inside the
+ * per-row transaction, immediately after Tenant::lockForUpdate() (see
+ * App\Actions\Tenant\CreateLeadFromImport::processRow()'s own DB-2
+ * comment). For this fixture every row is email-only (no phone), so the
+ * re-check costs exactly one extra query per row: 299 + 20 = 319. This is
+ * deterministic — not a flaky or environment-dependent measurement — and
+ * verified by direct git-stash A/B comparison (pre-DB-2: 299, post-DB-2:
+ * 319, every run). The baseline below is updated to 319 accordingly.
  *
  * The threshold is deliberately tighter than a generic "leaves some
  * headroom" margin: it's sized to actually catch BOTH halves of the M6
- * optimization being independently reverted, not just a full reversion.
- * For this same 20-row fixture:
+ * optimization being independently reverted, not just a full reversion —
+ * DB-2's fixed +20 shifts every one of these figures by the same +20 but
+ * changes none of the underlying reasoning. For this same 20-row fixture,
+ * with DB-2's re-check still in place:
  *   - reverting only the LeadCsvImport per-chunk caching (LeadImport/
- *     Tenant/LeadSource) adds back 3 x (20 - 1) = 57 queries -> ~356
+ *     Tenant/LeadSource) adds back 3 x (20 - 1) = 57 queries -> 319 + 57 = 376
  *   - reverting only the computeFor()/setRelation() change adds back
- *     2 x 20 = 40 queries -> ~339
- * A looser threshold (e.g. 340) would let the second, smaller regression
- * pass silently. 310 sits strictly between the measured optimized result
- * (299) and the smaller of the two regression totals (339), so either
- * regression alone — not just both together — fails this assertion.
+ *     2 x 20 = 40 queries -> 319 + 40 = 359
+ * A looser threshold would let the second, smaller regression pass
+ * silently. 330 sits strictly between the new measured optimized result
+ * (319) and the smaller of the two regression totals (359) — the same
+ * +11-above-baseline, 29-below-nearest-regression margin the original
+ * 299/310/339 figures used — so either regression alone, on top of DB-2,
+ * still fails this assertion.
  */
 test('a moderate CSV import stays within the expected post-optimization query budget', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
@@ -185,11 +199,12 @@ test('a moderate CSV import stays within the expected post-optimization query bu
     $import = LeadImport::where('tenant_id', $tenant->id)->firstOrFail();
     expect($import->imported_count)->toBe(20);
 
-    // Measured optimized result through this exact Livewire flow: 299
-    // (~14.95/row). 310 is deliberately tight enough to catch either half
-    // of the M6 optimization being reverted alone (~339 and ~356 — see
-    // this test's own docblock above for the exact derivation), not just
-    // a full reversion back toward the pre-optimization ~19-20/row
-    // (~380-400 total) baseline.
-    expect($queryCount)->toBeLessThan(310);
+    // Measured result through this exact Livewire flow, post-DB-2: 319
+    // (299 pre-DB-2 + 20 for the mandatory in-lock duplicate re-check,
+    // one extra query per email-only row). 330 is deliberately tight
+    // enough to catch either half of the M6 optimization being reverted
+    // alone (~359 and ~376 — see this test's own docblock above for the
+    // exact derivation), not just a full reversion back toward the
+    // pre-optimization ~19-20/row (~380-400 total) baseline.
+    expect($queryCount)->toBeLessThan(330);
 });

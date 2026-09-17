@@ -133,6 +133,29 @@ class CreateLeadFromImport
             // earlier row, which would defeat the lock's purpose here.
             $lockedTenant = Tenant::whereKey($tenant->id)->lockForUpdate()->firstOrFail();
 
+            // DB-2 fix: the pre-lock checkExistingLeadDuplicate() call above
+            // is a fast path only, not authoritative — it runs before this
+            // lock exists, so two concurrent rows (different import jobs,
+            // same tenant, same normalized email/phone) can both see "no
+            // match" and both reach this transaction. Re-running the exact
+            // same, unmodified helper here — now that this row holds the
+            // tenant lock every other Lead-creation path for this tenant
+            // also serializes on (DEADLOCK-1) — is what actually closes the
+            // race: whichever row's transaction commits first is visible to
+            // the second row's re-check the moment it acquires the lock, no
+            // new lock or retry loop required. Checked before the other
+            // resolution work below for the same reason the pre-lock check
+            // already runs first: no point resolving status/priority/etc.
+            // for a row about to be rejected as a duplicate.
+            $duplicateError = $this->checkExistingLeadDuplicate($lockedTenant, $normalizedEmail, $normalizedPhone);
+
+            if ($duplicateError !== null) {
+                [$message, $duplicateOfLeadId] = $duplicateError;
+                $this->recordRow($import, $rowNumber, LeadImportRowStatus::Duplicate, $row, [$message], $normalizedEmail, $normalizedPhone, $duplicateOfLeadId);
+
+                return;
+            }
+
             $status = $this->resolveStatus($lockedTenant, $row['status'] ?? null);
             $priority = $this->resolvePriority($row['priority'] ?? null);
             $assignee = $this->resolveAssignee($tenant, $row['assignee_email'] ?? null);

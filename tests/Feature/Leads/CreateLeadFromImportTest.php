@@ -157,6 +157,36 @@ test('email matches Lead A and phone matches a different Lead B is rejected as a
     expect($row->duplicate_of_lead_id)->toBeNull();
 });
 
+test('a lead already merged away (merged_into_lead_id set) is excluded from duplicate matching, so a matching row is imported as new', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin, 'source' => $source, 'import' => $import] = setUpLeadImport();
+    $survivor = Lead::factory()->create(['tenant_id' => $tenant->id, 'email' => 'merged@example.com']);
+    $mergedAway = Lead::factory()->create(['tenant_id' => $tenant->id, 'email' => 'merged@example.com', 'merged_into_lead_id' => $survivor->id]);
+
+    app(CreateLeadFromImport::class)->handle($import, $tenant, $source, $clientAdmin, 1, ['name' => 'Post-Merge Row', 'email' => 'merged@example.com']);
+
+    // email_normalized still matches both $survivor and $mergedAway, but
+    // checkExistingLeadDuplicate() excludes merged-away leads via
+    // whereNull('merged_into_lead_id') — the row is a duplicate of the
+    // surviving lead, never the merged-away one.
+    $row = LeadImportRow::where('lead_import_id', $import->id)->where('row_number', 1)->firstOrFail();
+    expect($row->status)->toBe(LeadImportRowStatus::Duplicate);
+    expect($row->duplicate_of_lead_id)->toBe($survivor->id);
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(2);
+});
+
+test('an existing Lead duplicate by email in a different tenant does not block import — duplicate detection is tenant-scoped', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin, 'source' => $source, 'import' => $import] = setUpLeadImport();
+    ['tenant' => $otherTenant] = tenantWithLeadManagement();
+    Lead::factory()->create(['tenant_id' => $otherTenant->id, 'email' => 'shared@example.com']);
+
+    app(CreateLeadFromImport::class)->handle($import, $tenant, $source, $clientAdmin, 1, ['name' => 'New In This Tenant', 'email' => 'shared@example.com']);
+
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(1);
+    $row = LeadImportRow::where('lead_import_id', $import->id)->where('row_number', 1)->firstOrFail();
+    expect($row->status)->toBe(LeadImportRowStatus::Imported);
+    expect($row->duplicate_of_lead_id)->toBeNull();
+});
+
 test('within the same CSV, the first valid row wins and a later matching row is rejected as an in-file duplicate', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin, 'source' => $source, 'import' => $import] = setUpLeadImport();
     $action = app(CreateLeadFromImport::class);
