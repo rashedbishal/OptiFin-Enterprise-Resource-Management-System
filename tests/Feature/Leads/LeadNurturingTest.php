@@ -403,3 +403,114 @@ test('existing meeting/follow-up/task alert settings are unaffected by nurturing
     expect($tenant->task_alert_enabled)->toBeFalse();
     expect($tenant->lead_nurturing_notify_enabled)->toBeTrue();
 });
+
+// ── REL-4 — chunkById() pagination regression coverage ─────────────────────
+//
+// sweepTenant()'s Lead-level query uses chunkById(200, ...) rather than
+// each(). The tests below exercise that exact query shape directly (same
+// tenant/merged-lead/closed-status filters sweepTenant() itself uses) so a
+// genuine multi-page run, and a row disappearing between pages, can be
+// deterministically controlled and observed — something the full
+// `leads:nurture-inactive-leads` command has no seam to intercept mid-run.
+// sweepTenant()'s own notify/task-creation callback logic is already fully
+// covered by the tests above, unmodified.
+
+test('the sweep notifies every qualifying lead across more than one chunkById page', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    enableNurturing($tenant, notify: true, task: false, days: 10);
+
+    // 201 leads — one more than the production chunkById(200, ...) page
+    // size, forcing a genuine second page fetch.
+    Lead::factory()->count(201)->create(['tenant_id' => $tenant->id, 'created_at' => now()->subDays(10)]);
+
+    Artisan::call('leads:nurture-inactive-leads');
+
+    // Every one of the 201 leads across both pages produced its own
+    // notification — none silently dropped at the page boundary.
+    expect(DB::table('notifications')->where('type', LeadInactivityAlertNotification::class)->count())->toBe(201);
+});
+
+test('deleting an already-processed lead mid-sweep does not skip a later qualifying lead (REL-4 regression)', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $closedStatusIds = $tenant->leadStatuses()->where('is_closed', true)->pluck('lead_statuses.id');
+
+    $leads = Lead::factory()->count(4)->create(['tenant_id' => $tenant->id, 'created_at' => now()->subDays(30)])
+        ->sortBy('id')->values();
+
+    $processedIds = [];
+    $pageNumber = 0;
+
+    // Mirrors sweepTenant()'s exact Lead-level query shape and filters.
+    Lead::query()
+        ->where('tenant_id', $tenant->id)
+        ->whereNull('merged_into_lead_id')
+        ->whereNotIn('status_id', $closedStatusIds)
+        ->with('assignedUser')
+        ->chunkById(2, function ($page) use (&$processedIds, &$pageNumber): void {
+            $pageNumber++;
+
+            foreach ($page as $lead) {
+                $processedIds[] = $lead->id;
+            }
+
+            // Simulate a Client Admin deleting a lead from the UI between
+            // pages — the exact REL-4 failure trigger — mid-sweep. Already
+            // recorded above before this delete, so still expected below.
+            if ($pageNumber === 1) {
+                $page->first()->delete();
+            }
+        });
+
+    // All 4 original leads are accounted for — none silently dropped.
+    expect($processedIds)->toBe($leads->pluck('id')->values()->all());
+});
+
+test('a lead closed between pages is excluded without skipping a later qualifying lead, tenant isolation and eager loading preserved (REL-4 regression)', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    ['tenant' => $otherTenant] = tenantWithLeadManagement();
+    $closedStatusIds = $tenant->leadStatuses()->where('is_closed', true)->pluck('lead_statuses.id');
+    $closedStatus = LeadStatus::where('is_closed', true)->firstOrFail();
+
+    $leads = Lead::factory()->count(4)->create(['tenant_id' => $tenant->id, 'created_at' => now()->subDays(30)])
+        ->sortBy('id')->values();
+    Lead::factory()->count(2)->create(['tenant_id' => $otherTenant->id, 'created_at' => now()->subDays(30)]);
+
+    $processedIds = [];
+    $pageNumber = 0;
+
+    DB::enableQueryLog();
+    Lead::query()
+        ->where('tenant_id', $tenant->id)
+        ->whereNull('merged_into_lead_id')
+        ->whereNotIn('status_id', $closedStatusIds)
+        ->with('assignedUser')
+        ->chunkById(2, function ($page) use (&$processedIds, &$pageNumber, $closedStatus): void {
+            $pageNumber++;
+
+            foreach ($page as $lead) {
+                $processedIds[] = $lead->id;
+                // assignedUser was eager-loaded above — accessing it here
+                // must not trigger an additional query per row.
+                $lead->assignedUser;
+            }
+
+            // Close the first lead of page 1 — the same
+            // whereNotIn('status_id', $closedStatusIds) disqualification
+            // sweepTenant() itself relies on. Already recorded above before
+            // this update, so still expected below.
+            if ($pageNumber === 1) {
+                $page->first()->update(['status_id' => $closedStatus->id]);
+            }
+        });
+    $queryLog = DB::getQueryLog();
+    DB::disableQueryLog();
+
+    // All 4 original leads are accounted for — none silently dropped.
+    expect($processedIds)->toBe($leads->pluck('id')->values()->all());
+
+    // 2 page-fetch queries (page 1 of 2, page 2 of 1 remaining) + up to 2
+    // eager-load queries for assignedUser (one per page) + the status
+    // update — no per-row N+1 from accessing assignedUser above.
+    $selectQueries = collect($queryLog)->filter(fn (array $q): bool => str_starts_with(trim($q['query']), 'select'));
+    expect($selectQueries->count())->toBeLessThanOrEqual(4);
+});

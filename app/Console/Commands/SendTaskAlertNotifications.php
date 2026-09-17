@@ -49,22 +49,30 @@ class SendTaskAlertNotifications extends Command
             ->where('is_active', true)
             ->get();
 
+        // REL-4 — chunkById(), not each(): see SendLeadAlertNotifications::
+        // sweep()'s identical comment for the full reasoning (each()'s
+        // underlying chunk() uses OFFSET pagination, which can silently
+        // skip a task if an earlier task is deleted/disqualified between
+        // pages; chunkById() resumes from the last-seen task's own id
+        // instead, immune to that shift).
         Task::query()
             ->where('tenant_id', $tenant->id)
             ->where('status', TaskStatus::Pending->value)
             ->whereNotNull('due_date')
             ->with('assignee')
-            ->each(function (Task $task) use ($tenant, $admins): void {
-                if (! $task->alertActive($tenant->task_alert_enabled, $tenant->task_alert_days_before)) {
-                    return;
-                }
-
-                foreach ($this->recipients($admins, $task) as $recipient) {
-                    if ($this->alreadyNotifiedToday($recipient, $task)) {
+            ->chunkById(200, function ($tasks) use ($tenant, $admins): void {
+                foreach ($tasks as $task) {
+                    if (! $task->alertActive($tenant->task_alert_enabled, $tenant->task_alert_days_before)) {
                         continue;
                     }
 
-                    $recipient->notify(new TaskAlertNotification($task));
+                    foreach ($this->recipients($admins, $task) as $recipient) {
+                        if ($this->alreadyNotifiedToday($recipient, $task)) {
+                            continue;
+                        }
+
+                        $recipient->notify(new TaskAlertNotification($task));
+                    }
                 }
             });
     }

@@ -70,16 +70,24 @@ class NurtureInactiveLeads extends Command
             ->where('is_active', true)
             ->get();
 
+        // REL-4 — chunkById(), not each(): see SendLeadAlertNotifications::
+        // sweep()'s identical comment for the full reasoning (each()'s
+        // underlying chunk() uses OFFSET pagination, which can silently
+        // skip a lead if an earlier lead is deleted/merged away between
+        // pages; chunkById() resumes from the last-seen lead's own id
+        // instead, immune to that shift).
         Lead::query()
             ->where('tenant_id', $tenant->id)
             ->whereNull('merged_into_lead_id')
             ->whereNotIn('status_id', $closedStatusIds)
             ->with('assignedUser')
-            ->each(function (Lead $lead) use ($tenant, $admins): void {
-                try {
-                    $this->processLead($tenant, $lead, $admins);
-                } catch (Throwable $e) {
-                    Log::error("Lead nurturing action failed for lead [{$lead->id}]: {$e->getMessage()}");
+            ->chunkById(200, function ($leads) use ($tenant, $admins): void {
+                foreach ($leads as $lead) {
+                    try {
+                        $this->processLead($tenant, $lead, $admins);
+                    } catch (Throwable $e) {
+                        Log::error("Lead nurturing action failed for lead [{$lead->id}]: {$e->getMessage()}");
+                    }
                 }
             });
     }

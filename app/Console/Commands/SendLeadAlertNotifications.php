@@ -62,21 +62,37 @@ class SendLeadAlertNotifications extends Command
             ->where('is_active', true)
             ->get();
 
+        // REL-4 — chunkById(), not each(): each() (chunk()'s OFFSET-based
+        // pagination) can silently skip a lead if an earlier-in-order lead
+        // is deleted or merged away between pages, since the next page's
+        // OFFSET is computed purely from the page number. chunkById()
+        // instead resumes from the last-seen lead's own id, immune to that
+        // shift — see RecalculateLeadScores.php/DetectDuplicateLeads.php/
+        // Leads\Index::export() for the same, already-established pattern.
         $tenant->leads()
             ->whereNotNull($dateColumn)
             ->whereNull('merged_into_lead_id')
             ->with('assignedUser')
-            ->each(function (Lead $lead) use ($isActive, $notificationClass, $makeNotification, $admins): void {
-                if (! $isActive($lead)) {
-                    return;
-                }
-
-                foreach ($this->recipients($admins, $lead) as $recipient) {
-                    if ($this->alreadyNotifiedToday($recipient, $notificationClass, $lead)) {
+            ->chunkById(200, function (Collection $leads) use ($isActive, $notificationClass, $makeNotification, $admins): void {
+                foreach ($leads as $lead) {
+                    // Tenant::leads()'s own return type doesn't declare its
+                    // generics (the same pre-existing gap this module's
+                    // other relation methods have), so chunkById() can't
+                    // infer the model type on its own here; restoring it
+                    // explicitly, exactly as each()'s own closure parameter
+                    // type hint did before this REL-4 change.
+                    /** @var Lead $lead */
+                    if (! $isActive($lead)) {
                         continue;
                     }
 
-                    $recipient->notify($makeNotification($lead));
+                    foreach ($this->recipients($admins, $lead) as $recipient) {
+                        if ($this->alreadyNotifiedToday($recipient, $notificationClass, $lead)) {
+                            continue;
+                        }
+
+                        $recipient->notify($makeNotification($lead));
+                    }
                 }
             });
     }
