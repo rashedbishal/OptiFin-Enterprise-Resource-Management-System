@@ -18,15 +18,28 @@ use Illuminate\Support\Carbon;
  * withdrawal a Lead has ever had, one row per action, never updated or
  * deleted by any code path in this app (the same "immutable in practice"
  * convention LeadStatusLog/LeadScoreLog already follow — no update()/
- * delete() call site exists against this model anywhere). App\Models\
+ * delete() call site exists against this model anywhere, other than the
+ * one-time identity-snapshot update described below). App\Models\
  * LeadConsent holds only the current effective state derived from the
  * latest of these; this table is the full history, reparented (never
  * deleted) onto the surviving lead on merge — see App\Services\
  * LeadMergeService::CHILD_MODELS.
  *
+ * DB-1 — this row is PRESERVED, not cascade-deleted, when its Lead is hard-
+ * deleted: `lead_id` is nullable/nullOnDelete rather than cascadeOnDelete,
+ * so it goes NULL instead of the row disappearing — a hard Lead delete must
+ * never erase this history. `lead_identifier`/`lead_name` are a point-in-
+ * time identity snapshot written only by App\Actions\Tenant\
+ * RecordLeadDeletionAudit at the moment of deletion (the one deliberate
+ * exception to "never updated" above — it sets exactly these two columns,
+ * nothing else) so a detached row stays queryable/identifiable on its own
+ * even after its Lead is gone.
+ *
  * @property string $id
  * @property string $tenant_id
- * @property string $lead_id
+ * @property string|null $lead_id
+ * @property string|null $lead_identifier
+ * @property string|null $lead_name
  * @property ConsentType $consent_type
  * @property ConsentStatus $status
  * @property ConsentSource $source
@@ -38,11 +51,11 @@ use Illuminate\Support\Carbon;
  * @property string|null $ip_address
  * @property string|null $user_agent
  * @property Carbon $occurred_at
- * @property-read Lead $lead
+ * @property-read Lead|null $lead
  * @property-read TenantUser|null $changedBy
  */
 #[Fillable([
-    'tenant_id', 'lead_id', 'consent_type', 'status', 'source',
+    'tenant_id', 'lead_id', 'lead_identifier', 'lead_name', 'consent_type', 'status', 'source',
     'website_form_id', 'website_form_name', 'changed_by',
     'policy_version', 'policy_url', 'ip_address', 'user_agent', 'occurred_at',
 ])]

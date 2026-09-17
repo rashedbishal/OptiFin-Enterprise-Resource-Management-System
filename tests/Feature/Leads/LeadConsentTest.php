@@ -4,12 +4,16 @@ use App\Actions\Tenant\RecordLeadConsent;
 use App\Enums\ConsentSource;
 use App\Enums\ConsentStatus;
 use App\Enums\ConsentType;
+use App\Enums\LeadSourceType;
 use App\Exceptions\LeadMergeException;
+use App\Livewire\Tenant\Leads\Index;
 use App\Models\Lead;
 use App\Models\LeadConsent;
 use App\Models\LeadConsentEvent;
+use App\Models\LeadSource;
 use App\Services\LeadMergeService;
 use Illuminate\Database\QueryException;
+use Livewire\Livewire;
 
 test('granting consent creates exactly one current-state row and one history event', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
@@ -82,16 +86,34 @@ test('lead_consents enforces a unique constraint per lead and consent type', fun
         ->toThrow(QueryException::class);
 });
 
-test('deleting a lead cascades to its consent current-state and history rows', function () {
+test('deleting a lead detaches, rather than deletes, its consent current-state and history rows (DB-1)', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
-    $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::WebsiteForm]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+    $leadId = $lead->id;
+    $identifier = $lead->identifier;
+    $name = $lead->name;
 
     app(RecordLeadConsent::class)->handle($lead, ConsentType::Privacy, ConsentStatus::Granted, ConsentSource::Manual, $clientAdmin->id);
 
-    $lead->delete();
+    // A hard Lead delete must go through the approved DB-1 path (the
+    // password-gated Livewire delete()), not a bare $lead->delete() — that
+    // path is what actually snapshots identity before the delete happens.
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class)->call('completeInitialLoad')
+        ->call('delete', $leadId);
 
-    expect(LeadConsent::where('lead_id', $lead->id)->exists())->toBeFalse();
-    expect(LeadConsentEvent::where('lead_id', $lead->id)->exists())->toBeFalse();
+    expect(Lead::find($leadId))->toBeNull();
+
+    $consent = LeadConsent::where('lead_identifier', $identifier)->first();
+    expect($consent)->not->toBeNull();
+    expect($consent->lead_id)->toBeNull();
+    expect($consent->lead_name)->toBe($name);
+
+    $event = LeadConsentEvent::where('lead_identifier', $identifier)->first();
+    expect($event)->not->toBeNull();
+    expect($event->lead_id)->toBeNull();
+    expect($event->lead_name)->toBe($name);
 });
 
 test('consent queries are tenant isolated', function () {

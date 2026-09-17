@@ -3,6 +3,7 @@
 namespace App\Livewire\Tenant\Leads;
 
 use App\Actions\Tenant\CreateManualLead;
+use App\Actions\Tenant\RecordLeadDeletionAudit;
 use App\Actions\Tenant\SaveLeadCustomFieldValues;
 use App\Enums\LeadPriority;
 use App\Enums\LeadSourceType;
@@ -951,7 +952,13 @@ class Index extends Component
             return;
         }
 
-        $lead->delete();
+        DB::transaction(function () use ($lead): void {
+            if (app(RecordLeadDeletionAudit::class)->handle($lead, Auth::user(), isBulk: false) === null) {
+                return;
+            }
+
+            $lead->delete();
+        });
 
         if ($this->selectedLeadId === $id) {
             $this->showLeadPanel = false;
@@ -1883,6 +1890,10 @@ class Index extends Component
             }
 
             DB::transaction(function () use ($lead): void {
+                if (app(RecordLeadDeletionAudit::class)->handle($lead, Auth::user(), isBulk: true) === null) {
+                    return;
+                }
+
                 $lead->delete();
             });
 

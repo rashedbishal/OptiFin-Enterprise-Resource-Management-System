@@ -3,6 +3,7 @@
 namespace App\Livewire\Tenant\Leads;
 
 use App\Actions\Tenant\RecordLeadConsent;
+use App\Actions\Tenant\RecordLeadDeletionAudit;
 use App\Actions\Tenant\SaveLeadCustomFieldValues;
 use App\Enums\ConsentSource;
 use App\Enums\ConsentStatus;
@@ -2730,7 +2731,13 @@ class Show extends Component
 
         $leadId = $this->lead->id;
 
-        $this->lead->delete();
+        DB::transaction(function (): void {
+            if (app(RecordLeadDeletionAudit::class)->handle($this->lead, Auth::user(), isBulk: false) === null) {
+                return;
+            }
+
+            $this->lead->delete();
+        });
 
         if ($this->panel) {
             $this->dispatch('lead-panel-deleted', leadId: $leadId);

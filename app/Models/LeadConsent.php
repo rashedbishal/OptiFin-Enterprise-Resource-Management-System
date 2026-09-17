@@ -26,9 +26,22 @@ use Illuminate\Support\Carbon;
  * now," and is safely replaced (never soft-deleted) by a later grant or
  * withdrawal.
  *
+ * DB-1 — this row is PRESERVED, not cascade-deleted, when its Lead is hard-
+ * deleted: `lead_id` is nullable/nullOnDelete rather than cascadeOnDelete,
+ * so it goes NULL instead of the row disappearing. `lead_identifier`/
+ * `lead_name` are a point-in-time identity snapshot written only by
+ * App\Actions\Tenant\RecordLeadDeletionAudit at the moment of deletion
+ * (never during ordinary grant/withdraw — RecordLeadConsent does not touch
+ * them) so a detached row stays queryable/identifiable on its own even
+ * after its Lead is gone. This model remains a "current state, replaced in
+ * place" record, not an append-only history one — see LeadConsentEvent for
+ * that.
+ *
  * @property string $id
  * @property string $tenant_id
- * @property string $lead_id
+ * @property string|null $lead_id
+ * @property string|null $lead_identifier
+ * @property string|null $lead_name
  * @property ConsentType $consent_type
  * @property ConsentStatus $status
  * @property ConsentSource $source
@@ -40,11 +53,11 @@ use Illuminate\Support\Carbon;
  * @property string|null $ip_address
  * @property string|null $user_agent
  * @property Carbon $occurred_at
- * @property-read Lead $lead
+ * @property-read Lead|null $lead
  * @property-read TenantUser|null $changedBy
  */
 #[Fillable([
-    'tenant_id', 'lead_id', 'consent_type', 'status', 'source',
+    'tenant_id', 'lead_id', 'lead_identifier', 'lead_name', 'consent_type', 'status', 'source',
     'website_form_id', 'website_form_name', 'changed_by',
     'policy_version', 'policy_url', 'ip_address', 'user_agent', 'occurred_at',
 ])]
