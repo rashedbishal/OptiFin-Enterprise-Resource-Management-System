@@ -33,8 +33,6 @@ class Index extends Component
 {
     use WithPagination;
 
-    private const int MAX_RANGE_DAYS = 92;
-
     private const int DEFAULT_RANGE_DAYS = 30;
 
     public string $fromDate = '';
@@ -79,8 +77,8 @@ class Index extends Component
             return __('The from date must be on or before the to date.');
         }
 
-        if ($from->diffInDays($to) + 1 > self::MAX_RANGE_DAYS) {
-            return __('The selected range is too wide — please select :max days or fewer.', ['max' => self::MAX_RANGE_DAYS]);
+        if ($from->diffInDays($to) + 1 > LeadReportingService::MAX_RANGE_DAYS) {
+            return __('The selected range is too wide — please select :max days or fewer.', ['max' => LeadReportingService::MAX_RANGE_DAYS]);
         }
 
         return null;

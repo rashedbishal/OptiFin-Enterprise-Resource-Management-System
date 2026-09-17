@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\LeadReportingRangeException;
 use App\Models\Currency;
 use App\Models\Lead;
 use App\Models\LeadSource;
@@ -27,6 +28,16 @@ use Illuminate\Support\Collection;
  */
 class LeadReportingService
 {
+    /**
+     * REL-3 — the single canonical source of truth for the reporting-page
+     * maximum date-range span. App\Livewire\Tenant\LeadReports\Index
+     * references this constant directly rather than keeping its own
+     * independent copy, so the Livewire-layer policy and this service's own
+     * defense-in-depth guard (see firstResponseSummary()) can never drift
+     * apart.
+     */
+    public const int MAX_RANGE_DAYS = 92;
+
     /**
      * @return Builder<Lead>
      */
@@ -190,9 +201,36 @@ class LeadReportingService
      * dailyVolumeBreakdown()'s date expression above.
      *
      * @return array{responded_count: int, average_hours: float|null, median_hours: float|null}
+     *
+     * @throws LeadReportingRangeException if $from is after $to, or the
+     *                                     span exceeds MAX_RANGE_DAYS. REL-3 — this is a defense-in-depth
+     *                                     guard: App\Livewire\Tenant\LeadReports\Index's own rangeError()
+     *                                     already enforces this identical policy before ever calling this
+     *                                     method, so this exception is never reachable from that caller — it
+     *                                     exists to protect any other, future caller of this method from
+     *                                     executing an unbounded query.
      */
     public function firstResponseSummary(Tenant $tenant, CarbonInterface $from, CarbonInterface $to): array
     {
+        // REL-3 — $to here is an EXCLUSIVE upper bound (this method's only
+        // current caller, LeadReports\Index::firstResponseSummary(), always
+        // passes Index::to() — its own docblock: "Exclusive upper bound...
+        // created_at < startOfDay(toDate + 1 day)"), NOT the raw, inclusive
+        // toDate a user actually selected. diffInDays($from, $to) therefore
+        // already equals the inclusive day count the user selected — do
+        // NOT add +1 here the way Index::rangeError() does on its own raw,
+        // un-adjusted $to; doing so would double-count the adjustment and
+        // wrongly reject the currently-valid, currently-accepted exact
+        // 92-day selection. If a future caller of this method is ever
+        // introduced that does NOT pass an exclusive $to, this guard (and
+        // this comment) must be revisited then — it is correct only for
+        // the exclusive-$to contract this method's current caller upholds.
+        if ($from->greaterThan($to) || $from->diffInDays($to) > self::MAX_RANGE_DAYS) {
+            throw new LeadReportingRangeException(
+                'firstResponseSummary() range must have $from <= $to and span at most '.self::MAX_RANGE_DAYS.' days (given $to as an exclusive upper bound).'
+            );
+        }
+
         $rows = $this->baseQuery($tenant, $from, $to)
             ->whereNotNull('first_contacted_at')
             ->get(['created_at', 'first_contacted_at']);
