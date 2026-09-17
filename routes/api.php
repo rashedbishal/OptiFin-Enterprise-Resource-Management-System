@@ -10,11 +10,20 @@ Route::prefix('webhook')->name('api.webhook.')->group(function () {
     Route::get('whatsapp/{tenant_code}', [LeadWebhookController::class, 'verifyWhatsapp'])->name('whatsapp.verify');
     Route::post('instagram/{tenant_code}', [LeadWebhookController::class, 'instagram'])->name('instagram')->middleware('verify.meta.signature:instagram');
     Route::get('instagram/{tenant_code}', [LeadWebhookController::class, 'verifyInstagram'])->name('instagram.verify');
-    Route::post('website-form/{tenant_code}', [LeadWebhookController::class, 'websiteForm'])->name('website-form');
+    // SEC-2 — this route previously had no rate limiting at all (see
+    // App\Providers\AppServiceProvider::configureRateLimiting()'s own
+    // docblock for why these two limiters are keyed on LeadSource.id
+    // rather than the form-token dimension the builder route below uses).
+    // ThrottleRequestsFailOpen, not the stock `throttle:` middleware —
+    // see that class's docblock.
+    Route::post('website-form/{tenant_code}', [LeadWebhookController::class, 'websiteForm'])
+        ->name('website-form')
+        ->middleware(['throttle.fail-open:legacy-website-form-per-source-ip', 'throttle.fail-open:legacy-website-form-per-source']);
     // Feature #13 — a builder-managed form's own submission endpoint,
     // authenticated by its public token rather than the source-wide API
     // key above. Deliberately a separate route/method: the legacy route
-    // above keeps its exact existing behavior, unthrottled, untouched.
+    // above keeps its exact existing behavior, unthrottled — SEC-2 added
+    // rate limiting to it directly above, still untouched here.
     Route::post('website-form/{tenant_code}/{form_token}', [LeadWebhookController::class, 'websiteFormSubmit'])
         ->name('website-form.submit')
         ->middleware(['throttle:website-form-per-form', 'throttle:website-form-per-tenant']);

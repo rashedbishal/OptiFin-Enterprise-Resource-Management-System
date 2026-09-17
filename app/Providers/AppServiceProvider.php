@@ -2,9 +2,13 @@
 
 namespace App\Providers;
 
+use App\Enums\LeadSourceType;
+use App\Enums\TenantStatus;
 use App\Models\Lead;
+use App\Models\LeadSource;
 use App\Models\PlatformUser;
 use App\Models\Role;
+use App\Models\Tenant;
 use App\Models\TenantUser;
 use App\Observers\LeadObserver;
 use App\Observers\PlatformUserObserver;
@@ -79,6 +83,72 @@ class AppServiceProvider extends ServiceProvider
 
             return Limit::perMinute(60)->by('website-form-per-tenant:'.$tenantCode.'|'.$request->ip());
         });
+
+        // SEC-2 — the legacy website-form webhook (App\Http\Controllers\Api\
+        // LeadWebhookController::websiteForm()) has no per-form token the
+        // way the builder submission endpoint above does — it's one shared
+        // API key per WebsiteForm source — so these two limiters key on the
+        // resolved LeadSource.id instead: per-source-ip (20/min) catches
+        // one abusive origin, per-source (60/min) catches abuse spread
+        // across many IPs against the same source, mirroring the same
+        // "resource + IP, and resource alone" two-tier shape as the pair
+        // above without inventing a form-token dimension that doesn't
+        // exist here. Evaluated by App\Http\Middleware\ThrottleRequestsFailOpen
+        // rather than the stock `throttle:` middleware — see that class's
+        // own docblock for why. If the tenant_code/source can't be
+        // resolved, Limit::none() (Unlimited) is returned deliberately: an
+        // unresolvable source has nothing meaningful to rate-limit, and the
+        // controller's own existing resolveSource()->firstOrFail() still
+        // correctly rejects the request afterwards — unchanged.
+        RateLimiter::for('legacy-website-form-per-source-ip', function (Request $request): Limit {
+            $sourceId = self::resolveLegacyWebsiteFormSourceId($request);
+
+            if ($sourceId === null) {
+                return Limit::none();
+            }
+
+            return Limit::perMinute(20)->by('legacy-website-form-per-source-ip:'.$sourceId.'|'.$request->ip());
+        });
+
+        RateLimiter::for('legacy-website-form-per-source', function (Request $request): Limit {
+            $sourceId = self::resolveLegacyWebsiteFormSourceId($request);
+
+            if ($sourceId === null) {
+                return Limit::none();
+            }
+
+            return Limit::perMinute(60)->by('legacy-website-form-per-source:'.$sourceId);
+        });
+    }
+
+    /**
+     * Mirrors LeadWebhookController::resolveSource()'s own tenant_code →
+     * active-Tenant → active-WebsiteForm-source resolution exactly, but
+     * with ->first() rather than ->firstOrFail() — a rate limiter has
+     * nothing useful to do with a source that doesn't exist or isn't
+     * active, and must never be the thing that turns an invalid tenant_code
+     * into anything other than the controller's own existing 404/401
+     * handling. Deliberately not reused from the controller: this runs in
+     * route middleware, before the controller is ever invoked.
+     */
+    private static function resolveLegacyWebsiteFormSourceId(Request $request): ?string
+    {
+        $tenantCode = (string) $request->route('tenant_code');
+
+        $tenant = Tenant::where('tenant_code', $tenantCode)
+            ->where('status', TenantStatus::Active)
+            ->first();
+
+        if ($tenant === null) {
+            return null;
+        }
+
+        $source = LeadSource::where('tenant_id', $tenant->id)
+            ->where('type', LeadSourceType::WebsiteForm)
+            ->where('is_active', true)
+            ->first();
+
+        return $source?->id;
     }
 
     /**

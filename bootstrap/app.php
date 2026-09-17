@@ -4,6 +4,7 @@ use App\Http\Middleware\EnsureModuleAccess;
 use App\Http\Middleware\EnsurePermission;
 use App\Http\Middleware\EnsureTenantActive;
 use App\Http\Middleware\IdentifyTenant;
+use App\Http\Middleware\ThrottleRequestsFailOpen;
 use App\Http\Middleware\VerifyMetaWebhookSignature;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -29,6 +30,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'module' => EnsureModuleAccess::class,
             'permission' => EnsurePermission::class,
             'verify.meta.signature' => VerifyMetaWebhookSignature::class,
+            'throttle.fail-open' => ThrottleRequestsFailOpen::class,
         ]);
 
         $middleware->redirectGuestsTo(fn (Request $request) => $request->is('admin/*') ? route('admin.login') : route('login'));
