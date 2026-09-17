@@ -126,7 +126,7 @@ test('bulk assign is a no-op for a lead already assigned to the chosen assignee 
     expect($rep->notifications()->where('type', LeadAssignedNotification::class)->count())->toBe(0);
 });
 
-test('bulk assign is Client-Admin-only', function () {
+test('a non-admin cannot open the bulk assign modal', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
     $rep = clientUserWithLeadPermission($tenant, ['view', 'update']);
     $otherRep = clientUserWithLeadPermission($tenant, ['view']);
@@ -138,8 +138,61 @@ test('bulk assign is Client-Admin-only', function () {
         ->set('selectedLeadIds', [$lead->id])
         ->call('openBulkAssignModal');
 
-    // A non-admin can never even open the modal — assign() requires isClientAdmin.
+    // This only proves the UI entry point stays closed for a non-admin —
+    // it does NOT prove applyBulkAssign() itself denies a non-admin who
+    // calls it directly (a Livewire action is callable independent of
+    // whatever earlier UI state opened it). See the dedicated write-time
+    // denial test below (QA-1) for that boundary.
     expect($lead->fresh()->assigned_to)->toBe($rep->id);
+});
+
+// ── QA-1 — assignment-denial authorization coverage ─────────────────────────
+//
+// applyBulkAssign()/bulkUnassign() each re-check Gate::denies('assign', $lead)
+// per-Lead, at write time, independent of openBulkAssignModal()'s own
+// earlier isClientAdmin() guard above. The tests below call the bulk action
+// directly — never opening the modal first — to prove that write-time
+// boundary is what actually stops a denied actor. Every Lead in the
+// selection is denied uniformly here (assign()'s isClientAdmin()/
+// hasModulePermission() conditions are actor-level, not per-Lead, so a
+// mixed allowed/denied selection isn't a scenario this policy can actually
+// produce — see the QA-1 Architecture Brief for the full reasoning).
+
+test('a non-admin is denied applyBulkAssign() at the write-time Gate check, not just the closed modal', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant, ['view', 'update']);
+    $target = clientUserWithLeadPermission($tenant);
+    $leads = createBulkTestLeads($tenant, 2, ['assigned_to' => $rep->id]);
+
+    Livewire::actingAs($rep)
+        ->test(Index::class)
+        ->call('completeInitialLoad')
+        ->set('selectedLeadIds', collect($leads)->pluck('id')->all())
+        ->set('bulkAssigneeId', $target->id)
+        ->call('applyBulkAssign');
+
+    foreach ($leads as $lead) {
+        expect($lead->fresh()->assigned_to)->toBe($rep->id);
+    }
+    expect(LeadAssignment::whereIn('lead_id', collect($leads)->pluck('id'))->count())->toBe(0);
+    expect($target->notifications()->where('type', LeadAssignedNotification::class)->count())->toBe(0);
+});
+
+test('a non-admin is denied bulkUnassign() at the write-time Gate check, not just the closed modal', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant, ['view', 'update']);
+    $leads = createBulkTestLeads($tenant, 2, ['assigned_to' => $rep->id, 'assigned_at' => now()]);
+
+    Livewire::actingAs($rep)
+        ->test(Index::class)
+        ->call('completeInitialLoad')
+        ->set('selectedLeadIds', collect($leads)->pluck('id')->all())
+        ->call('bulkUnassign');
+
+    foreach ($leads as $lead) {
+        expect($lead->fresh()->assigned_to)->toBe($rep->id);
+    }
+    expect(LeadDetailUpdateLog::whereIn('lead_id', collect($leads)->pluck('id'))->where('action', 'unassigned')->count())->toBe(0);
 });
 
 test('bulk unassign replicates the manual LeadDetailUpdateLog + LeadUpdated event Show::assign() writes for a single unassign', function () {

@@ -14,6 +14,7 @@ use App\Notifications\LeadAssignedNotification;
 use App\Services\LeadAssignmentService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 
@@ -352,4 +353,58 @@ test('LeadAssigned is not dispatched if the transaction assign() ran inside is r
 
     Event::assertNotDispatched(LeadAssigned::class);
     expect($lead->fresh()->assigned_to)->toBeNull();
+});
+
+// ── QA-1 — assignment-denial authorization coverage ─────────────────────────
+//
+// Show::assign() re-checks Gate::denies('assign', $this->lead) itself, at
+// write time, rather than trusting canAssign()'s earlier UI-hiding check —
+// the tests below call assign() directly (never merely inspecting whether
+// the form is rendered) to prove that write-time boundary is what actually
+// stops a denied actor, not just that the UI hides the control from them.
+
+test('a client user without admin privilege is denied assigning a lead — the write-time Gate check, not just the hidden form', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant, ['view', 'update']);
+    $target = clientUserWithLeadPermission($tenant);
+    // Assigned to $rep themselves — satisfies LeadPolicy::view()'s own
+    // "own lead" allowance for a non-admin, so mount() succeeds and the
+    // test reaches assign() itself; isClientAdmin() is what denies assign()
+    // specifically, independent of view().
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'assigned_to' => $rep->id]);
+
+    Livewire::actingAs($rep)
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
+        ->set('assigneeId', $target->id)
+        ->call('assign')
+        ->assertDispatched('toast-show');
+
+    expect($lead->fresh()->assigned_to)->toBe($rep->id);
+    expect(LeadAssignment::where('lead_id', $lead->id)->count())->toBe(0);
+    expect($target->notifications()->where('type', LeadAssignedNotification::class)->count())->toBe(0);
+});
+
+/**
+ * QA-1 — deliberately a policy/Gate-level test, NOT a Show::assign()
+ * Livewire test: Show::mount() calls Gate::authorize('view', $lead) before
+ * assign() is ever reached, and LeadPolicy::view() shares the exact same
+ * belongsToUserTenant() condition assign() itself checks — so a genuinely
+ * cross-tenant actor is always rejected by mount()'s own view check first,
+ * and the normal Show component lifecycle can never reach assign()'s own
+ * tenant check for this scenario (confirmed empirically: attempting this
+ * as a Show::class Livewire test fails at mount, never at the assign()
+ * call). This test instead exercises the real, unmodified LeadPolicy::assign()
+ * method directly through Laravel's own Gate facade — the same
+ * authorization mechanism Show::assign()/Index::applyBulkAssign()/
+ * bulkUnassign() all call at write time — to independently prove the
+ * tenant condition itself denies a cross-tenant actor, without relying on
+ * a different policy method (view) happening to fail first.
+ */
+test('LeadPolicy::assign() denies a Client Admin acting on a different tenant\'s lead', function () {
+    ['tenant' => $tenantA] = tenantWithLeadManagement();
+    ['clientAdmin' => $tenantBAdmin] = tenantWithLeadManagement();
+    $leadA = Lead::factory()->create(['tenant_id' => $tenantA->id, 'assigned_to' => null]);
+
+    expect(Gate::forUser($tenantBAdmin)->denies('assign', $leadA))->toBeTrue();
+    expect($leadA->fresh()->assigned_to)->toBeNull();
 });
