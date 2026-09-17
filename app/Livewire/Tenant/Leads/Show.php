@@ -498,7 +498,8 @@ class Show extends Component
         $this->priority = $this->lead->priority->value;
         $this->assigneeId = $this->lead->assigned_to;
         $this->fillDetailFieldsFromLead();
-        unset($this->activity, $this->timeline, $this->possibleDuplicates, $this->customFieldDisplayRows);
+        $this->refreshActivity();
+        unset($this->timeline, $this->possibleDuplicates, $this->customFieldDisplayRows);
     }
 
     #[Computed]
@@ -677,7 +678,8 @@ class Show extends Component
             'changed_fields' => $changedFieldNames,
         ]);
 
-        unset($this->activity, $this->customFieldDisplayRows);
+        $this->refreshActivity();
+        unset($this->customFieldDisplayRows);
 
         event(new LeadUpdated($this->lead));
 
@@ -1089,6 +1091,21 @@ class Show extends Component
             ->get(['id', 'name']);
     }
 
+    /**
+     * ARCH-1 — the single place every mutating action that affects the
+     * Activity feed invalidates it, instead of each of the (now 16) call
+     * sites independently repeating `unset($this->activity)`. Centralizes
+     * only this one, universally-shared invalidation — a call site that
+     * also needs to invalidate its own feature-specific computed property
+     * (e.g. `deals`, `tasks`, `consentHistory`) still does so itself,
+     * immediately after calling this method; this helper deliberately does
+     * not know about, and must never be given, those unrelated properties.
+     */
+    private function refreshActivity(): void
+    {
+        unset($this->activity);
+    }
+
     #[Computed]
     public function activity(): array
     {
@@ -1356,7 +1373,7 @@ class Show extends Component
             return;
         }
 
-        unset($this->activity);
+        $this->refreshActivity();
 
         if ($this->panel) {
             $this->dispatch('lead-panel-updated');
@@ -1629,7 +1646,7 @@ class Show extends Component
             event(new LeadUpdated($this->lead));
         });
 
-        unset($this->activity);
+        $this->refreshActivity();
 
         if ($this->panel) {
             $this->dispatch('lead-panel-updated');
@@ -1678,7 +1695,7 @@ class Show extends Component
             ]);
 
             $this->lead->refresh();
-            unset($this->activity);
+            $this->refreshActivity();
 
             event(new LeadUpdated($this->lead));
 
@@ -1696,7 +1713,7 @@ class Show extends Component
         $assignmentService->assign($this->lead, $assignee, Auth::user());
 
         $this->lead->refresh();
-        unset($this->activity);
+        $this->refreshActivity();
 
         event(new LeadUpdated($this->lead));
 
@@ -1870,7 +1887,7 @@ class Show extends Component
             'action_date' => $oldDate,
         ]);
 
-        unset($this->activity);
+        $this->refreshActivity();
 
         event(new LeadUpdated($this->lead));
 
@@ -1898,7 +1915,7 @@ class Show extends Component
         ]);
 
         $this->reset('newNote');
-        unset($this->activity);
+        $this->refreshActivity();
         Flux::toast(variant: 'success', text: __('Note added.'));
     }
 
@@ -1950,7 +1967,8 @@ class Show extends Component
 
         $this->reset('selectedTagId');
         $this->lead->load('tags');
-        unset($this->activity, $this->availableTagsToAttach);
+        $this->refreshActivity();
+        unset($this->availableTagsToAttach);
         Flux::toast(variant: 'success', text: __('Tag added.'));
     }
 
@@ -1988,7 +2006,8 @@ class Show extends Component
         ]);
 
         $this->lead->load('tags');
-        unset($this->activity, $this->availableTagsToAttach);
+        $this->refreshActivity();
+        unset($this->availableTagsToAttach);
         Flux::toast(variant: 'success', text: __('Tag removed.'));
     }
 
@@ -2038,7 +2057,8 @@ class Show extends Component
             changedBy: Auth::id(),
         );
 
-        unset($this->currentConsents, $this->consentHistory, $this->activity);
+        $this->refreshActivity();
+        unset($this->currentConsents, $this->consentHistory);
 
         Flux::toast(
             variant: 'success',
@@ -2416,7 +2436,8 @@ class Show extends Component
             ]);
         });
 
-        unset($this->deals, $this->currentDealId, $this->activity);
+        $this->refreshActivity();
+        unset($this->deals, $this->currentDealId);
         Flux::toast(variant: 'success', text: __('Deal status updated.'));
     }
 
@@ -2454,7 +2475,8 @@ class Show extends Component
         $deal = $this->lead->deals()->findOrFail($dealId);
         $deal->delete();
 
-        unset($this->deals, $this->currentDealId, $this->activity);
+        $this->refreshActivity();
+        unset($this->deals, $this->currentDealId);
         Flux::toast(variant: 'success', text: __('Deal deleted.'));
     }
 
@@ -2617,7 +2639,8 @@ class Show extends Component
             ]);
         });
 
-        unset($this->tasks, $this->activity);
+        $this->refreshActivity();
+        unset($this->tasks);
         Flux::toast(variant: 'success', text: __('Task status updated.'));
     }
 
@@ -2657,7 +2680,8 @@ class Show extends Component
 
         $task->delete();
 
-        unset($this->tasks, $this->activity);
+        $this->refreshActivity();
+        unset($this->tasks);
         Flux::toast(variant: 'success', text: __('Task deleted.'));
     }
 
@@ -2866,7 +2890,8 @@ class Show extends Component
         $this->lead->refresh();
         $this->fillDetailFieldsFromLead();
         $this->closeMergeModal();
-        unset($this->activity, $this->possibleDuplicates);
+        $this->refreshActivity();
+        unset($this->possibleDuplicates);
 
         event(new LeadUpdated($this->lead));
 
