@@ -21,7 +21,7 @@
  */
 
 const CLOSING_CLASS = 'flux-flyout-closing';
-const CLOSE_ANIMATION_MS = 260;
+const CLOSE_ANIMATION_MS = 620;
 
 function animateThenClose(dialog, realClose) {
     dialog.classList.add(CLOSING_CLASS);

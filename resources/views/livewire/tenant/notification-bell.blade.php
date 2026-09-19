@@ -63,9 +63,12 @@
     <div
         x-cloak
         x-show="open"
-        x-transition:enter="transition ease-out duration-150"
+        x-transition:enter="transition duration-700 ease-[var(--motion-ease-premium)]"
         x-transition:enter-start="opacity-0 scale-95 -translate-y-1"
         x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+        x-transition:leave="transition duration-500 ease-[var(--motion-ease-premium)]"
+        x-transition:leave-start="opacity-100 scale-100 translate-y-0"
+        x-transition:leave-end="opacity-0 scale-95 -translate-y-1"
         class="absolute right-0 z-50 mt-2 w-80 origin-top-right rounded-xl border border-zinc-200/70 bg-white shadow-xl backdrop-blur-sm sm:w-96 dark:border-zinc-700/70 dark:bg-zinc-900"
     >
         <div class="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-700">

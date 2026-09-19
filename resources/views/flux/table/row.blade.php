@@ -12,7 +12,7 @@ $classes = Flux::classes()
     // any row/cell content, so a row rendering its own dynamic status/
     // category background stays visually dominant rather than being
     // flattened by this generic affordance.
-    ->add('transition-colors duration-150 hover:bg-zinc-50 dark:hover:bg-white/[3%]')
+    ->add('transition-colors duration-[var(--motion-duration-standard)] ease-[var(--motion-ease-premium)] hover:bg-zinc-50 dark:hover:bg-white/[3%]')
     ;
 @endphp
 

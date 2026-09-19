@@ -63,7 +63,7 @@ if ($loading && $type !== 'submit' && ! $isJsMethod) {
 
 $classes = Flux::classes()
     ->add('relative items-center font-medium justify-center whitespace-nowrap')
-    ->add('transition-[color,background-color,border-color,box-shadow] duration-150')
+    ->add('transition-[color,background-color,border-color,box-shadow,transform] duration-[var(--motion-duration-standard)] ease-[var(--motion-ease-premium)]')
     ->add('disabled:opacity-50 dark:disabled:opacity-50 disabled:cursor-default disabled:pointer-events-none disabled:shadow-none')
     ->add(match ($align) {
         'start' => 'justify-start',
