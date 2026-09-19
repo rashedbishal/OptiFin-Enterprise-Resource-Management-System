@@ -12,6 +12,7 @@ use App\Models\FailedEmailMessage;
 use App\Models\Lead;
 use App\Models\LeadSource;
 use App\Models\Tenant;
+use App\Services\ImapConnectionHealthMonitor;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Database\ConcurrencyErrorDetector;
@@ -152,8 +153,15 @@ class ProcessEmailLeadSource implements ShouldQueue
 
             Log::error("Unable to connect to lead source [{$this->source->id}]: {$error}");
 
+            // OPS-1 — count this connection failure so a persistent outage
+            // raises a single, throttled alert. Observability only: it can
+            // never throw and changes nothing about how the job proceeds.
+            app(ImapConnectionHealthMonitor::class)->recordFailure($this->source);
+
             return;
         }
+
+        app(ImapConnectionHealthMonitor::class)->recordSuccess($this->source);
 
         $uidvalidity = $this->mailboxUidValidity($inbox, $mailbox);
 

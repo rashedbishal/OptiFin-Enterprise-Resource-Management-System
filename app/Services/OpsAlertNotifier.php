@@ -1,0 +1,55 @@
+<?php
+
+namespace App\Services;
+
+use App\Notifications\OpsAlertNotification;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
+use Throwable;
+
+/**
+ * OPS-1 — the single place an operator alert email leaves the application.
+ * Delivery is best-effort by design: it can never throw, so a missing or
+ * broken alert setup cannot make a scheduled command, a queued job or the
+ * request that triggered it fail. Callers own their own logging and
+ * throttling; this only sends.
+ */
+class OpsAlertNotifier
+{
+    public function isConfigured(): bool
+    {
+        return $this->recipient() !== null;
+    }
+
+    /**
+     * @param  array<string, scalar|null>  $context  Safe operational facts only.
+     * @return bool True only when an email was actually handed to the mailer.
+     */
+    public function send(string $subject, array $context): bool
+    {
+        $recipient = $this->recipient();
+
+        if ($recipient === null) {
+            return false;
+        }
+
+        try {
+            Notification::route('mail', $recipient)->notifyNow(new OpsAlertNotification($subject, $context));
+
+            return true;
+        } catch (Throwable $e) {
+            // Class only: a mailer exception message can echo the recipient
+            // address or SMTP connection details.
+            Log::warning('An ops alert email could not be delivered.', ['exception' => $e::class]);
+
+            return false;
+        }
+    }
+
+    private function recipient(): ?string
+    {
+        $email = config('ops.alert_email');
+
+        return is_string($email) && filter_var($email, FILTER_VALIDATE_EMAIL) !== false ? $email : null;
+    }
+}
