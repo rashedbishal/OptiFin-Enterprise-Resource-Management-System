@@ -60,7 +60,7 @@
                             </flux:badge>
 
                             @if ($canUpdate && $message->status?->value === 'failed' && $message->resend_message_id === null)
-                                <flux:button size="sm" wire:click="resendMessage('{{ $message->id }}')">{{ __('Resend') }}</flux:button>
+                                <flux:button size="sm" wire:click="resendMessage('{{ $message->id }}')" wire:loading.attr="disabled">{{ __('Resend') }}</flux:button>
                             @endif
                         </div>
                     </div>

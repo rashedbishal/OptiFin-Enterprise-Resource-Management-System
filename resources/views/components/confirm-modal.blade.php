@@ -26,7 +26,7 @@
 
         <div class="flex justify-end gap-2">
             <flux:button type="button" wire:click="$set('{{ $wireModel }}', false)">{{ $cancelLabel }}</flux:button>
-            <flux:button type="button" variant="{{ $variant }}" wire:click="{{ $confirmAction }}">{{ $confirmLabel }}</flux:button>
+            <flux:button type="button" variant="{{ $variant }}" wire:click="{{ $confirmAction }}" wire:loading.attr="disabled">{{ $confirmLabel }}</flux:button>
         </div>
     </div>
 </flux:modal>
