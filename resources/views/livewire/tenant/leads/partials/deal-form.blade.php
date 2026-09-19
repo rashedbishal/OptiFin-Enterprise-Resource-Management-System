@@ -51,43 +51,45 @@
                     <flux:input.group.suffix>%</flux:input.group.suffix>
                 </flux:input.group>
 
-                <flux:field>
-                    <flux:label>{{ __('Next Follow-up Date') }}</flux:label>
-                    <div class="flex items-center gap-1">
-                        <div class="min-w-0 flex-1">
-                            <x-date-picker wire:model="leadNextFollowUpAt" :placeholder="__('Next Follow-up Date')" :min="now()->toDateString()" />
-                        </div>
-                        @if ($lead->next_follow_up_at)
-                            <flux:tooltip content="{{ __('Cancel follow-up') }}">
-                                <flux:button size="sm" variant="ghost" icon="x-mark" aria-label="{{ __('Cancel follow-up') }}" wire:click="confirmCancelFollowUp" />
-                            </flux:tooltip>
-                            @if (! today()->lt($lead->next_follow_up_at))
-                                <flux:tooltip content="{{ __('Mark follow-up as done') }}">
-                                    <flux:button size="sm" variant="primary" icon="check" aria-label="{{ __('Mark follow-up as done') }}" wire:click="markFollowUpDone" />
+                <div class="grid grid-cols-1 gap-3 sm:col-span-2 sm:grid-cols-2">
+                    <flux:field>
+                        <flux:label>{{ __('Meeting Date') }}</flux:label>
+                        <div class="flex items-center gap-1">
+                            <div class="min-w-0 flex-1">
+                                <x-datetime-picker wire:model="leadMeetingDate" :placeholder="__('Meeting Date')" :min="now()->toDateString()" />
+                            </div>
+                            @if ($lead->meeting_date)
+                                <flux:tooltip content="{{ __('Cancel meeting') }}">
+                                    <flux:button size="sm" variant="ghost" icon="x-mark" aria-label="{{ __('Cancel meeting') }}" wire:click="confirmCancelMeeting" />
                                 </flux:tooltip>
+                                @if (! today()->lt($lead->meeting_date))
+                                    <flux:tooltip content="{{ __('Mark meeting as done') }}">
+                                        <flux:button size="sm" variant="primary" icon="check" aria-label="{{ __('Mark meeting as done') }}" wire:click="markMeetingDone" />
+                                    </flux:tooltip>
+                                @endif
                             @endif
-                        @endif
-                    </div>
-                </flux:field>
+                        </div>
+                    </flux:field>
 
-                <flux:field>
-                    <flux:label>{{ __('Meeting Date') }}</flux:label>
-                    <div class="flex items-center gap-1">
-                        <div class="min-w-0 flex-1">
-                            <x-datetime-picker wire:model="leadMeetingDate" :placeholder="__('Meeting Date')" :min="now()->toDateString()" />
-                        </div>
-                        @if ($lead->meeting_date)
-                            <flux:tooltip content="{{ __('Cancel meeting') }}">
-                                <flux:button size="sm" variant="ghost" icon="x-mark" aria-label="{{ __('Cancel meeting') }}" wire:click="confirmCancelMeeting" />
-                            </flux:tooltip>
-                            @if (! today()->lt($lead->meeting_date))
-                                <flux:tooltip content="{{ __('Mark meeting as done') }}">
-                                    <flux:button size="sm" variant="primary" icon="check" aria-label="{{ __('Mark meeting as done') }}" wire:click="markMeetingDone" />
+                    <flux:field>
+                        <flux:label>{{ __('Next Follow-up Date') }}</flux:label>
+                        <div class="flex items-center gap-1">
+                            <div class="min-w-0 flex-1">
+                                <x-date-picker wire:model="leadNextFollowUpAt" :placeholder="__('Next Follow-up Date')" :min="now()->toDateString()" />
+                            </div>
+                            @if ($lead->next_follow_up_at)
+                                <flux:tooltip content="{{ __('Cancel follow-up') }}">
+                                    <flux:button size="sm" variant="ghost" icon="x-mark" aria-label="{{ __('Cancel follow-up') }}" wire:click="confirmCancelFollowUp" />
                                 </flux:tooltip>
+                                @if (! today()->lt($lead->next_follow_up_at))
+                                    <flux:tooltip content="{{ __('Mark follow-up as done') }}">
+                                        <flux:button size="sm" variant="primary" icon="check" aria-label="{{ __('Mark follow-up as done') }}" wire:click="markFollowUpDone" />
+                                    </flux:tooltip>
+                                @endif
                             @endif
-                        @endif
-                    </div>
-                </flux:field>
+                        </div>
+                    </flux:field>
+                </div>
             </div>
 
             <div class="flex gap-2">

@@ -904,8 +904,10 @@
                                     <flux:input.group.suffix>%</flux:input.group.suffix>
                                 </flux:input.group>
 
-                                <x-date-picker wire:model="leadNextFollowUpAt" :label="__('Next Follow-up Date')" :placeholder="__('Next Follow-up Date')" :min="now()->toDateString()" />
-                                <x-datetime-picker wire:model="leadMeetingDate" :label="__('Meeting Date')" :placeholder="__('Meeting Date')" :min="now()->toDateString()" />
+                                <div class="grid grid-cols-1 gap-4 sm:col-span-2 sm:grid-cols-2">
+                                    <x-datetime-picker wire:model="leadMeetingDate" :label="__('Meeting Date')" :placeholder="__('Meeting Date')" :min="now()->toDateString()" />
+                                    <x-date-picker wire:model="leadNextFollowUpAt" :label="__('Next Follow-up Date')" :placeholder="__('Next Follow-up Date')" :min="now()->toDateString()" />
+                                </div>
                             </div>
                         </div>
 
