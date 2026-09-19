@@ -12,7 +12,12 @@ use App\Models\LeadDetailUpdateLog;
 use App\Models\LeadSource;
 use App\Models\LeadStatusLog;
 use App\Models\LeadTag;
+use App\Models\Module;
+use App\Models\Permission;
+use App\Models\Role;
+use App\Models\RoleModulePermission;
 use App\Models\Tenant;
+use App\Models\TenantUser;
 use App\Notifications\LeadAssignedNotification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
@@ -144,6 +149,34 @@ test('a non-admin cannot open the bulk assign modal', function () {
     // whatever earlier UI state opened it). See the dedicated write-time
     // denial test below (QA-1) for that boundary.
     expect($lead->fresh()->assigned_to)->toBe($rep->id);
+});
+
+test('a client admin without update permission cannot open the bulk assign modal', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $module = Module::where('slug', 'lead-management')->firstOrFail();
+    $role = Role::create([
+        'tenant_id' => $tenant->id,
+        'name' => 'View-only Admin '.Str::random(6),
+        'slug' => 'view-only-admin-'.Str::random(6),
+    ]);
+    $role->modules()->attach($module->id);
+    RoleModulePermission::create([
+        'role_id' => $role->id,
+        'module_id' => $module->id,
+        'permission_id' => Permission::where('slug', 'view')->firstOrFail()->id,
+    ]);
+    $viewOnlyAdmin = TenantUser::factory()->clientAdmin()->create(['tenant_id' => $tenant->id, 'role_id' => $role->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
+
+    Livewire::actingAs($viewOnlyAdmin)
+        ->test(Index::class)
+        ->call('completeInitialLoad')
+        ->set('selectedLeadIds', [$lead->id])
+        ->call('openBulkAssignModal')
+        ->assertSet('showBulkAssignModal', false);
+
+    expect($lead->fresh()->assigned_to)->toBeNull();
+    expect(LeadAssignment::where('lead_id', $lead->id)->count())->toBe(0);
 });
 
 // ── QA-1 — assignment-denial authorization coverage ─────────────────────────

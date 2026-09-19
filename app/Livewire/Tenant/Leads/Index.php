@@ -1690,7 +1690,7 @@ class Index extends Component
 
     public function openBulkAssignModal(): void
     {
-        if (! $this->isClientAdmin || $this->selectedLeadIds === []) {
+        if (! $this->isClientAdmin || ! $this->canUpdateLeads() || $this->selectedLeadIds === []) {
             return;
         }
 
