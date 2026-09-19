@@ -20,24 +20,24 @@
     $showSkeletonByDefault = ! $initialLoadComplete;
 @endphp
 
-<div class="rounded-xl border border-zinc-200 bg-gradient-to-br from-white to-zinc-50 p-3 sm:p-5 dark:border-zinc-700 dark:from-zinc-800 dark:to-zinc-900">
+<div class="rounded-2xl border border-zinc-200/80 bg-gradient-to-br from-white via-white to-zinc-50 p-3 shadow-sm sm:p-5 lg:p-6 dark:border-zinc-700/80 dark:from-zinc-800 dark:via-zinc-800 dark:to-zinc-900">
     {{-- Real content: hidden by default before initialLoadComplete, toggled
     by wire:loading otherwise — never a bare wire:loading/.remove, see
     leads.blade.php's long comment for why. --}}
     <div wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" class="{{ $showSkeletonByDefault ? '!hidden' : '' }} contents">
-    <div class="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div class="flex flex-col gap-1.5 sm:gap-2">
+    <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
+        <div class="flex min-w-0 flex-1 flex-col gap-2 sm:gap-3">
             <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
                 <flux:badge size="sm" color="zinc" class="font-mono">{{ $lead->identifier }}</flux:badge>
                 <flux:badge size="sm" :color="$lead->status->color()">{{ $lead->status->label() }}</flux:badge>
                 <flux:badge size="sm" :color="$lead->priority->color()">{{ $lead->priority->label() }}</flux:badge>
             </div>
 
-            <div class="flex items-center gap-2 sm:gap-3">
+            <div class="flex items-center gap-3 sm:gap-4">
                 @if ($lead->avatarUrl())
                     <img src="{{ $lead->avatarUrl() }}" alt="" class="size-9 shrink-0 rounded-full object-cover sm:size-11">
                 @else
-                    <div class="flex size-9 shrink-0 items-center justify-center rounded-full bg-zinc-100 sm:size-11 dark:bg-zinc-700">
+                    <div class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-zinc-100 ring-1 ring-zinc-200 sm:size-12 dark:bg-zinc-700 dark:ring-zinc-600">
                         <flux:icon :icon="$hasCompany ? 'building-office' : 'user'" class="size-4 text-zinc-500 sm:size-5 dark:text-zinc-300" />
                     </div>
                 @endif
@@ -48,7 +48,7 @@
                     needs to; text-lg sm:text-2xl replicates size="xl"'s own
                     look (text-2xl, font-medium, same text color) above sm,
                     while reading much more compact on a phone. --}}
-                    <p class="text-lg font-medium text-zinc-800 sm:text-2xl dark:text-white">{{ $hasCompany ? $lead->company : $lead->name }}</p>
+                    <p class="truncate text-xl font-semibold tracking-tight text-zinc-900 sm:text-2xl dark:text-white">{{ $hasCompany ? $lead->company : $lead->name }}</p>
                     <flux:text size="sm" variant="subtle" class="flex flex-wrap items-center gap-x-1.5">
                         @if ($hasCompany)
                             <span class="inline-flex items-center gap-1">
@@ -66,25 +66,18 @@
             @include('livewire.tenant.leads.partials.lead-tags-manager', ['lead' => $lead])
         </div>
 
-        <div class="flex flex-col items-end gap-2">
-            <div class="flex gap-1.5 sm:gap-2">
-                @if ($canDelete && $lead->source->type->isIndividuallyDeletable())
-                    <flux:button type="button" size="sm" variant="danger" icon="trash" wire:click="confirmDelete">
-                        {{ __('Delete') }}
-                    </flux:button>
-                @endif
-
-                <flux:button type="button" size="sm" :href="$backToLeadsUrl" wire:navigate>
-                    {{ __('Back to Leads') }}
-                </flux:button>
-            </div>
-
+        <div class="flex w-full flex-col gap-3 lg:w-auto lg:min-w-[24rem] lg:items-end">
             @if ($lead->deal_value !== null || $lead->win_probability !== null)
-                <div class="flex gap-3">
+                <div class="grid w-full grid-cols-2 gap-2 sm:gap-3 lg:max-w-[24rem]">
                     @if ($lead->deal_value !== null)
-                        <div class="min-w-28 rounded-lg border card-surface-nested px-4 py-2 text-center">
-                            <flux:text size="xs" variant="subtle" class="uppercase tracking-wide">{{ __('Deal Value') }}</flux:text>
-                            <flux:text class="block text-lg font-semibold text-emerald-600 dark:text-emerald-400">
+                        <div class="min-w-0 overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50/70 p-2.5 text-center dark:border-emerald-900/70 dark:bg-emerald-950/30 sm:p-3">
+                            <div class="flex min-w-0 items-center justify-center gap-1.5 text-emerald-700 dark:text-emerald-300">
+                                <span class="flex size-5 shrink-0 items-center justify-center rounded-md bg-emerald-200/80 dark:bg-emerald-900/70">
+                                    <flux:icon.banknotes variant="micro" class="size-3" />
+                                </span>
+                                <flux:text size="xs" variant="subtle" class="min-w-0 truncate font-semibold text-emerald-800 dark:text-emerald-200">{{ __('Deal Value') }}</flux:text>
+                            </div>
+                            <flux:text class="mt-1.5 block truncate text-base font-bold text-emerald-700 dark:text-emerald-300 sm:text-lg">
                                 {{ $lead->dealValueCurrency?->code }} {{ number_format((float) $lead->deal_value, 0) }}
                             </flux:text>
                         </div>
@@ -98,15 +91,32 @@
                     the one place still using the old name. Behavior/value
                     entirely unchanged, display label only. --}}
                     @if ($lead->win_probability !== null)
-                        <div class="min-w-28 rounded-lg border card-surface-nested px-4 py-2 text-center">
-                            <flux:text size="xs" variant="subtle" class="uppercase tracking-wide">{{ __('Win Probability') }}</flux:text>
-                            <flux:text class="block text-lg font-semibold text-purple-600 dark:text-purple-400">
+                        <div class="min-w-0 overflow-hidden rounded-xl border border-indigo-200 bg-indigo-50/70 p-2.5 text-center dark:border-indigo-900/70 dark:bg-indigo-950/30 sm:p-3">
+                            <div class="flex min-w-0 items-center justify-center gap-1.5 text-indigo-700 dark:text-indigo-300">
+                                <span class="flex size-5 shrink-0 items-center justify-center rounded-md bg-indigo-200/80 dark:bg-indigo-900/70">
+                                    <flux:icon.chart-pie variant="micro" class="size-3" />
+                                </span>
+                                <flux:text size="xs" variant="subtle" class="min-w-0 truncate font-semibold text-indigo-800 dark:text-indigo-200">{{ __('Win Probability') }}</flux:text>
+                            </div>
+                            <flux:text class="mt-1.5 block text-base font-bold text-indigo-700 dark:text-indigo-300 sm:text-lg">
                                 {{ $lead->win_probability }}%
                             </flux:text>
                         </div>
                     @endif
                 </div>
             @endif
+
+            <div class="flex w-full flex-wrap gap-2 lg:w-auto lg:justify-end">
+                @if ($canDelete && $lead->source->type->isIndividuallyDeletable())
+                    <flux:button type="button" size="sm" variant="danger" icon="trash" wire:click="confirmDelete" class="flex-1 sm:flex-none">
+                        {{ __('Delete') }}
+                    </flux:button>
+                @endif
+
+                <flux:button type="button" size="sm" icon="arrow-left" :href="$backToLeadsUrl" wire:navigate class="flex-1 sm:flex-none">
+                    {{ __('Back to Leads') }}
+                </flux:button>
+            </div>
         </div>
     </div>
     </div>
@@ -115,26 +125,29 @@
     initialLoadComplete's request is in flight — see leads.blade.php for
     why this has to be class-based, never a bare wire:loading. --}}
     <div class="{{ $showSkeletonByDefault ? '' : '!hidden' }} contents" wire:loading.remove.class="!hidden" wire:target="{{ $listLoadingTargets }}">
-        <div class="flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div class="flex flex-col gap-1.5 sm:gap-2">
+        <div class="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
+            <div class="flex flex-col gap-2 sm:gap-3">
                 <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
                     <div class="h-5 w-20 skeleton-shimmer rounded-full"></div>
                     <div class="h-5 w-16 skeleton-shimmer rounded-full"></div>
                     <div class="h-5 w-14 skeleton-shimmer rounded-full"></div>
                 </div>
                 <div class="flex items-center gap-2 sm:gap-3">
-                    <div class="size-9 shrink-0 skeleton-shimmer rounded-full sm:size-11"></div>
+                    <div class="size-10 shrink-0 skeleton-shimmer rounded-xl sm:size-12"></div>
                     <div class="flex flex-col gap-1.5">
                         <div class="h-5 w-40 skeleton-shimmer rounded sm:h-6 sm:w-56"></div>
                         <div class="h-3 w-32 skeleton-shimmer rounded"></div>
                     </div>
                 </div>
             </div>
-            <div class="flex flex-col items-end gap-2">
-                <div class="h-8 w-32 skeleton-shimmer rounded"></div>
-                <div class="flex gap-3">
-                    <div class="h-14 w-28 skeleton-shimmer rounded-lg"></div>
-                    <div class="h-14 w-28 skeleton-shimmer rounded-lg"></div>
+            <div class="flex w-full flex-col gap-3 lg:w-auto lg:min-w-[24rem] lg:items-end">
+                <div class="grid w-full grid-cols-2 gap-2 sm:gap-3 lg:max-w-[24rem]">
+                    <div class="h-[4.75rem] skeleton-shimmer rounded-xl"></div>
+                    <div class="h-[4.75rem] skeleton-shimmer rounded-xl"></div>
+                </div>
+                <div class="flex w-full gap-2 lg:w-auto">
+                    <div class="h-8 flex-1 skeleton-shimmer rounded sm:w-24 sm:flex-none"></div>
+                    <div class="h-8 flex-1 skeleton-shimmer rounded sm:w-32 sm:flex-none"></div>
                 </div>
             </div>
         </div>
