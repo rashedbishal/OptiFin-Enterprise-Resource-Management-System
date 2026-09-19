@@ -24,6 +24,7 @@ use App\Notifications\FollowUpUpdatedNotification;
 use App\Notifications\MeetingUpdatedNotification;
 use App\Services\LeadAdminNotifier;
 use App\Services\LeadAssignmentService;
+use App\Services\LeadDeletionEligibilityService;
 use App\Services\LeadScoringService;
 use App\Support\LeadValidationRules;
 use Flux\Flux;
@@ -884,6 +885,17 @@ class Index extends Component
             return;
         }
 
+        // PROD-1 — advisory only: refuses early, before a password is typed,
+        // for a merged loser or survivor. delete() re-evaluates inside its own
+        // transaction and stays the authoritative check.
+        $eligibility = app(LeadDeletionEligibilityService::class)->evaluate($lead, lock: false);
+
+        if (! $eligibility->eligible) {
+            Flux::toast(variant: 'danger', text: $eligibility->reason);
+
+            return;
+        }
+
         $this->reset('deletePassword');
         $this->resetErrorBag('deletePassword');
         $this->confirmingDeleteLeadId = $id;
@@ -952,13 +964,32 @@ class Index extends Component
             return;
         }
 
-        DB::transaction(function () use ($lead): void {
+        $refusal = null;
+
+        DB::transaction(function () use ($lead, &$refusal): void {
+            // PROD-1 — the authoritative merged-state check: locks this lead
+            // row first, and refuses before the audit, the delete, the panel
+            // close or the success toast can happen.
+            $eligibility = app(LeadDeletionEligibilityService::class)->evaluate($lead);
+
+            if (! $eligibility->eligible) {
+                $refusal = $eligibility->reason;
+
+                return;
+            }
+
             if (app(RecordLeadDeletionAudit::class)->handle($lead, Auth::user(), isBulk: false) === null) {
                 return;
             }
 
             $lead->delete();
         });
+
+        if ($refusal !== null) {
+            Flux::toast(variant: 'danger', text: $refusal);
+
+            return;
+        }
 
         if ($this->selectedLeadId === $id) {
             $this->showLeadPanel = false;
@@ -1880,6 +1911,7 @@ class Index extends Component
         $attempted = min(count($this->selectedLeadIds), self::MAX_BULK_SELECTION);
         $succeeded = 0;
         $wasShowingSelectedLead = false;
+        $survivorsRefused = 0;
 
         foreach ($this->eligibleSelectedLeads() as $lead) {
             $deletableSourceType = $lead->source->type->isIndividuallyDeletable();
@@ -1888,13 +1920,35 @@ class Index extends Component
                 continue;
             }
 
-            DB::transaction(function () use ($lead): void {
+            $refusal = null;
+
+            DB::transaction(function () use ($lead, &$refusal): void {
+                // PROD-1 — same authoritative, row-locking check as the single
+                // delete. Merged losers never get here (eligibleSelectedLeads()
+                // excludes them); a survivor — or a lead merged since that
+                // query ran — is refused and counted as skipped.
+                $eligibility = app(LeadDeletionEligibilityService::class)->evaluate($lead);
+
+                if (! $eligibility->eligible) {
+                    $refusal = $eligibility->reason;
+
+                    return;
+                }
+
                 if (app(RecordLeadDeletionAudit::class)->handle($lead, Auth::user(), isBulk: true) === null) {
                     return;
                 }
 
                 $lead->delete();
             });
+
+            if ($refusal !== null) {
+                if ($refusal === LeadDeletionEligibilityService::survivorReason()) {
+                    $survivorsRefused++;
+                }
+
+                continue;
+            }
 
             if ($this->selectedLeadId === $lead->id) {
                 $wasShowingSelectedLead = true;
@@ -1911,6 +1965,14 @@ class Index extends Component
 
         $this->clearSelection();
         $this->reportBulkResult($succeeded, $attempted, __('deleted'));
+
+        if ($survivorsRefused > 0) {
+            Flux::toast(variant: 'danger', text: trans_choice(
+                ':count selected lead has merged leads and cannot be deleted.|:count selected leads have merged leads and cannot be deleted.',
+                $survivorsRefused,
+                ['count' => $survivorsRefused],
+            ));
+        }
     }
 
     /**

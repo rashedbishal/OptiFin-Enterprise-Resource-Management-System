@@ -50,6 +50,7 @@ use App\Notifications\MeetingUpdatedNotification;
 use App\Notifications\TaskAssignedNotification;
 use App\Services\LeadAdminNotifier;
 use App\Services\LeadAssignmentService;
+use App\Services\LeadDeletionEligibilityService;
 use App\Services\LeadDuplicateDetectionService;
 use App\Services\LeadMergeService;
 use App\Services\LeadScoringService;
@@ -2856,6 +2857,17 @@ class Show extends Component
             return;
         }
 
+        // PROD-1 — advisory only: refuses early, before a password is typed,
+        // for a merged survivor. delete() re-evaluates inside its own
+        // transaction and stays the authoritative check.
+        $eligibility = app(LeadDeletionEligibilityService::class)->evaluate($this->lead, lock: false);
+
+        if (! $eligibility->eligible) {
+            Flux::toast(variant: 'danger', text: $eligibility->reason);
+
+            return;
+        }
+
         $this->reset('deletePassword');
         $this->resetErrorBag('deletePassword');
         $this->showDeleteModal = true;
@@ -2897,14 +2909,32 @@ class Show extends Component
         }
 
         $leadId = $this->lead->id;
+        $refusal = null;
 
-        DB::transaction(function (): void {
+        DB::transaction(function () use (&$refusal): void {
+            // PROD-1 — the authoritative merged-state check: locks this lead
+            // row first, and refuses before the audit, the delete, the
+            // redirect or the panel event can happen.
+            $eligibility = app(LeadDeletionEligibilityService::class)->evaluate($this->lead);
+
+            if (! $eligibility->eligible) {
+                $refusal = $eligibility->reason;
+
+                return;
+            }
+
             if (app(RecordLeadDeletionAudit::class)->handle($this->lead, Auth::user(), isBulk: false) === null) {
                 return;
             }
 
             $this->lead->delete();
         });
+
+        if ($refusal !== null) {
+            Flux::toast(variant: 'danger', text: $refusal);
+
+            return;
+        }
 
         if ($this->panel) {
             $this->dispatch('lead-panel-deleted', leadId: $leadId);
