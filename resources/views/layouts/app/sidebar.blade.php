@@ -77,6 +77,12 @@
         <flux:header class="lg:hidden border-b border-zinc-300/70 bg-[#E7E1D2]/90 backdrop-blur-sm dark:border-zinc-700/70 dark:bg-[#0a0a0a]/90">
             <flux:sidebar.toggle class="lg:hidden" icon="bars-2" inset="left" />
 
+            <img
+                src="{{ asset('img/logo-mark.png') }}"
+                alt="{{ config('app.name', 'Laravel') }} logo"
+                class="ms-2 size-7 shrink-0 object-contain"
+            />
+
             <div class="flex-1 px-2 min-w-0">
                 <span class="block truncate text-base font-semibold text-zinc-900 dark:text-white">
                     {{ $title ?? (auth()->user()?->tenant?->name ?? config('app.name')) }}
