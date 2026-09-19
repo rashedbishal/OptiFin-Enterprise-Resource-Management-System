@@ -650,6 +650,10 @@ class Show extends Component
             return;
         }
 
+        if (! $this->leadIsMutable()) {
+            return;
+        }
+
         $rules = [];
 
         foreach ($this->activeCustomFieldDefinitions as $definition) {
@@ -1106,6 +1110,29 @@ class Show extends Component
         unset($this->activity);
     }
 
+    /**
+     * UX-1 — a lead merged into another one (see LeadMergeService) is
+     * retired, not deleted: mount() sends a fresh visit to the survivor, but
+     * a Show component already mounted before the merge keeps acting on the
+     * loser row. $this->lead is re-hydrated from the database on every
+     * request, so this reads the real, current value. Every mutation entry
+     * point calls it right AFTER its own authorization check (so an
+     * unauthorized actor keeps the existing permission-denial message) and
+     * returns when it says no. It refuses with a toast only — no redirect
+     * and no panel close — so the current lead and any unsaved draft stay
+     * exactly where they are.
+     */
+    private function leadIsMutable(): bool
+    {
+        if ($this->lead->merged_into_lead_id === null) {
+            return true;
+        }
+
+        Flux::toast(variant: 'danger', text: __('This lead has been merged and can no longer be changed.'));
+
+        return false;
+    }
+
     #[Computed]
     public function activity(): array
     {
@@ -1266,6 +1293,10 @@ class Show extends Component
         if (Gate::denies('update', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
 
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
             return;
         }
 
@@ -1430,6 +1461,10 @@ class Show extends Component
             return;
         }
 
+        if (! $this->leadIsMutable()) {
+            return;
+        }
+
         $validated = $this->validate([
             'leadName' => ['required', 'string', 'min:2', 'max:255', 'regex:/^[\p{L}\p{M}][\p{L}\p{M}\s\'.-]*$/u'],
             // Nullable here (unlike the New Lead modal, where it's required):
@@ -1463,6 +1498,10 @@ class Show extends Component
             return;
         }
 
+        if (! $this->leadIsMutable()) {
+            return;
+        }
+
         $validated = $this->validate([
             'leadCompany' => ['nullable', 'string', 'max:255', 'regex:/^[\p{L}\p{N}][\p{L}\p{N}\s.,&\'()-]*$/u'],
             'leadWebsite' => ['nullable', 'url', 'max:255', 'regex:#^https?://#i'],
@@ -1490,6 +1529,10 @@ class Show extends Component
         if (Gate::denies('update', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
 
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
             return;
         }
 
@@ -1663,6 +1706,10 @@ class Show extends Component
             return;
         }
 
+        if (! $this->leadIsMutable()) {
+            return;
+        }
+
         $newAssigneeId = $this->assigneeId ?: null;
 
         // Nothing actually changed — most commonly updateStatusAndAssignment()
@@ -1738,11 +1785,23 @@ class Show extends Component
      */
     public function updateStatusAndAssignment(LeadAssignmentService $assignmentService): void
     {
-        if ($this->canUpdate()) {
+        $canUpdate = $this->canUpdate();
+        $canAssign = $this->canAssign();
+
+        // One merged-lead refusal for the whole submit, and only for an actor
+        // who could otherwise have acted (an unauthorized actor keeps the
+        // existing silent no-op) — updateStatus() and assign() each carry
+        // their own guard for a direct call, but reaching both from here
+        // would toast the same refusal twice.
+        if (($canUpdate || $canAssign) && ! $this->leadIsMutable()) {
+            return;
+        }
+
+        if ($canUpdate) {
             $this->updateStatus();
         }
 
-        if ($this->canAssign()) {
+        if ($canAssign) {
             $this->assign($assignmentService);
         }
     }
@@ -1763,6 +1822,10 @@ class Show extends Component
         if (Gate::denies('update', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
 
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
             return;
         }
 
@@ -1791,6 +1854,10 @@ class Show extends Component
         if (Gate::denies('update', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
 
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
             return;
         }
 
@@ -1823,6 +1890,10 @@ class Show extends Component
             return;
         }
 
+        if (! $this->leadIsMutable()) {
+            return;
+        }
+
         if ($this->lead->next_follow_up_at === null) {
             return;
         }
@@ -1843,6 +1914,10 @@ class Show extends Component
         if (Gate::denies('update', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
 
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
             return;
         }
 
@@ -1904,6 +1979,10 @@ class Show extends Component
             return;
         }
 
+        if (! $this->leadIsMutable()) {
+            return;
+        }
+
         $validated = $this->validate([
             'newNote' => ['required', 'string', 'max:2000'],
         ]);
@@ -1933,6 +2012,10 @@ class Show extends Component
         if (Gate::denies('update', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
 
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
             return;
         }
 
@@ -1981,6 +2064,10 @@ class Show extends Component
         if (Gate::denies('update', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
 
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
             return;
         }
 
@@ -2040,6 +2127,10 @@ class Show extends Component
         if (Gate::denies('update', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
 
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
             return;
         }
 
@@ -2297,6 +2388,10 @@ class Show extends Component
             return;
         }
 
+        if (! $this->leadIsMutable()) {
+            return;
+        }
+
         $this->reset('editingDealId', 'dealName', 'dealValue', 'dealProbability', 'dealExpectedCloseDate', 'dealNotes');
         $this->dealCurrencyId = (string) $this->tenantCurrencies->first()?->id;
         // Defaults to the Lead's current assignee — a one-time copy, not a
@@ -2312,6 +2407,10 @@ class Show extends Component
         if (Gate::denies('update', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
 
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
             return;
         }
 
@@ -2338,6 +2437,10 @@ class Show extends Component
         if (Gate::denies('update', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
 
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
             return;
         }
 
@@ -2399,6 +2502,10 @@ class Show extends Component
         if (Gate::denies('update', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
 
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
             return;
         }
 
@@ -2472,6 +2579,10 @@ class Show extends Component
             return;
         }
 
+        if (! $this->leadIsMutable()) {
+            return;
+        }
+
         $deal = $this->lead->deals()->findOrFail($dealId);
         $deal->delete();
 
@@ -2485,6 +2596,10 @@ class Show extends Component
         if (Gate::denies('update', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
 
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
             return;
         }
 
@@ -2503,6 +2618,10 @@ class Show extends Component
         if (Gate::denies('update', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
 
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
             return;
         }
 
@@ -2537,6 +2656,10 @@ class Show extends Component
         if (Gate::denies('update', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
 
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
             return;
         }
 
@@ -2603,6 +2726,10 @@ class Show extends Component
         if (Gate::denies('update', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
 
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
             return;
         }
 
@@ -2678,6 +2805,10 @@ class Show extends Component
             return;
         }
 
+        if (! $this->leadIsMutable()) {
+            return;
+        }
+
         $task->delete();
 
         $this->refreshActivity();
@@ -2701,6 +2832,10 @@ class Show extends Component
             return;
         }
 
+        if (! $this->leadIsMutable()) {
+            return;
+        }
+
         $scoringService->computeFor($this->lead, 'manual', Auth::user());
 
         $this->lead->refresh();
@@ -2714,6 +2849,10 @@ class Show extends Component
         if (Gate::denies('delete', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to delete this lead."));
 
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
             return;
         }
 
@@ -2744,6 +2883,10 @@ class Show extends Component
         if (Gate::denies('delete', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to delete this lead."));
 
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
             return;
         }
 
@@ -2783,6 +2926,10 @@ class Show extends Component
         if (Gate::denies('merge', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to merge leads."));
 
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
             return;
         }
 
@@ -2829,6 +2976,10 @@ class Show extends Component
             return;
         }
 
+        if (! $this->leadIsMutable()) {
+            return;
+        }
+
         $link = LeadDuplicateLink::query()
             ->where('tenant_id', $this->lead->tenant_id)
             ->where('status', LeadDuplicateLinkStatus::Pending)
@@ -2862,6 +3013,10 @@ class Show extends Component
         if (Gate::denies('merge', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to merge leads."));
 
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
             return;
         }
 
