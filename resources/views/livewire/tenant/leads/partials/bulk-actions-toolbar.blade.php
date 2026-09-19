@@ -23,6 +23,7 @@ before there's a selection to act on. --}}
         $bulkPriorityOptionsFormatted = collect($this->priorityOptions())->map(fn($opt) => ['value' => $opt, 'label' => ucfirst($opt)])->toArray();
         $bulkAssigneeOptionsFormatted = collect($this->assignableUsers)->map(fn($u) => ['value' => (string) $u->id, 'label' => $u->name])->toArray();
         $bulkTagOptionsFormatted = collect($this->tagOptions())->map(fn($opt) => ['value' => (string) $opt->id, 'label' => $opt->name])->toArray();
+        $bulkModalClass = $isKanban ? 'md:w-96 overflow-visible' : 'md:w-96';
     @endphp
 
     <div @class([
@@ -54,7 +55,7 @@ before there's a selection to act on. --}}
     </div>
 
     @if ($this->canUpdateLeads)
-        <flux:modal wire:model.self="showBulkStatusModal" class="md:w-96">
+        <flux:modal wire:model.self="showBulkStatusModal" class="{{ $bulkModalClass }}">
             <form wire:submit="applyBulkStatusChange" class="flex flex-col gap-4">
                 <div>
                     <flux:heading size="lg">{{ __('Change Status') }}</flux:heading>
@@ -69,7 +70,7 @@ before there's a selection to act on. --}}
             </form>
         </flux:modal>
 
-        <flux:modal wire:model.self="showBulkPriorityModal" class="md:w-96">
+        <flux:modal wire:model.self="showBulkPriorityModal" class="{{ $bulkModalClass }}">
             <form wire:submit="applyBulkPriorityChange" class="flex flex-col gap-4">
                 <div>
                     <flux:heading size="lg">{{ __('Change Priority') }}</flux:heading>
@@ -84,7 +85,7 @@ before there's a selection to act on. --}}
             </form>
         </flux:modal>
 
-        <flux:modal wire:model.self="showBulkTagModal" class="md:w-96">
+        <flux:modal wire:model.self="showBulkTagModal" class="{{ $bulkModalClass }}">
             <form wire:submit="applyBulkTagAction" class="flex flex-col gap-4">
                 <div>
                     <flux:heading size="lg">{{ $bulkTagAction === 'attach' ? __('Add Tag') : __('Remove Tag') }}</flux:heading>
@@ -105,7 +106,7 @@ before there's a selection to act on. --}}
     @endif
 
     @if ($this->isClientAdmin && $this->canUpdateLeads)
-        <flux:modal wire:model.self="showBulkAssignModal" class="md:w-96">
+        <flux:modal wire:model.self="showBulkAssignModal" class="{{ $bulkModalClass }}">
             <form wire:submit="applyBulkAssign" class="flex flex-col gap-4">
                 <div>
                     <flux:heading size="lg">{{ __('Assign Leads') }}</flux:heading>
