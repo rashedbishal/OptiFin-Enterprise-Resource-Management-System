@@ -1503,7 +1503,6 @@ class Index extends Component
             $text .= ' '.__(':skipped skipped.', ['skipped' => $skipped]);
         }
 
-        $this->clearSelection();
         $this->refreshBoard();
 
         Flux::toast(variant: $skipped > 0 ? 'warning' : 'success', text: $text);
@@ -1910,6 +1909,7 @@ class Index extends Component
             $this->openLeadId = null;
         }
 
+        $this->clearSelection();
         $this->reportBulkResult($succeeded, $attempted, __('deleted'));
     }
 

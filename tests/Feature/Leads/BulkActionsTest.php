@@ -89,6 +89,28 @@ test('bulk priority change writes one LeadDetailUpdateLog per changed lead and r
     }
 });
 
+test('Kanban bulk priority change keeps the selected lead and selection footer visible', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $clientUser = clientUserWithLeadPermission($tenant, ['view', 'update']);
+    $lead = Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'assigned_to' => $clientUser->id,
+        'priority' => LeadPriority::Low,
+    ]);
+
+    $component = Livewire::actingAs($clientUser)
+        ->test(Index::class)
+        ->call('completeInitialLoad')
+        ->set('selectedLeadIds', [$lead->id])
+        ->call('openBulkPriorityModal')
+        ->set('bulkPriority', LeadPriority::High->value)
+        ->call('applyBulkPriorityChange')
+        ->assertSet('selectedLeadIds', [$lead->id])
+        ->assertSee('1 selected');
+
+    expect($component->get('selectedLeadIds'))->toBe([$lead->id]);
+});
+
 test('bulk assign uses LeadAssignmentService directly, never autoAssign/round-robin distribution', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $tenant->update(['lead_distribution_mode' => LeadDistributionMode::Automatic]);
