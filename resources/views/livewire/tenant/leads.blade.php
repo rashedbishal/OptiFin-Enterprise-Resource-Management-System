@@ -1,7 +1,7 @@
 @include('partials.lead-management-breadcrumbs', ['leadManagementTrail' => [['label' => __('Leads')]]])
 
 <div
-    class="flex flex-1 flex-col h-full min-h-0 overflow-hidden"
+    class="flex flex-1 flex-col h-full min-h-0 overflow-auto"
     x-data
     x-init="
         let mobile = window.matchMedia('(max-width: 639px)');
@@ -252,8 +252,9 @@
         </flux:modal>
     @endif
 
-    {{-- Table content area (scrollbar touches right edge & bottom edge) --}}
-    <div class="flex-1 min-h-0 overflow-auto">
+    {{-- Table content area: page-level content scrolls here, while the
+    desktop table below owns its own vertical scrollbar. --}}
+    <div>
         <style>
             @keyframes leadRowInsert {
                 0% {
@@ -532,6 +533,7 @@
 
             {{-- Desktop / Tablet Table View (hidden sm:block) --}}
             <div class="hidden sm:block">
+                <div class="max-h-[calc(100dvh-18rem)] overflow-y-auto">
                 <flux:table>
                     {{-- flux:table renders table-fixed (see vendor Flux's
                     table/index.blade.php) with no explicit column widths, so
@@ -817,6 +819,7 @@
                         @endfor
                     </flux:table.rows>
                 </flux:table>
+                </div>
             </div>
 
             {{ $this->leads->links() }}
