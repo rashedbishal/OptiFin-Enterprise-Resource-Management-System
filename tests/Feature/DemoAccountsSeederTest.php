@@ -19,7 +19,10 @@ it('seeds both demo accounts with known credentials', function () {
     $clientAdmin = TenantUser::query()->where('email', 'clientadmin@erp.com')->first();
 
     expect($systemAdmin)->toBeInstanceOf(PlatformUser::class)
-        ->and($systemAdmin->user_type->value)->toBe('platform_admin')
+        ->and($systemAdmin->user_type->value)->toBe('mother_admin')
+        ->and($systemAdmin->isMotherAdmin())->toBeTrue()
+        ->and($systemAdmin->bypassesAuthorization())->toBeTrue()
+        ->and($systemAdmin->role_id)->toBeNull()
         ->and($systemAdmin->is_active)->toBeTrue()
         ->and(Hash::check('password', $systemAdmin->password))->toBeTrue();
 
@@ -28,10 +31,6 @@ it('seeds both demo accounts with known credentials', function () {
         ->and($clientAdmin->is_active)->toBeTrue()
         ->and($clientAdmin->email_verified_at)->not->toBeNull()
         ->and(Hash::check('password', $clientAdmin->password))->toBeTrue();
-
-    $systemRole = Role::query()->whereNull('tenant_id')->where('slug', 'system-admin')->first();
-    expect($systemRole)->toBeInstanceOf(Role::class)
-        ->and($systemAdmin->role_id)->toBe($systemRole->id);
 
     $tenant = Tenant::query()->where('name', 'ERP Demo Client')->first();
     expect($tenant)->toBeInstanceOf(Tenant::class)
@@ -50,6 +49,5 @@ it('is idempotent when re-run', function () {
 
     expect(PlatformUser::query()->where('email', 'admin@erp.com')->count())->toBe(1)
         ->and(TenantUser::query()->where('email', 'clientadmin@erp.com')->count())->toBe(1)
-        ->and(Tenant::query()->where('name', 'ERP Demo Client')->count())->toBe(1)
-        ->and(Role::query()->whereNull('tenant_id')->where('slug', 'system-admin')->count())->toBe(1);
+        ->and(Tenant::query()->where('name', 'ERP Demo Client')->count())->toBe(1);
 });

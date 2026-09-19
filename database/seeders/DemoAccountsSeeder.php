@@ -6,7 +6,6 @@ use App\Actions\Platform\CreateClient;
 use App\Enums\PlatformUserType;
 use App\Enums\TenantUserType;
 use App\Models\PlatformUser;
-use App\Models\Role;
 use App\Models\Tenant;
 use App\Models\TenantUser;
 use Illuminate\Database\Seeder;
@@ -15,7 +14,9 @@ use Illuminate\Database\Seeder;
  * Seeds the two local demo accounts so they exist after a fresh
  * migrate + seed:
  *
- *   - System Admin   admin@erp.com       password   (login: /admin/login)
+ *   - Mother Admin   admin@erp.com       password   (login: /admin/login)
+ *     The platform's single all-permissions account (bypasses all
+ *     authorization via Gate::before), so no role is attached.
  *   - Client Admin   clientadmin@erp.com password   (login: /login)
  *
  * Re-running this seeder is safe: it never creates duplicates, and it
@@ -36,23 +37,19 @@ class DemoAccountsSeeder extends Seeder
 
     public function run(): void
     {
-        $systemAdmin = $this->seedSystemAdmin();
+        $systemAdmin = $this->seedMotherAdmin();
 
         $this->seedDemoClient($systemAdmin);
     }
 
-    private function seedSystemAdmin(): PlatformUser
+    private function seedMotherAdmin(): PlatformUser
     {
-        $systemRole = Role::query()->firstOrCreate(
-            ['tenant_id' => null, 'slug' => 'system-admin'],
-            ['name' => 'System Admin'],
-        );
-
         $admin = PlatformUser::query()->firstOrNew(['email' => self::PLATFORM_ADMIN_EMAIL]);
         $admin->fill([
             'name' => 'System Admin',
-            'user_type' => PlatformUserType::PlatformAdmin,
-            'role_id' => $systemRole->id,
+            'user_type' => PlatformUserType::MotherAdmin,
+            // Mother Admin bypasses all authorization and holds no role.
+            'role_id' => null,
             'is_active' => true,
             'password' => self::DEMO_PASSWORD,
         ])->save();
