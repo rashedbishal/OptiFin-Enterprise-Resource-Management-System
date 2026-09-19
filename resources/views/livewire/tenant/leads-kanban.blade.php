@@ -1,6 +1,6 @@
 @include('partials.lead-management-breadcrumbs', ['leadManagementTrail' => [['label' => __('Leads')]]])
 
-<div class="flex flex-1 flex-col h-full min-h-0 overflow-hidden" wire:init="completeInitialLoad">
+<div class="relative flex min-w-0 flex-1 flex-col h-full min-h-0 overflow-hidden" wire:init="completeInitialLoad">
     {{-- Header: heading, actions, and filters stay fixed at top. --}}
     <div class="shrink-0 z-10 flex flex-col gap-2 bg-white px-4 py-3 lg:gap-3.5 lg:px-8 lg:py-4 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
         <div class="flex items-center justify-between gap-2">
@@ -110,8 +110,11 @@
     </div>
 
     {{-- Main scrollable area (scrollbar touches right edge & bottom edge) --}}
-    <div class="flex-1 min-h-0 overflow-auto" wire:loading.class.delay="opacity-70" wire:target="moveLead">
-        <div class="p-4 sm:p-6 lg:p-8 flex flex-col gap-6 min-h-full">
+    <div class="min-w-0 flex-1 min-h-0 overflow-auto" wire:loading.class.delay="opacity-70" wire:target="moveLead">
+        <div @class([
+            'flex min-h-full flex-col gap-6 p-4 sm:p-6 lg:p-8',
+            'pb-20' => $this->selectedCount > 0,
+        ])>
         {{-- $initialLoadComplete guards this: before the first real fetch
         finishes, boardLeads is guaranteed empty (see filteredQuery()'s
         `1 = 0` guard on Index), which would otherwise show this "No leads
@@ -366,7 +369,7 @@
         </div>
     </div>
 
-    @include('livewire.tenant.leads.partials.bulk-actions-toolbar')
+    @include('livewire.tenant.leads.partials.bulk-actions-toolbar', ['isKanban' => true])
 
     @if ($this->canCreateLead)
         <flux:modal wire:model.self="showCreateLeadModal" :dismissible="false" scroll="body" class="w-full md:max-w-[46rem] lg:max-w-[80rem]">

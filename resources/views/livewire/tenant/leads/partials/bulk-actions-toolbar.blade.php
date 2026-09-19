@@ -18,13 +18,17 @@ before it opens anyway, so nothing is lost by not pre-rendering these
 before there's a selection to act on. --}}
 @if ($this->selectedCount > 0)
     @php
+        $isKanban = $isKanban ?? false;
         $bulkStatusOptionsFormatted = collect($this->statusOptions())->map(fn($opt) => ['value' => (string) $opt->id, 'label' => $opt->label()])->toArray();
         $bulkPriorityOptionsFormatted = collect($this->priorityOptions())->map(fn($opt) => ['value' => $opt, 'label' => ucfirst($opt)])->toArray();
         $bulkAssigneeOptionsFormatted = collect($this->assignableUsers)->map(fn($u) => ['value' => (string) $u->id, 'label' => $u->name])->toArray();
         $bulkTagOptionsFormatted = collect($this->tagOptions())->map(fn($opt) => ['value' => (string) $opt->id, 'label' => $opt->name])->toArray();
     @endphp
 
-    <div class="sticky bottom-0 z-20 flex flex-wrap items-center gap-2 border-t border-zinc-200 bg-white px-4 py-2.5 shadow-[0_-2px_8px_rgba(0,0,0,0.04)] sm:px-6 lg:px-8 dark:border-zinc-700 dark:bg-zinc-800">
+    <div @class([
+        'sticky bottom-0 z-20 flex flex-wrap items-center gap-2 border-t border-zinc-200 bg-white px-4 py-2.5 shadow-[0_-2px_8px_rgba(0,0,0,0.04)] sm:px-6 lg:px-8 dark:border-zinc-700 dark:bg-zinc-800',
+        'absolute inset-x-0 bottom-0 w-full' => $isKanban,
+    ])>
         <flux:badge size="sm" color="blue">{{ trans_choice(':count selected', $this->selectedCount, ['count' => $this->selectedCount]) }}</flux:badge>
 
         @if ($this->canUpdateLeads)
