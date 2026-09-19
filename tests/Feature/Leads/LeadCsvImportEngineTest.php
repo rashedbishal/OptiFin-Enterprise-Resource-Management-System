@@ -2,6 +2,7 @@
 
 use App\Enums\LeadImportRowStatus;
 use App\Enums\LeadImportStatus;
+use App\Imports\LeadCsvImport;
 use App\Livewire\Tenant\LeadImports\Index;
 use App\Models\Lead;
 use App\Models\LeadImport;
@@ -10,6 +11,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
+use Maatwebsite\Excel\Facades\Excel;
 
 /**
  * End-to-end tests of the REAL App\Imports\LeadCsvImport engine — no
@@ -278,4 +280,58 @@ test('an in-file conflict is detected across the chunk boundary: the earlier row
     expect($conflict->status)->toBe(LeadImportRowStatus::Duplicate);
     expect($conflict->errors)->toBe(['Email matches an earlier row in this CSV file and phone matches a different earlier row — rejected as a duplicate conflict.']);
     expect(LeadImportRow::where('lead_import_id', $import->id)->count())->toBe(250);
+});
+
+/**
+ * INC-1 B2 — an explicitly confirmed re-import of the same file runs the
+ * ordinary engine: rows with an email or phone are still skipped as
+ * duplicates of the first import's leads, identity-less rows repeat.
+ */
+test('a confirmed re-import of identical content skips identity rows as duplicates and repeats only identity-less rows', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+
+    $csv = "name,email,phone\nHas Email,has-email@example.com,\nHas Phone,,5550001111\nNo Identity One,,\nNo Identity Two,,\n";
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class)
+        ->set('csvFile', UploadedFile::fake()->createWithContent('leads.csv', $csv))
+        ->call('import');
+
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(4);
+
+    $component = Livewire::actingAs($clientAdmin)
+        ->test(Index::class)
+        ->set('csvFile', UploadedFile::fake()->createWithContent('leads-again.csv', $csv))
+        ->call('import')
+        ->assertSet('showDuplicateUploadModal', true);
+
+    // Nothing runs before confirmation.
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(4);
+    expect(LeadImport::where('tenant_id', $tenant->id)->count())->toBe(1);
+
+    $component->call('confirmDuplicateUpload');
+
+    $second = LeadImport::where('tenant_id', $tenant->id)->latest('id')->firstOrFail();
+
+    expect($second->status)->toBe(LeadImportStatus::Completed);
+    expect($second->only(['imported_count', 'duplicate_count', 'failed_count']))->toBe(['imported_count' => 2, 'duplicate_count' => 2, 'failed_count' => 0]);
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(6);
+});
+
+test('re-running the queued import for the same LeadImport id creates no extra leads and keeps its file_hash', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+
+    $csv = "name,email\nAlice,retry-alice@example.com\nBob,retry-bob@example.com\n";
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class)
+        ->set('csvFile', UploadedFile::fake()->createWithContent('retry.csv', $csv))
+        ->call('import');
+
+    $import = LeadImport::where('tenant_id', $tenant->id)->firstOrFail();
+
+    Excel::import(new LeadCsvImport($import->id), $import->file_path, 'local');
+
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(2);
+    expect($import->fresh()->file_hash)->toBe(hash('sha256', $csv));
 });

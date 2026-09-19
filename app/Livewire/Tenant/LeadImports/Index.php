@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
@@ -50,6 +51,22 @@ class Index extends Component
 
     public ?TemporaryUploadedFile $csvFile = null;
 
+    public bool $showDuplicateUploadModal = false;
+
+    /**
+     * Server-set SHA-256 of the file the duplicate-upload warning was shown
+     * for. Locked so the client can never supply or alter it; a confirmation
+     * only proceeds when the currently selected file still hashes to it.
+     */
+    #[Locked]
+    public string $pendingDuplicateHash = '';
+
+    #[Locked]
+    public string $pendingDuplicateFilename = '';
+
+    #[Locked]
+    public string $pendingDuplicateDate = '';
+
     public function mount(): void
     {
         Gate::authorize('create', Lead::class);
@@ -73,6 +90,8 @@ class Index extends Component
     public function import(): void
     {
         Gate::authorize('create', Lead::class);
+
+        $this->clearDuplicateUploadWarning();
 
         $this->validate([
             'csvFile' => ['required', 'file', 'mimes:csv,txt', 'max:'.self::MAX_FILE_SIZE_KB],
@@ -105,6 +124,115 @@ class Index extends Component
             return;
         }
 
+        $fileHash = $this->hashSelectedFile($localPath);
+
+        if ($fileHash === null) {
+            $this->addError('csvFile', __('The file could not be read.'));
+
+            return;
+        }
+
+        // Best-effort recognition only (no lock, no unique constraint): a
+        // lookup failure propagates rather than silently skipping the check.
+        $previous = LeadImport::query()
+            ->where('tenant_id', Auth::user()->getAttribute('tenant_id'))
+            ->where('file_hash', $fileHash)
+            ->latest('created_at')
+            ->first(['id', 'original_filename', 'created_at']);
+
+        if ($previous !== null) {
+            $this->pendingDuplicateHash = $fileHash;
+            $this->pendingDuplicateFilename = $previous->original_filename;
+            $this->pendingDuplicateDate = $previous->created_at->format('M j, Y');
+            $this->showDuplicateUploadModal = true;
+
+            return;
+        }
+
+        $this->startImport($fileHash, $dataRowCount);
+    }
+
+    /**
+     * Confirmation of the "already imported" warning. Nothing is trusted from
+     * the client: the selected file is re-hashed and must still match the
+     * server-held pending hash, otherwise the confirmation is refused.
+     */
+    public function confirmDuplicateUpload(): void
+    {
+        Gate::authorize('create', Lead::class);
+
+        $pendingHash = $this->pendingDuplicateHash;
+
+        $this->clearDuplicateUploadWarning();
+
+        if ($pendingHash === '' || $this->csvFile === null) {
+            return;
+        }
+
+        $this->validate([
+            'csvFile' => ['required', 'file', 'mimes:csv,txt', 'max:'.self::MAX_FILE_SIZE_KB],
+        ]);
+
+        $localPath = $this->csvFile->getRealPath();
+        $currentHash = $this->hashSelectedFile($localPath);
+
+        if ($currentHash === null || ! hash_equals($pendingHash, $currentHash)) {
+            Flux::toast(variant: 'danger', text: __('The selected file changed. Please upload it again.'));
+
+            return;
+        }
+
+        $this->startImport($currentHash, $this->countDataRows($localPath));
+    }
+
+    /**
+     * A different file selected after the warning was shown invalidates it.
+     */
+    public function updatedCsvFile(): void
+    {
+        $this->clearDuplicateUploadWarning();
+    }
+
+    /**
+     * Cancel / dismiss closes the modal; the selected file is kept.
+     */
+    public function updatedShowDuplicateUploadModal(bool $value): void
+    {
+        if (! $value) {
+            $this->clearDuplicateUploadWarning();
+        }
+    }
+
+    private function clearDuplicateUploadWarning(): void
+    {
+        $this->showDuplicateUploadModal = false;
+        $this->pendingDuplicateHash = '';
+        $this->pendingDuplicateFilename = '';
+        $this->pendingDuplicateDate = '';
+    }
+
+    /**
+     * SHA-256 over the exact raw uploaded bytes — no normalization. Null when
+     * the file cannot be read.
+     */
+    private function hashSelectedFile(mixed $path): ?string
+    {
+        if (! is_string($path) || ! is_readable($path)) {
+            return null;
+        }
+
+        $hash = hash_file('sha256', $path);
+
+        return $hash === false ? null : $hash;
+    }
+
+    /**
+     * Stores the file, creates the LeadImport and queues the chunked import.
+     * Reached directly for a file with no prior import, or after the
+     * duplicate-upload warning was explicitly confirmed.
+     */
+    private function startImport(string $fileHash, int $dataRowCount): void
+    {
         $tenant = Auth::user()->tenant;
 
         $source = LeadSource::query()->firstOrCreate(
@@ -126,6 +254,7 @@ class Index extends Component
             'source_id' => $source->id,
             'original_filename' => $this->csvFile->getClientOriginalName(),
             'file_path' => $storedPath,
+            'file_hash' => $fileHash,
             'total_rows' => $dataRowCount,
         ]);
 

@@ -26,6 +26,16 @@
         </form>
     </div>
 
+    <x-confirm-modal
+        wire:model.self="showDuplicateUploadModal"
+        :title="__('This file was already imported')"
+        :description="__(':filename was imported on :date with identical content. Importing it again may create duplicate leads for rows that have no email or phone. Rows whose email or phone match existing leads will still be skipped as duplicates.', ['filename' => $pendingDuplicateFilename, 'date' => $pendingDuplicateDate])"
+        confirm-action="confirmDuplicateUpload"
+        :confirm-label="__('Import again')"
+        :cancel-label="__('Cancel')"
+        variant="primary"
+    />
+
     <div class="flex flex-col gap-3">
         <flux:heading size="lg">{{ __('Import History') }}</flux:heading>
 

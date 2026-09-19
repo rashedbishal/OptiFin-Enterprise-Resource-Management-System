@@ -25,6 +25,7 @@ use Illuminate\Support\Carbon;
  * @property string $source_id
  * @property string $original_filename
  * @property string $file_path
+ * @property string|null $file_hash
  * @property LeadImportStatus $status
  * @property int|null $total_rows
  * @property int $imported_count
@@ -38,7 +39,7 @@ use Illuminate\Support\Carbon;
  * @property-read LeadSource $source
  */
 #[Fillable([
-    'tenant_id', 'imported_by', 'source_id', 'original_filename', 'file_path', 'status',
+    'tenant_id', 'imported_by', 'source_id', 'original_filename', 'file_path', 'file_hash', 'status',
     'total_rows', 'imported_count', 'duplicate_count', 'failed_count',
     'started_at', 'completed_at', 'error_message',
 ])]
