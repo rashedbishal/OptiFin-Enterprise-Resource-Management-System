@@ -71,9 +71,11 @@
             the card's own wire:click="viewLead(...)", same pattern already
             used below for the "Move to…" dropdown. --}}
             <div x-on:click.stop x-on:keydown.enter.stop>
+                @php($leadSelected = in_array($lead->id, $selectedLeadIds, true))
                 <flux:checkbox
+                    wire:key="lead-selection-{{ $lead->id }}-{{ $leadSelected ? 'selected' : 'unselected' }}"
                     wire:click="toggleLeadSelection('{{ $lead->id }}')"
-                    :checked="in_array($lead->id, $selectedLeadIds, true)"
+                    :checked="$leadSelected"
                     aria-label="{{ __('Select :name', ['name' => $lead->name]) }}"
                 />
             </div>

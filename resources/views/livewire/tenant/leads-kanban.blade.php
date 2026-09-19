@@ -104,7 +104,12 @@
             $allBoardLeadsSelected = $boardLeadIds !== [] && array_diff($boardLeadIds, $selectedLeadIds) === [];
         @endphp
         <div class="flex items-center gap-2">
-            <flux:checkbox wire:click="toggleSelectAllOnBoard" :checked="$allBoardLeadsSelected" :disabled="$boardLeadIds === []" />
+            <flux:checkbox
+                wire:key="kanban-select-all-{{ $allBoardLeadsSelected ? 'selected' : 'unselected' }}"
+                wire:click="toggleSelectAllOnBoard"
+                :checked="$allBoardLeadsSelected"
+                :disabled="$boardLeadIds === []"
+            />
             <flux:text size="sm">{{ __('Select all visible') }}</flux:text>
         </div>
     </div>

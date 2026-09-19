@@ -25,6 +25,43 @@ test('the board groups leads by status', function () {
     expect($board->get(leadStatus('lost')->id, collect()))->toHaveCount(0);
 });
 
+test('selected Kanban cards render a selected-state checkbox key', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant);
+    $lead = Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'assigned_to' => $rep->id,
+        'status_id' => leadStatus('new')->id,
+    ]);
+
+    Livewire::actingAs($rep)
+        ->test(Index::class)
+        ->call('completeInitialLoad')
+        ->set('selectedLeadIds', [$lead->id])
+        ->assertSee('lead-selection-'.$lead->id.'-selected');
+});
+
+test('Kanban select-all checkbox tracks manual selection changes', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $rep = clientUserWithLeadPermission($tenant);
+    $leads = Lead::factory()->count(2)->create([
+        'tenant_id' => $tenant->id,
+        'assigned_to' => $rep->id,
+        'status_id' => leadStatus('new')->id,
+    ]);
+
+    $component = Livewire::actingAs($rep)
+        ->test(Index::class)
+        ->call('completeInitialLoad')
+        ->call('toggleLeadSelection', $leads[0]->id)
+        ->call('toggleLeadSelection', $leads[1]->id)
+        ->assertSee('kanban-select-all-selected');
+
+    $component
+        ->call('toggleLeadSelection', $leads[0]->id)
+        ->assertSee('kanban-select-all-unselected');
+});
+
 test('a client user\'s board search matches Lead ID, contact name, phone, company, and email, case-insensitively', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
     $rep = clientUserWithLeadPermission($tenant);
