@@ -90,12 +90,12 @@ instead, with a visible heading ($label) and full month grid. --}}
 
     <div
         x-show="open"
-        x-transition:enter="transition duration-600 ease-[var(--motion-ease-premium)]"
-        x-transition:enter-start="opacity-0 scale-95 -translate-y-1"
+        x-transition:enter="transition duration-850 ease-[var(--motion-ease-premium)]"
+        x-transition:enter-start="opacity-0 scale-95 -translate-y-1.5"
         x-transition:enter-end="opacity-100 scale-100 translate-y-0"
-        x-transition:leave="transition duration-420 ease-[var(--motion-ease-premium)]"
+        x-transition:leave="transition duration-700 ease-[var(--motion-ease-premium)]"
         x-transition:leave-start="opacity-100 scale-100 translate-y-0"
-        x-transition:leave-end="opacity-0 scale-95 -translate-y-1"
+        x-transition:leave-end="opacity-0 scale-95 -translate-y-1.5"
         x-cloak
         class="absolute left-0 z-50 mt-1 w-64 rounded-xl border border-zinc-300/90 bg-white/98 p-3 shadow-xl backdrop-blur-md focus:outline-none dark:border-zinc-700/90 dark:bg-zinc-700/95"
     >

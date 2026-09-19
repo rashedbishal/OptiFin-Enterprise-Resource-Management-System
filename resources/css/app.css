@@ -12,11 +12,11 @@
 not so slow that everyday navigation becomes tiring. New interactive
 surfaces should use these tokens instead of inventing one-off timings. */
 :root {
-    --motion-duration-fast: 260ms;
-    --motion-duration-standard: 480ms;
-    --motion-duration-slow: 900ms;
-    --motion-ease-premium: cubic-bezier(0.22, 1, 0.36, 1);
-    --motion-ease-gentle: cubic-bezier(0.16, 1, 0.3, 1);
+    --motion-duration-fast: 380ms;
+    --motion-duration-standard: 750ms;
+    --motion-duration-slow: 1100ms;
+    --motion-ease-premium: cubic-bezier(0.16, 1, 0.3, 1);
+    --motion-ease-gentle: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -307,12 +307,39 @@ live in @layer utilities, which always loses to unlayered CSS).
 
 [data-flux-modal] > dialog[data-flux-flyout],
 [data-flux-modal] > dialog[data-flux-flyout]::backdrop {
-    transition: all 0.62s var(--motion-ease-premium) allow-discrete;
+    transition: all 0.85s var(--motion-ease-premium) allow-discrete;
 }
 
 [data-flux-modal] > dialog[data-flux-flyout][open],
 [data-flux-modal] > dialog[data-flux-flyout][open]::backdrop {
-    transition: all 0.72s var(--motion-ease-premium) allow-discrete;
+    transition: all 0.85s var(--motion-ease-premium) allow-discrete;
+}
+
+/* Centered modal transitions */
+[data-flux-modal] > dialog:not([data-flux-flyout]),
+[data-flux-modal] > dialog:not([data-flux-flyout])::backdrop {
+    transition:
+        opacity 800ms var(--motion-ease-premium),
+        transform 800ms var(--motion-ease-premium),
+        display 800ms allow-discrete,
+        overlay 800ms allow-discrete;
+}
+
+[data-flux-modal] > dialog:not([data-flux-flyout]) {
+    opacity: 0;
+    transform: scale(0.94) translateY(12px);
+}
+
+[data-flux-modal] > dialog:not([data-flux-flyout])[open] {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+}
+
+@starting-style {
+    [data-flux-modal] > dialog:not([data-flux-flyout])[open] {
+        opacity: 0;
+        transform: scale(0.94) translateY(12px);
+    }
 }
 
 /* Shared motion for native Flux surfaces. Keep these selectors scoped to
@@ -324,9 +351,26 @@ Flux's own hooks so ordinary layout transitions are not unexpectedly changed. */
 }
 
 [data-flux-sidebar] {
-    transition-property: transform, width, padding;
-    transition-duration: var(--motion-duration-slow) !important;
+    transition-property: transform, width, min-width, max-width, padding, margin !important;
+    transition-duration: 950ms !important;
     transition-timing-function: var(--motion-ease-premium) !important;
+    overflow-x: hidden !important;
+}
+
+/* Smooth fade for text/children inside sidebar when collapsing/expanding */
+[data-flux-sidebar] [data-content],
+[data-flux-sidebar] .in-data-flux-sidebar-collapsed-desktop\:hidden,
+[data-flux-sidebar] [data-flux-sidebar-profile] div,
+[data-flux-sidebar] [data-flux-sidebar-brand] div {
+    transition: opacity 450ms var(--motion-ease-premium), transform 450ms var(--motion-ease-premium);
+}
+
+[data-flux-sidebar][data-flux-sidebar-collapsed-desktop] [data-content],
+[data-flux-sidebar][data-flux-sidebar-collapsed-desktop] .in-data-flux-sidebar-collapsed-desktop\:hidden,
+[data-flux-sidebar][data-flux-sidebar-collapsed-desktop] [data-flux-sidebar-profile] div,
+[data-flux-sidebar][data-flux-sidebar-collapsed-desktop] [data-flux-sidebar-brand] div {
+    opacity: 0;
+    pointer-events: none;
 }
 
 /* Desktop collapse changes the parent grid track, while mobile open/close
@@ -334,21 +378,20 @@ uses the sidebar transform. Both layers need an explicit transition or the
 track resize makes the sidebar appear to snap even when its own element is
 animated. */
 *:has(>[data-flux-sidebar]) {
-    transition: grid-template-columns var(--motion-duration-slow) var(--motion-ease-premium) !important;
+    transition: grid-template-columns 950ms var(--motion-ease-premium) !important;
 }
 
 /* Flux profile menus are native popovers, so Alpine-style x-transition
 directives cannot animate them. Keep the menu in the top layer and animate
-opacity/scale/offset for both opening and closing. */
+opacity/scale/offset for both opening and closing with dynamic origin support. */
 ui-menu[data-flux-menu] {
     opacity: 0;
-    transform: translateY(-0.5rem) scale(0.94);
-    transform-origin: top right;
+    transform: translateY(-0.5rem) scale(0.95);
     transition:
-        opacity 0.72s var(--motion-ease-premium),
-        transform 0.72s var(--motion-ease-premium),
-        display 0.72s allow-discrete,
-        overlay 0.72s allow-discrete;
+        opacity 850ms var(--motion-ease-premium),
+        transform 850ms var(--motion-ease-premium),
+        display 850ms allow-discrete,
+        overlay 850ms allow-discrete;
 }
 
 ui-menu[data-flux-menu]:popover-open {
@@ -359,7 +402,7 @@ ui-menu[data-flux-menu]:popover-open {
 @starting-style {
     ui-menu[data-flux-menu]:popover-open {
         opacity: 0;
-        transform: translateY(-0.5rem) scale(0.94);
+        transform: translateY(-0.5rem) scale(0.95);
     }
 }
 
@@ -378,12 +421,31 @@ rule above, so it wins during the animated-close window.
 [data-flux-modal] > dialog[data-flux-flyout][open].flux-flyout-closing::backdrop {
     transform: var(--flux-flyout-translate, translateX(100%));
     opacity: 0;
-    transition: all 0.62s var(--motion-ease-premium);
+    transition: all 0.75s var(--motion-ease-premium);
 }
 
 [data-flux-modal] > dialog::backdrop {
     background-color: rgba(0, 0, 0, 0.6);
     backdrop-filter: blur(4px);
+}
+
+@keyframes cardSnapIn {
+    0% {
+        opacity: 0.3;
+        transform: scale(0.92) translateY(-10px);
+    }
+    60% {
+        opacity: 1;
+        transform: scale(1.02) translateY(2px);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+.animate-card-snap {
+    animation: cardSnapIn 800ms var(--motion-ease-premium) forwards;
 }
 
 /*

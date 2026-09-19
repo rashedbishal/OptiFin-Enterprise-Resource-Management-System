@@ -28,7 +28,7 @@ if ($sticky) {
 if ($collapsibleOnMobile) {
     $attributes = $attributes->merge([
         // Prevent mobile sidebar from transitioning out on load...
-        'x-init' => '$el.classList.add(\'transition-transform\')',
+        'x-init' => '$el.classList.add(\'transition-all\')',
     ])->class([
         // Prevent mobile sidebar from flashing on-load...
         'max-lg:data-flux-sidebar-cloak:hidden',
