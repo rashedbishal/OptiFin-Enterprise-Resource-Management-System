@@ -444,3 +444,172 @@ test('scoring rules and imports never cross tenant boundaries', function () {
 
     expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(0);
 });
+
+// ── INC-1 A1 — in-file conflict classification ──────────────────────────────
+//
+// An in-file row whose email matches one earlier Imported row and whose phone
+// matches a DIFFERENT earlier Imported row is an in-file conflict, mirroring
+// the existing-Lead conflict rule. The in-file result stays first and final
+// for a row; ordinary in-file duplicates and existing-Lead matching are
+// unchanged; duplicate_of_lead_id stays null and no Lead is ever created for
+// a duplicate/conflict row.
+
+const INC1_IN_FILE_DUPLICATE_MESSAGE = 'Duplicate of an earlier row in this same CSV file.';
+const INC1_IN_FILE_CONFLICT_MESSAGE = 'Email matches an earlier row in this CSV file and phone matches a different earlier row — rejected as a duplicate conflict.';
+const INC1_EXISTING_LEAD_CONFLICT_MESSAGE = 'Email matches an existing lead and phone matches a different existing lead — rejected as a duplicate conflict.';
+const INC1_EXISTING_LEAD_DUPLICATE_MESSAGE = 'Matches an existing lead (email or phone already on file).';
+
+test('in-file: the same earlier row matching both email and phone is an ordinary in-file duplicate, not a conflict', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin, 'source' => $source, 'import' => $import] = setUpLeadImport();
+    $action = app(CreateLeadFromImport::class);
+
+    $action->handle($import, $tenant, $source, $clientAdmin, 1, ['name' => 'Alpha', 'email' => 'both@example.com', 'phone' => '5550001111']);
+    $action->handle($import, $tenant, $source, $clientAdmin, 2, ['name' => 'Bravo', 'email' => 'both@example.com', 'phone' => '5550001111']);
+
+    $row = LeadImportRow::where('lead_import_id', $import->id)->where('row_number', 2)->firstOrFail();
+    expect($row->status)->toBe(LeadImportRowStatus::Duplicate);
+    expect($row->errors)->toBe([INC1_IN_FILE_DUPLICATE_MESSAGE]);
+    expect($row->duplicate_of_lead_id)->toBeNull();
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(1);
+    expect($import->fresh()->only(['imported_count', 'duplicate_count', 'failed_count']))->toBe(['imported_count' => 1, 'duplicate_count' => 1, 'failed_count' => 0]);
+});
+
+test('in-file: email matching one earlier row and phone matching a different earlier row is rejected as an in-file conflict', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin, 'source' => $source, 'import' => $import] = setUpLeadImport();
+    $action = app(CreateLeadFromImport::class);
+
+    $action->handle($import, $tenant, $source, $clientAdmin, 1, ['name' => 'Alpha', 'email' => 'row-a@example.com']);
+    $action->handle($import, $tenant, $source, $clientAdmin, 2, ['name' => 'Bravo', 'phone' => '5550002222']);
+    $action->handle($import, $tenant, $source, $clientAdmin, 3, ['name' => 'Charlie', 'email' => 'ROW-A@example.com', 'phone' => '(555) 000-2222']);
+
+    $row = LeadImportRow::where('lead_import_id', $import->id)->where('row_number', 3)->firstOrFail();
+    expect($row->status)->toBe(LeadImportRowStatus::Duplicate);
+    expect($row->errors)->toBe([INC1_IN_FILE_CONFLICT_MESSAGE]);
+    expect($row->duplicate_of_lead_id)->toBeNull();
+    expect($row->raw_data['name'])->toBe('Charlie');
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(2);
+    expect($import->fresh()->only(['imported_count', 'duplicate_count', 'failed_count']))->toBe(['imported_count' => 2, 'duplicate_count' => 1, 'failed_count' => 0]);
+});
+
+test('in-file: a row matching an earlier row on only one identity field is an ordinary in-file duplicate', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin, 'source' => $source, 'import' => $import] = setUpLeadImport();
+    $action = app(CreateLeadFromImport::class);
+
+    $action->handle($import, $tenant, $source, $clientAdmin, 1, ['name' => 'Alpha', 'email' => 'one@example.com', 'phone' => '5550003333']);
+    $action->handle($import, $tenant, $source, $clientAdmin, 2, ['name' => 'Bravo', 'email' => 'one@example.com', 'phone' => '5550009999']);
+
+    $row = LeadImportRow::where('lead_import_id', $import->id)->where('row_number', 2)->firstOrFail();
+    expect($row->status)->toBe(LeadImportRowStatus::Duplicate);
+    expect($row->errors)->toBe([INC1_IN_FILE_DUPLICATE_MESSAGE]);
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(1);
+});
+
+test('precedence: an in-file match is first and final — an additional existing-lead match is not surfaced as a conflict', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin, 'source' => $source, 'import' => $import] = setUpLeadImport();
+    Lead::factory()->create(['tenant_id' => $tenant->id, 'email' => 'pre-existing@example.com', 'phone' => '5559990009']);
+    $action = app(CreateLeadFromImport::class);
+
+    $action->handle($import, $tenant, $source, $clientAdmin, 1, ['name' => 'Alpha', 'email' => 'earlier@example.com']);
+    // Email matches the earlier row (in-file); phone matches a different,
+    // pre-existing lead. Falling through to the existing-lead check would
+    // report a conflict — the in-file result must win instead.
+    $action->handle($import, $tenant, $source, $clientAdmin, 2, ['name' => 'Bravo', 'email' => 'earlier@example.com', 'phone' => '5559990009']);
+
+    $row = LeadImportRow::where('lead_import_id', $import->id)->where('row_number', 2)->firstOrFail();
+    expect($row->status)->toBe(LeadImportRowStatus::Duplicate);
+    expect($row->errors)->toBe([INC1_IN_FILE_DUPLICATE_MESSAGE]);
+    expect($row->duplicate_of_lead_id)->toBeNull();
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(2);
+});
+
+test('existing-lead conflict behavior and message are unchanged when there is no in-file match', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin, 'source' => $source, 'import' => $import] = setUpLeadImport();
+    Lead::factory()->create(['tenant_id' => $tenant->id, 'email' => 'lead-a@example.com', 'phone' => '11111111111']);
+    Lead::factory()->create(['tenant_id' => $tenant->id, 'email' => 'lead-b@example.com', 'phone' => '22222222222']);
+
+    app(CreateLeadFromImport::class)->handle($import, $tenant, $source, $clientAdmin, 1, ['name' => 'Conflict Row', 'email' => 'lead-a@example.com', 'phone' => '22222222222']);
+
+    $row = LeadImportRow::where('lead_import_id', $import->id)->where('row_number', 1)->firstOrFail();
+    expect($row->status)->toBe(LeadImportRowStatus::Duplicate);
+    expect($row->errors)->toBe([INC1_EXISTING_LEAD_CONFLICT_MESSAGE]);
+    expect($row->duplicate_of_lead_id)->toBeNull();
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(2);
+});
+
+test('when several earlier Imported rows share an identity value, the earliest row number is used — regardless of insertion order', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin, 'source' => $source, 'import' => $import] = setUpLeadImport();
+
+    // Anomalous historical data, inserted in REVERSE row order so neither id
+    // nor insertion order can decide the outcome. Earliest email row and
+    // earliest phone row are both row 1, so this is an ordinary duplicate —
+    // picking the later email row (2, no phone) would make it a conflict.
+    LeadImportRow::factory()->create(['lead_import_id' => $import->id, 'row_number' => 2, 'status' => LeadImportRowStatus::Imported, 'normalized_email' => 'shared@example.com', 'normalized_phone' => null, 'raw_data' => ['name' => 'Later']]);
+    LeadImportRow::factory()->create(['lead_import_id' => $import->id, 'row_number' => 1, 'status' => LeadImportRowStatus::Imported, 'normalized_email' => 'shared@example.com', 'normalized_phone' => '5550001111', 'raw_data' => ['name' => 'Earliest']]);
+
+    app(CreateLeadFromImport::class)->handle($import, $tenant, $source, $clientAdmin, 3, ['name' => 'Newcomer', 'email' => 'shared@example.com', 'phone' => '5550001111']);
+
+    $row = LeadImportRow::where('lead_import_id', $import->id)->where('row_number', 3)->firstOrFail();
+    expect($row->status)->toBe(LeadImportRowStatus::Duplicate);
+    expect($row->errors)->toBe([INC1_IN_FILE_DUPLICATE_MESSAGE]);
+});
+
+test('earlier Failed and Duplicate rows never participate: they do not block a later valid row or count as in-file matches', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin, 'source' => $source, 'import' => $import] = setUpLeadImport();
+    Lead::factory()->create(['tenant_id' => $tenant->id, 'email' => 'exists@example.com']);
+    $action = app(CreateLeadFromImport::class);
+
+    // A Failed row (it stores its normalized email) must not block the next valid row.
+    $action->handle($import, $tenant, $source, $clientAdmin, 1, ['name' => 'Alpha', 'email' => 'failed-first@example.com', 'status' => 'NoSuchStatus']);
+    $action->handle($import, $tenant, $source, $clientAdmin, 2, ['name' => 'Bravo', 'email' => 'failed-first@example.com']);
+
+    expect(LeadImportRow::where('lead_import_id', $import->id)->where('row_number', 1)->firstOrFail()->status)->toBe(LeadImportRowStatus::Failed);
+    expect(LeadImportRow::where('lead_import_id', $import->id)->where('row_number', 2)->firstOrFail()->status)->toBe(LeadImportRowStatus::Imported);
+
+    // A Duplicate row is not an in-file "winner": the next row matching the
+    // same identity is attributed to the existing lead, never to the earlier row.
+    $action->handle($import, $tenant, $source, $clientAdmin, 3, ['name' => 'Charlie', 'email' => 'exists@example.com']);
+    $action->handle($import, $tenant, $source, $clientAdmin, 4, ['name' => 'Delta', 'email' => 'exists@example.com']);
+
+    $rowFour = LeadImportRow::where('lead_import_id', $import->id)->where('row_number', 4)->firstOrFail();
+    expect($rowFour->status)->toBe(LeadImportRowStatus::Duplicate);
+    expect($rowFour->errors)->toBe([INC1_EXISTING_LEAD_DUPLICATE_MESSAGE]);
+    expect($rowFour->duplicate_of_lead_id)->not->toBeNull();
+});
+
+test('in-file matching is scoped to this import: another tenant\'s rows and another import\'s rows never make a row an in-file duplicate or conflict', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin, 'source' => $source, 'import' => $import] = setUpLeadImport();
+    ['tenant' => $otherTenant, 'clientAdmin' => $otherAdmin, 'source' => $otherSource, 'import' => $otherImport] = setUpLeadImport();
+    $action = app(CreateLeadFromImport::class);
+
+    $action->handle($otherImport, $otherTenant, $otherSource, $otherAdmin, 1, ['name' => 'Alpha', 'email' => 'shared@example.com', 'phone' => '5550004444']);
+    $action->handle($import, $tenant, $source, $clientAdmin, 1, ['name' => 'Bravo', 'email' => 'shared@example.com', 'phone' => '5550004444']);
+
+    expect(LeadImportRow::where('lead_import_id', $import->id)->where('row_number', 1)->firstOrFail()->status)->toBe(LeadImportRowStatus::Imported);
+
+    // A second import in the SAME tenant: its Imported row is a real Lead
+    // now, so a later row is a duplicate of that EXISTING lead — not an
+    // in-file duplicate of another import's row.
+    $secondImport = LeadImport::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'imported_by' => $clientAdmin->id]);
+    $action->handle($secondImport, $tenant, $source, $clientAdmin, 1, ['name' => 'Charlie', 'email' => 'second@example.com', 'phone' => '5550005555']);
+    $action->handle($import, $tenant, $source, $clientAdmin, 2, ['name' => 'Delta', 'email' => 'second@example.com', 'phone' => '5550006666']);
+
+    $row = LeadImportRow::where('lead_import_id', $import->id)->where('row_number', 2)->firstOrFail();
+    expect($row->status)->toBe(LeadImportRowStatus::Duplicate);
+    expect($row->errors)->toBe([INC1_EXISTING_LEAD_DUPLICATE_MESSAGE]);
+    expect($row->duplicate_of_lead_id)->not->toBeNull();
+});
+
+test('a retried in-file conflict row is never reprocessed — one row recorded, counters unchanged', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin, 'source' => $source, 'import' => $import] = setUpLeadImport();
+    $action = app(CreateLeadFromImport::class);
+
+    $action->handle($import, $tenant, $source, $clientAdmin, 1, ['name' => 'Alpha', 'email' => 'retry-a@example.com']);
+    $action->handle($import, $tenant, $source, $clientAdmin, 2, ['name' => 'Bravo', 'phone' => '5550007777']);
+    $conflict = ['name' => 'Charlie', 'email' => 'retry-a@example.com', 'phone' => '5550007777'];
+    $action->handle($import, $tenant, $source, $clientAdmin, 3, $conflict);
+    $action->handle($import, $tenant, $source, $clientAdmin, 3, $conflict);
+
+    expect(LeadImportRow::where('lead_import_id', $import->id)->where('row_number', 3)->count())->toBe(1);
+    expect($import->fresh()->only(['imported_count', 'duplicate_count', 'failed_count']))->toBe(['imported_count' => 2, 'duplicate_count' => 1, 'failed_count' => 0]);
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(2);
+});

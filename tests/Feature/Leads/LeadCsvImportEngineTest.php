@@ -208,3 +208,74 @@ test('a moderate CSV import stays within the expected post-optimization query bu
     // pre-optimization ~19-20/row (~380-400 total) baseline.
     expect($queryCount)->toBeLessThan(330);
 });
+
+/**
+ * INC-1 A1 — an in-file conflict (email matches one earlier Imported row,
+ * phone matches a different earlier Imported row) end to end through the real
+ * engine: recorded as a Duplicate row with the in-file conflict message, no
+ * Lead created, counters accurate, and ordinary in-file duplicates unchanged.
+ */
+test('an in-file conflict is recorded end to end with accurate counters, and ordinary in-file duplicates are unchanged', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+
+    $csv = implode("\n", [
+        'name,email,phone',
+        'Alpha,alpha@example.com,',
+        'Bravo,,5550001234',
+        'Charlie,alpha@example.com,5550001234',
+        'Delta,alpha@example.com,5550009999',
+        'Echo,echo@example.com,',
+    ])."\n";
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class)
+        ->set('csvFile', UploadedFile::fake()->createWithContent('conflict.csv', $csv))
+        ->call('import');
+
+    $import = LeadImport::where('tenant_id', $tenant->id)->firstOrFail();
+
+    expect($import->status)->toBe(LeadImportStatus::Completed);
+    expect($import->only(['imported_count', 'duplicate_count', 'failed_count']))->toBe(['imported_count' => 3, 'duplicate_count' => 2, 'failed_count' => 0]);
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(3);
+
+    $rows = LeadImportRow::where('lead_import_id', $import->id)->orderBy('row_number')->get()->keyBy('row_number');
+    expect($rows[3]->status)->toBe(LeadImportRowStatus::Duplicate);
+    expect($rows[3]->errors)->toBe(['Email matches an earlier row in this CSV file and phone matches a different earlier row — rejected as a duplicate conflict.']);
+    expect($rows[3]->duplicate_of_lead_id)->toBeNull();
+    expect($rows[4]->status)->toBe(LeadImportRowStatus::Duplicate);
+    expect($rows[4]->errors)->toBe(['Duplicate of an earlier row in this same CSV file.']);
+    expect($rows[5]->status)->toBe(LeadImportRowStatus::Imported);
+});
+
+test('an in-file conflict is detected across the chunk boundary: the earlier rows sit in chunk 1 and the conflicting row in chunk 2', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+
+    $letters = range('a', 'z');
+    $lines = ['name,email,phone'];
+    for ($i = 1; $i <= 250; $i++) {
+        $suffix = $letters[$i % 26].$letters[intdiv($i, 26) % 26];
+
+        $lines[] = match ($i) {
+            1 => 'Person Alpha,boundary-a@example.com,',
+            2 => 'Person Bravo,,5550001234',
+            201 => 'Person Conflict,boundary-a@example.com,5550001234',
+            default => "Person {$suffix},filler{$i}@boundary.test,",
+        };
+    }
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class)
+        ->set('csvFile', UploadedFile::fake()->createWithContent('boundary-conflict.csv', implode("\n", $lines)."\n"))
+        ->call('import');
+
+    $import = LeadImport::where('tenant_id', $tenant->id)->firstOrFail();
+
+    expect($import->status)->toBe(LeadImportStatus::Completed);
+    expect($import->only(['imported_count', 'duplicate_count', 'failed_count']))->toBe(['imported_count' => 249, 'duplicate_count' => 1, 'failed_count' => 0]);
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(249);
+
+    $conflict = LeadImportRow::where('lead_import_id', $import->id)->where('row_number', 201)->firstOrFail();
+    expect($conflict->status)->toBe(LeadImportRowStatus::Duplicate);
+    expect($conflict->errors)->toBe(['Email matches an earlier row in this CSV file and phone matches a different earlier row — rejected as a duplicate conflict.']);
+    expect(LeadImportRow::where('lead_import_id', $import->id)->count())->toBe(250);
+});

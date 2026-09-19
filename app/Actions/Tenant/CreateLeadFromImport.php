@@ -98,6 +98,14 @@ class CreateLeadFromImport
         // of the generic "matches an existing lead" one, and is what
         // actually makes normalized_email/normalized_phone load-bearing
         // rather than redundant with the existing-Lead query.
+        //
+        // The in-file result is also FINAL for the row: a row that matches an
+        // earlier Imported row of this import is never additionally run
+        // through the existing-Lead check, so an existing-Lead conflict on
+        // top of an in-file match is not separately reported. Within the
+        // in-file check itself, an email that matches one earlier row and a
+        // phone that matches a different earlier row is classified as an
+        // in-file conflict, mirroring the existing-Lead conflict rule.
         $duplicateError = $this->checkInFileDuplicate($import, $normalizedEmail, $normalizedPhone)
             ?? $this->checkExistingLeadDuplicate($tenant, $normalizedEmail, $normalizedPhone);
 
@@ -314,6 +322,14 @@ class CreateLeadFromImport
     }
 
     /**
+     * Checks this import's own earlier Imported rows (first valid row wins;
+     * Failed/Duplicate rows never count). Returns an in-file duplicate when
+     * the row's email and/or phone match an earlier Imported row — or an
+     * in-file conflict when its email matches one earlier row and its phone
+     * matches a different earlier row (the in-file counterpart of the
+     * conflict rule checkExistingLeadDuplicate() applies to existing leads).
+     * Either way duplicate_of_lead_id is left null and no Lead is created.
+     *
      * @return array{0: string, 1: null}|null
      */
     private function checkInFileDuplicate(LeadImport $import, ?string $normalizedEmail, ?string $normalizedPhone): ?array
@@ -327,7 +343,7 @@ class CreateLeadFromImport
         // App\Imports\LeadCsvImport's docblock) — by the time this row
         // runs, every earlier row that could have already won the same
         // email/phone is guaranteed to already be committed here.
-        $exists = LeadImportRow::where('lead_import_id', $import->id)
+        $matches = LeadImportRow::where('lead_import_id', $import->id)
             ->where('status', LeadImportRowStatus::Imported)
             ->where(function ($query) use ($normalizedEmail, $normalizedPhone): void {
                 if ($normalizedEmail !== null) {
@@ -338,13 +354,28 @@ class CreateLeadFromImport
                     $query->orWhere('normalized_phone', $normalizedPhone);
                 }
             })
-            ->exists();
+            ->orderBy('row_number')
+            ->get(['id', 'row_number', 'normalized_email', 'normalized_phone']);
 
-        if ($exists) {
-            return [__('Duplicate of an earlier row in this same CSV file.'), null];
+        if ($matches->isEmpty()) {
+            return null;
         }
 
-        return null;
+        // The earliest matching row for each identity, by row number — a
+        // first-valid-row-wins import holds at most one Imported row per
+        // identity value, so this is deterministic even for anomalous data.
+        $emailMatch = $normalizedEmail !== null
+            ? $matches->first(fn (LeadImportRow $row): bool => $row->normalized_email === $normalizedEmail)
+            : null;
+        $phoneMatch = $normalizedPhone !== null
+            ? $matches->first(fn (LeadImportRow $row): bool => $row->normalized_phone === $normalizedPhone)
+            : null;
+
+        if ($emailMatch !== null && $phoneMatch !== null && $emailMatch->id !== $phoneMatch->id) {
+            return [__('Email matches an earlier row in this CSV file and phone matches a different earlier row — rejected as a duplicate conflict.'), null];
+        }
+
+        return [__('Duplicate of an earlier row in this same CSV file.'), null];
     }
 
     /**

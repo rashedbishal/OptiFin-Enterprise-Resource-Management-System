@@ -178,3 +178,22 @@ test('the import detail page shows this tenant\'s own import and its rows', func
         ->assertSee('Test Lead')
         ->assertOk();
 });
+
+test('an in-file conflict row is shown on the import detail page through the existing errors column, with no lead link', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+
+    $csv = "name,email,phone\nAlpha,alpha@example.com,\nBravo,,5550001234\nCharlie,alpha@example.com,5550001234\n";
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class)
+        ->set('csvFile', csvUpload($csv))
+        ->call('import');
+
+    $import = LeadImport::where('tenant_id', $tenant->id)->firstOrFail();
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['leadImport' => $import])
+        ->assertSee('Charlie')
+        ->assertSee('Email matches an earlier row in this CSV file and phone matches a different earlier row — rejected as a duplicate conflict.')
+        ->assertDontSee('Duplicate of');
+});
