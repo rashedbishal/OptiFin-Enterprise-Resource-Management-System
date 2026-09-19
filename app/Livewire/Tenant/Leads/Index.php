@@ -834,7 +834,7 @@ class Index extends Component
 
         $this->refreshBoard();
 
-        Flux::toast(variant: 'success', text: __(':name moved to :status.', ['name' => $lead->name, 'status' => $newStatus->label()]));
+        Flux::toast(variant: 'success', text: __(':name moved to :status.', ['name' => $lead->company ?: $lead->name, 'status' => $newStatus->label()]));
     }
 
     /**

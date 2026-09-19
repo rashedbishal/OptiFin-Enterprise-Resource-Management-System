@@ -437,3 +437,24 @@ test('a failure after both writes complete rolls back the status change and the 
     expect($lead->first_contacted_at)->toBeNull();
     expect(LeadStatusLog::where('lead_id', $lead->id)->exists())->toBeFalse();
 });
+
+test('moving a lead shows the company name in the success toast', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'name' => 'Contact Person',
+        'company' => 'Acme Corporation',
+        'status_id' => leadStatus('new')->id,
+    ]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class)
+        ->call('completeInitialLoad')
+        ->call('moveLead', $lead->id, leadStatus('contacted')->id)
+        ->assertDispatched('toast-show', function (string $event, array $params): bool {
+            $text = $params['slots']['text'] ?? '';
+
+            return str_contains($text, 'Acme Corporation')
+                && ! str_contains($text, 'Contact Person');
+        });
+});
