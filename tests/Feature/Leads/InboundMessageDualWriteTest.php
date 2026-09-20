@@ -362,3 +362,57 @@ test('an outbound reply appears in the timeline alongside pre-existing legacy in
     expect(array_column($timeline, 'text'))->toBe(['Legacy inbound', 'Our reply']);
     expect($timeline[1]['direction'])->toBe(MessageDirection::Outbound);
 });
+
+test('a lead\'s very first inbound message is shown once, not twice, when the platform timestamp is earlier than our processing time', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::FacebookMessenger,
+        'config' => ['page_id' => '123', 'verify_token' => 'secret-token'],
+    ]);
+
+    // A real Messenger/Instagram payload always carries the platform's own
+    // event time, which precedes the moment we process the webhook.
+    $this->postJson(route('api.webhook.facebook', $tenant->tenant_code), [
+        'entry' => [['messaging' => [[
+            'sender' => ['id' => 'psid-1'],
+            'timestamp' => now()->subSeconds(4)->getTimestampMs(),
+            'message' => ['mid' => 'm_first', 'text' => 'Hello there'],
+        ]]]],
+    ])->assertOk();
+
+    $lead = Lead::where('tenant_id', $tenant->id)->firstOrFail();
+
+    expect(array_column($lead->messageTimeline(), 'text'))->toBe(['Hello there']);
+});
+
+test('a legacy entry that has a normalized counterpart is dropped by message id, on every channel, while an older legacy entry without one is kept', function (LeadSourceType $type, array $legacyEntry) {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => $type]);
+    $older = $type === LeadSourceType::Whatsapp
+        ? ['id' => 'wamid.OLD', 'type' => 'text', 'text' => ['body' => 'Older'], 'timestamp' => now()->subDays(2)->getTimestamp()]
+        : ['message' => ['mid' => 'm_old', 'text' => 'Older'], 'timestamp' => now()->subDays(2)->getTimestampMs()];
+    // The platform's event time precedes our own processing time (the
+    // Message row's created_at, i.e. now) — the case that used to duplicate.
+    $legacyEntry['timestamp'] = $type === LeadSourceType::Whatsapp ? now()->subSeconds(4)->getTimestamp() : now()->subSeconds(4)->getTimestampMs();
+    $lead = Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'source_id' => $source->id,
+        'source_data' => ['messages' => [$older, $legacyEntry]],
+    ]);
+    $conversation = Conversation::factory()->create([
+        'tenant_id' => $tenant->id, 'lead_id' => $lead->id, 'lead_source_id' => $source->id,
+        'channel' => MessageChannel::fromLeadSourceType($type),
+    ]);
+    Message::factory()->create([
+        'tenant_id' => $tenant->id, 'lead_id' => $lead->id, 'conversation_id' => $conversation->id,
+        'channel' => MessageChannel::fromLeadSourceType($type),
+        'body' => 'Hello there', 'external_message_id' => 'ext-1',
+    ]);
+
+    expect(array_column($lead->messageTimeline(), 'text'))->toBe(['Older', 'Hello there']);
+})->with([
+    'messenger' => [LeadSourceType::FacebookMessenger, ['message' => ['mid' => 'ext-1', 'text' => 'Hello there'], 'timestamp' => 'NOW']],
+    'instagram' => [LeadSourceType::Instagram, ['message' => ['mid' => 'ext-1', 'text' => 'Hello there'], 'timestamp' => 'NOW']],
+    'whatsapp' => [LeadSourceType::Whatsapp, ['id' => 'ext-1', 'type' => 'text', 'text' => ['body' => 'Hello there'], 'timestamp' => 'NOW']],
+]);

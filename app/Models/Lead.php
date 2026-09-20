@@ -357,8 +357,23 @@ class Lead extends Model
         $entries = $this->source_data['messages'] ?? null;
         $isWhatsapp = $this->source->type === LeadSourceType::Whatsapp;
 
+        // The time cutover alone can't catch a message's OWN duplicate: the
+        // legacy entry is stamped with the platform's event time, which is
+        // slightly EARLIER than the moment we processed the webhook (the
+        // normalized row's created_at), so it looks "older than the cutover"
+        // and used to be shown a second time — always the lead's first
+        // message. The platform message id is the same value in both copies
+        // (see LeadWebhookController::extractInboundMessageId()), so an
+        // entry whose id already has a normalized row is a duplicate.
+        $normalizedMessageIds = $normalized->pluck('external_message_id')->filter()->flip();
+
         $legacyEntries = is_array($entries)
             ? collect($entries)
+                ->reject(function (array $entry) use ($normalizedMessageIds): bool {
+                    $messageId = $entry['message']['mid'] ?? $entry['id'] ?? null;
+
+                    return is_string($messageId) && $normalizedMessageIds->has($messageId);
+                })
                 ->map(fn (array $entry): array => $isWhatsapp
                     ? $this->parseWhatsappTimelineEntry($entry)
                     : $this->parseMessagingTimelineEntry($entry))
