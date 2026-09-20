@@ -21,7 +21,7 @@
  */
 
 const CLOSING_CLASS = 'flux-flyout-closing';
-const CLOSE_ANIMATION_MS = 750;
+const CLOSE_ANIMATION_MS = 1000;
 
 function animateThenClose(dialog, realClose) {
     dialog.classList.add(CLOSING_CLASS);
@@ -78,18 +78,18 @@ function patchFlyout(dialog) {
     });
 }
 
-function patchAllFlyouts() {
-    document.querySelectorAll('dialog[data-flux-flyout]').forEach(patchFlyout);
+function patchAllModals() {
+    document.querySelectorAll('[data-flux-modal] > dialog, dialog[data-flux-flyout], dialog[data-modal]').forEach(patchFlyout);
 }
 
-document.addEventListener('livewire:init', patchAllFlyouts);
-document.addEventListener('livewire:navigated', patchAllFlyouts);
+document.addEventListener('livewire:init', patchAllModals);
+document.addEventListener('livewire:navigated', patchAllModals);
 
-// Safety net for a flyout added to the DOM after the events above already
+// Safety net for a flyout or centered modal added to the DOM after the events above already
 // fired (e.g. a component mounted later via a Livewire nested-component
 // swap) — cheap to keep running for the page's lifetime since patchFlyout
 // no-ops on anything already patched.
-new MutationObserver(patchAllFlyouts).observe(document.documentElement, {
+new MutationObserver(patchAllModals).observe(document.documentElement, {
     childList: true,
     subtree: true,
 });
