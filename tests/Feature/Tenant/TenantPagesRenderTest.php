@@ -87,6 +87,7 @@ test('the lead management hub links to every nested module page', function () {
         [
             'tenant-leads.index',
             'tenant-lead-sources.index',
+            'tenant-leads.scoring-rules',
             'tenant-leads.custom-fields',
             'tenant-leads.source-costs',
             'tenant-leads.website-forms',
@@ -111,6 +112,7 @@ test('every lead management nested page shows the hub as its breadcrumb parent',
 })->with([
     'lead details' => ['tenant-leads.index', []],
     'lead sources' => ['tenant-lead-sources.index', []],
+    'scoring rules' => ['tenant-leads.scoring-rules', []],
     'custom fields' => ['tenant-leads.custom-fields', []],
     'source costs' => ['tenant-leads.source-costs', []],
     'website forms' => ['tenant-leads.website-forms', []],

@@ -4,6 +4,7 @@ namespace App\Livewire\Tenant\LeadManagement;
 
 use App\Models\Lead;
 use App\Models\LeadCustomFieldDefinition;
+use App\Models\LeadScoringRule;
 use App\Models\LeadSource;
 use App\Models\LeadSourceCost;
 use App\Models\WebsiteForm;
@@ -91,6 +92,12 @@ class Dashboard extends Component
     public function totalSources(): int
     {
         return LeadSource::query()->where('tenant_id', Auth::user()->tenant_id)->count();
+    }
+
+    #[Computed]
+    public function totalScoringRules(): int
+    {
+        return LeadScoringRule::query()->where('tenant_id', Auth::user()->tenant_id)->count();
     }
 
     #[Computed]
