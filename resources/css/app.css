@@ -792,6 +792,7 @@ stays in every transition list too.
 */
 ui-toast [data-flux-toast-dialog],
 ui-toast-group [data-flux-toast-dialog] {
+    max-width: calc(100vw - 2rem) !important;
     transition:
         opacity 0.3s ease allow-discrete,
         transform 0.35s cubic-bezier(0.22, 1, 0.36, 1) allow-discrete,

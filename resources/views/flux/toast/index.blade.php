@@ -6,7 +6,7 @@
 
 <ui-toast x-data x-on:toast-show.document="! $el.closest('ui-toast-group') && $el.showToast($event.detail)" popover="manual" position="{{ $position }}" wire:ignore>
     <template>
-        <div {{ $attributes->only(['class'])->class('max-w-sm in-[ui-toast-group]:max-w-auto in-[ui-toast-group]:w-xs sm:in-[ui-toast-group]:w-sm') }} data-variant="" data-flux-toast-dialog>
+        <div {{ $attributes->only(['class'])->class('max-w-[calc(100vw-2rem)] w-[calc(100vw-2rem)] in-[ui-toast-group]:max-w-[calc(100vw-2rem)] in-[ui-toast-group]:w-[calc(100vw-2rem)] sm:in-[ui-toast-group]:w-sm sm:in-[ui-toast-group]:max-w-none') }} data-variant="" data-flux-toast-dialog>
             {{--
                 Frosted glass card. All variant styling (tinted wash, icon
                 badge color, progress bar) lives in app.css keyed off the
