@@ -27,32 +27,32 @@
         <div class="flex flex-col gap-3">
             @if ($lead->phone)
                 <div class="flex items-center gap-2">
-                    <flux:icon.phone variant="micro" class="size-4 shrink-0 text-zinc-400" />
-                    <flux:text size="sm" variant="subtle">{{ __('Phone / WhatsApp:') }}</flux:text>
-                    <flux:text class="font-medium">{{ $lead->phone }}</flux:text>
+                    <flux:icon.phone variant="micro" class="size-4 shrink-0 text-zinc-600 dark:text-zinc-300" />
+                    <span class="text-xs sm:text-sm font-semibold text-zinc-800 dark:text-zinc-200">{{ __('Phone / WhatsApp:') }}</span>
+                    <span class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white">{{ $lead->phone }}</span>
                 </div>
             @endif
             @if ($lead->email)
                 <div class="flex items-center gap-2">
-                    <flux:icon.envelope variant="micro" class="size-4 shrink-0 text-zinc-400" />
-                    <flux:text size="sm" variant="subtle">{{ __('Email Address:') }}</flux:text>
-                    <flux:text class="font-medium break-all">{{ $lead->email }}</flux:text>
+                    <flux:icon.envelope variant="micro" class="size-4 shrink-0 text-zinc-600 dark:text-zinc-300" />
+                    <span class="text-xs sm:text-sm font-semibold text-zinc-800 dark:text-zinc-200">{{ __('Email Address:') }}</span>
+                    <span class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white break-all">{{ $lead->email }}</span>
                 </div>
             @endif
             @if ($lead->website)
                 <div class="flex items-center gap-2">
-                    <flux:icon.globe-alt variant="micro" class="size-4 shrink-0 text-zinc-400" />
-                    <flux:text size="sm" variant="subtle">{{ __('Website:') }}</flux:text>
-                    <a href="{{ $lead->website }}" target="_blank" rel="noopener noreferrer" class="font-medium break-all underline">
+                    <flux:icon.globe-alt variant="micro" class="size-4 shrink-0 text-zinc-600 dark:text-zinc-300" />
+                    <span class="text-xs sm:text-sm font-semibold text-zinc-800 dark:text-zinc-200">{{ __('Website:') }}</span>
+                    <a href="{{ $lead->website }}" target="_blank" rel="noopener noreferrer" class="text-xs sm:text-sm font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 break-all underline">
                         {{ __('Visit site') }} &#8599;
                     </a>
                 </div>
             @endif
             @if ($lead->location)
                 <div class="flex items-center gap-2">
-                    <flux:icon.map-pin variant="micro" class="size-4 shrink-0 text-zinc-400" />
-                    <flux:text size="sm" variant="subtle">{{ __('Location:') }}</flux:text>
-                    <flux:text class="font-medium break-words">{{ $lead->location }}</flux:text>
+                    <flux:icon.map-pin variant="micro" class="size-4 shrink-0 text-zinc-600 dark:text-zinc-300" />
+                    <span class="text-xs sm:text-sm font-semibold text-zinc-800 dark:text-zinc-200">{{ __('Location:') }}</span>
+                    <span class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white break-words">{{ $lead->location }}</span>
                 </div>
             @endif
         </div>
@@ -77,7 +77,7 @@
             </div>
         @endif
     @else
-        <flux:text variant="subtle">{{ __('No contact details yet.') }}</flux:text>
+        <span class="text-xs sm:text-sm font-medium text-zinc-600 dark:text-zinc-400">{{ __('No contact details yet.') }}</span>
     @endif
     </div>
 

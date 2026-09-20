@@ -92,10 +92,10 @@
                 </div>
             </div>
 
-            <div class="flex gap-2">
-                <flux:button type="submit" variant="primary" size="sm">{{ __('Save') }}</flux:button>
+            <div class="flex flex-wrap items-center gap-2">
+                <flux:button type="submit" variant="primary" size="sm" class="flex-1 sm:flex-none">{{ __('Save') }}</flux:button>
                 @if ($canEdit)
-                    <flux:button type="button" size="sm" wire:click="cancelEditingDeal">{{ __('Cancel') }}</flux:button>
+                    <flux:button type="button" size="sm" wire:click="cancelEditingDeal" class="flex-1 sm:flex-none">{{ __('Cancel') }}</flux:button>
                 @endif
             </div>
         </form>

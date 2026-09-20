@@ -9,20 +9,22 @@
 
 <div class="flex flex-wrap items-center gap-2">
     @foreach ($lead->tags as $tag)
-        <div wire:key="lead-tag-chip-{{ $tag->id }}" class="inline-flex items-center gap-0.5">
-            <flux:badge size="sm" variant="pill" :color="$tag->color" class="max-w-40 truncate">{{ $tag->name }}</flux:badge>
-            @if ($canUpdate)
-                <flux:button
-                    size="xs"
-                    variant="ghost"
-                    icon="x-mark"
-                    class="!size-4 !p-0"
-                    aria-label="{{ __('Remove tag :tag', ['tag' => $tag->name]) }}"
-                    wire:click="detachTag('{{ $tag->id }}')"
-                    wire:loading.attr="disabled"
-                    wire:target="detachTag('{{ $tag->id }}')"
-                />
-            @endif
+        <div wire:key="lead-tag-chip-{{ $tag->id }}" class="inline-flex items-center">
+            <flux:badge size="sm" variant="pill" :color="$tag->color" class="inline-flex items-center gap-1.5 max-w-56 truncate text-xs font-semibold px-3 py-1 shadow-2xs">
+                <span class="truncate">{{ $tag->name }}</span>
+                @if ($canUpdate)
+                    <button
+                        type="button"
+                        class="inline-flex items-center justify-center size-3.5 rounded-full hover:bg-black/20 dark:hover:bg-white/20 transition-colors cursor-pointer"
+                        aria-label="{{ __('Remove tag :tag', ['tag' => $tag->name]) }}"
+                        wire:click="detachTag('{{ $tag->id }}')"
+                        wire:loading.attr="disabled"
+                        wire:target="detachTag('{{ $tag->id }}')"
+                    >
+                        <flux:icon.x-mark class="size-3" />
+                    </button>
+                @endif
+            </flux:badge>
         </div>
     @endforeach
 
@@ -32,19 +34,19 @@
             managed exclusively at /leads/tags (see LeadTags\Index); this
             picker only ever offers tags that already exist in the
             catalog. --}}
-            <form wire:submit="attachTag" class="flex items-center gap-1">
+            <form wire:submit="attachTag" class="flex items-center gap-1.5">
                 @php
                     $availableTagOptions = collect($this->availableTagsToAttach)
                         ->map(fn ($t) => ['value' => (string) $t->id, 'label' => $t->name])
                         ->toArray();
                 @endphp
                 <x-dropdown-select wire:model="selectedTagId" :placeholder="__('Add tag…')" :options="$availableTagOptions" class="min-w-36" />
-                <flux:button type="submit" size="xs" variant="ghost" icon="plus" aria-label="{{ __('Add tag') }}" />
+                <flux:button type="submit" size="xs" variant="primary" icon="plus" aria-label="{{ __('Add tag') }}" class="font-semibold shadow-2xs" />
             </form>
         @endif
 
         @if ($this->isClientAdmin)
-            <flux:button size="xs" variant="ghost" :href="route('tenant-leads.tags')" wire:navigate>
+            <flux:button size="xs" icon="tag" :href="route('tenant-leads.tags')" wire:navigate class="font-semibold text-xs rounded-full border border-zinc-300 dark:border-zinc-700 bg-white hover:bg-zinc-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs">
                 {{ __('Manage Tags') }}
             </flux:button>
         @endif

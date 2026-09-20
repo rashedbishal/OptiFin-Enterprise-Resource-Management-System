@@ -30,16 +30,16 @@
     <div wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" class="{{ $showSkeletonByDefault ? '!hidden' : '' }} contents">
     <div class="mb-4 flex items-center gap-3">
         <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-700">
-            <flux:icon :icon="$lead->source->type->icon()" class="size-5 text-zinc-500 dark:text-zinc-300" />
+            <flux:icon :icon="$lead->source->type->icon()" class="size-5 text-zinc-600 dark:text-zinc-300" />
         </div>
         <div>
-            <flux:text variant="strong">{{ $lead->source->name }}</flux:text>
-            <flux:text size="sm" variant="subtle">
+            <flux:text variant="strong" class="text-zinc-900 dark:text-white font-semibold">{{ $lead->source->name }}</flux:text>
+            <span class="text-xs sm:text-sm font-medium text-zinc-700 dark:text-zinc-300 block">
                 {{ $lead->source->type->label() }}
                 @if ($lead->created_at)
                     &middot; {{ $lead->created_at->diffForHumans() }}
                 @endif
-            </flux:text>
+            </span>
         </div>
     </div>
 
@@ -72,7 +72,7 @@
         >
             @foreach ($timeline as $item)
                 @if ($item['type'] === 'text')
-                    <flux:text class="whitespace-pre-line">{{ $item['text'] }}</flux:text>
+                    <flux:text class="whitespace-pre-line text-zinc-900 dark:text-zinc-100 font-medium">{{ $item['text'] }}</flux:text>
                 @else
                     @include('livewire.tenant.leads.partials.attachment-item', ['lead' => $lead, 'attachment' => $item['attachment']])
                 @endif
@@ -87,9 +87,9 @@
         <flux:separator class="mb-4" />
 
         @if ($lead->source_data['form_name'] ?? null)
-            <flux:text size="sm" variant="subtle" class="mb-3 block">
+            <span class="mb-3 block text-xs sm:text-sm font-semibold text-zinc-700 dark:text-zinc-300">
                 {{ __('Submitted via :form', ['form' => $lead->source_data['form_name']]) }}
-            </flux:text>
+            </span>
         @endif
 
         @php $fieldValues = $lead->leadAdFieldValues(); @endphp
@@ -97,15 +97,15 @@
             <dl class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 @foreach ($fieldValues as $field => $value)
                     <div class="min-w-0">
-                        <dt class="text-[10px] font-medium tracking-wide text-zinc-400 uppercase dark:text-zinc-500">
+                        <dt class="text-xs font-semibold tracking-wide text-zinc-600 uppercase dark:text-zinc-400">
                             {{ ucwords(str_replace('_', ' ', $field)) }}
                         </dt>
-                        <dd class="text-sm break-words text-zinc-700 dark:text-zinc-200">{{ $value }}</dd>
+                        <dd class="text-sm font-medium break-words text-zinc-900 dark:text-white">{{ $value }}</dd>
                     </div>
                 @endforeach
             </dl>
         @else
-            <flux:text size="sm" variant="subtle">{{ __('No additional field data was submitted with this lead.') }}</flux:text>
+            <span class="text-xs sm:text-sm font-medium text-zinc-600 dark:text-zinc-400">{{ __('No additional field data was submitted with this lead.') }}</span>
         @endif
     @elseif ($lead->message || $lead->html_body || $lead->attachments->isNotEmpty())
         <flux:separator class="mb-4" />
@@ -136,7 +136,7 @@
             website form's message field can be arbitrarily long) shouldn't
             be able to blow out the whole card's height uncapped. --}}
             <div class="{{ $compact ? 'max-h-48' : 'max-h-96' }} overflow-y-auto pe-1">
-                <flux:text class="whitespace-pre-line">{{ $lead->message }}</flux:text>
+                <flux:text class="whitespace-pre-line text-zinc-900 dark:text-zinc-100 font-medium">{{ $lead->message }}</flux:text>
             </div>
         @endif
 
@@ -163,15 +163,15 @@
         @if (count($extraFieldValues) > 0)
             <flux:separator class="mb-4 mt-4" />
 
-            <flux:text size="sm" variant="subtle" class="mb-3 block">{{ __('Additional Details') }}</flux:text>
+            <span class="mb-3 block text-xs sm:text-sm font-semibold text-zinc-800 dark:text-zinc-200">{{ __('Additional Details') }}</span>
 
             <dl class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 @foreach ($extraFieldValues as $field => $value)
                     <div class="min-w-0">
-                        <dt class="text-[10px] font-medium tracking-wide text-zinc-400 uppercase dark:text-zinc-500">
+                        <dt class="text-xs font-semibold tracking-wide text-zinc-600 uppercase dark:text-zinc-400">
                             {{ ucwords(str_replace(['_', '-'], ' ', $field)) }}
                         </dt>
-                        <dd class="text-sm break-words text-zinc-700 dark:text-zinc-200">{{ $value }}</dd>
+                        <dd class="text-sm font-medium break-words text-zinc-900 dark:text-white">{{ $value }}</dd>
                     </div>
                 @endforeach
             </dl>
