@@ -41,7 +41,7 @@
                         <flux:icon :icon="$hasCompany ? 'building-office' : 'user'" class="size-4 text-zinc-500 sm:size-5 dark:text-zinc-300" />
                     </div>
                 @endif
-                <div>
+                <div class="min-w-0 flex-1">
                     {{-- A plain element rather than flux:heading size="xl" —
                     the size prop only takes a single fixed value, so it
                     can't shrink on mobile and grow back at sm+ the way this
