@@ -69,25 +69,25 @@
         x-transition:leave="transition duration-800 ease-[var(--motion-ease-premium)]"
         x-transition:leave-start="opacity-100 scale-100 translate-y-0"
         x-transition:leave-end="opacity-0 scale-95 -translate-y-2"
-        class="absolute right-0 z-50 mt-2 w-80 origin-top-right rounded-xl border border-zinc-200/70 bg-white shadow-xl backdrop-blur-sm sm:w-96 dark:border-zinc-700/70 dark:bg-zinc-900"
+        class="absolute right-0 z-50 mt-2 w-[calc(100vw-2rem)] sm:w-96 max-w-[calc(100vw-2rem)] sm:max-w-none origin-top-right rounded-xl border border-zinc-200/70 bg-white shadow-xl backdrop-blur-sm dark:border-zinc-700/70 dark:bg-zinc-900"
     >
-        <div class="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-700">
-            <flux:heading size="sm">{{ __('Notifications') }}</flux:heading>
-            <div class="flex items-center gap-3">
+        <div class="flex items-center justify-between gap-2.5 border-b border-zinc-200 px-3.5 py-3 dark:border-zinc-700 sm:px-4">
+            <flux:heading size="sm" class="shrink-0 font-semibold">{{ __('Notifications') }}</flux:heading>
+            <div class="flex flex-wrap items-center justify-end gap-2 text-xs">
                 @if ($this->unreadCount > 0)
-                    <button type="button" wire:click="markAllAsRead" class="cursor-pointer text-xs font-medium text-accent hover:underline">
+                    <button type="button" wire:click="markAllAsRead" class="cursor-pointer font-medium text-accent hover:underline">
                         {{ __('Mark all as read') }}
                     </button>
                 @endif
                 @if (count($this->notifications) > 0)
-                    <button type="button" wire:click="confirmClearAll" class="cursor-pointer text-xs font-medium text-zinc-400 hover:text-red-500 dark:hover:text-red-400">
+                    <button type="button" wire:click="confirmClearAll" class="cursor-pointer font-medium text-zinc-400 hover:text-red-500 dark:hover:text-red-400">
                         {{ __('Clear all') }}
                     </button>
                 @endif
             </div>
         </div>
 
-        <div class="max-h-96 overflow-y-auto">
+        <div class="max-h-[calc(100dvh-10rem)] sm:max-h-96 overflow-y-auto">
             {{-- Real content: hidden by default until notificationsLoaded
             (see $notificationsLoaded's docblock — the dropdown can be
             open, via Alpine, before the server has confirmed any fetch at
