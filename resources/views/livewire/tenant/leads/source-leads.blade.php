@@ -4,11 +4,11 @@
 ]])
 
 <div class="flex flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8 overflow-y-auto min-h-0" wire:init="completeInitialLoad">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-wrap items-center justify-between gap-2">
         <flux:heading size="xl" class="hidden lg:block">{{ $this->leadSource->name }}</flux:heading>
-        <div class="flex gap-2">
-            <flux:button icon="arrow-down-tray" wire:click="downloadXlsx">{{ __('Download XLSX') }}</flux:button>
-            <flux:button :href="route('tenant-leads.index')" wire:navigate>{{ __('Back to Leads') }}</flux:button>
+        <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <flux:button icon="arrow-down-tray" size="sm" wire:click="downloadXlsx" class="flex-1 sm:flex-none">{{ __('Download XLSX') }}</flux:button>
+            <flux:button size="sm" :href="route('tenant-leads.index')" wire:navigate class="flex-1 sm:flex-none">{{ __('Back to Leads') }}</flux:button>
         </div>
     </div>
 

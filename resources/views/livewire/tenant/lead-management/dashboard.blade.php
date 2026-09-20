@@ -25,14 +25,14 @@
                 </div>
             </div>
 
-            <div class="flex flex-wrap items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                 @if ($this->canCreateLead)
-                    <flux:button icon="arrow-up-tray" size="sm" :href="route('tenant-lead-imports.index')" wire:navigate>
+                    <flux:button icon="arrow-up-tray" size="sm" :href="route('tenant-lead-imports.index')" wire:navigate class="w-full sm:w-auto">
                         {{ __('Import Leads') }}
                     </flux:button>
                 @endif
                 @if ($this->isClientAdmin)
-                    <flux:button icon="chart-bar" size="sm" :href="route('tenant-leads.reports')" wire:navigate>
+                    <flux:button icon="chart-bar" size="sm" :href="route('tenant-leads.reports')" wire:navigate class="w-full sm:w-auto">
                         {{ __('Reports & Analytics') }}
                     </flux:button>
                 @endif

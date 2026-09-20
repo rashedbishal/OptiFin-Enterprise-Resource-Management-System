@@ -3,13 +3,13 @@
 <div class="relative flex min-w-0 flex-1 flex-col h-full min-h-0 overflow-hidden" wire:init="completeInitialLoad">
     {{-- Header: heading, actions, and filters stay fixed at top. --}}
     <div class="shrink-0 z-10 flex flex-col gap-2 bg-white px-4 py-3 lg:gap-3.5 lg:px-8 lg:py-4 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
-        <div class="flex items-center justify-between gap-2">
+        <div class="flex flex-wrap items-center justify-between gap-2">
             <flux:heading size="lg" class="hidden lg:block lg:text-2xl font-semibold">{{ __('Leads') }}</flux:heading>
-            <div class="flex items-center gap-1.5 sm:gap-2">
+            <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
                 @if ($this->canCreateLead)
-                    <flux:button variant="primary" icon="plus" size="sm" wire:click="createLead">{{ __('New Lead') }}</flux:button>
+                    <flux:button variant="primary" icon="plus" size="sm" wire:click="createLead" class="flex-1 sm:flex-none">{{ __('New Lead') }}</flux:button>
                 @endif
-                <flux:button icon="arrow-down-tray" size="sm" wire:click="export">{{ __('Export CSV') }}</flux:button>
+                <flux:button icon="arrow-down-tray" size="sm" wire:click="export" class="flex-1 sm:flex-none">{{ __('Export CSV') }}</flux:button>
             </div>
         </div>
 

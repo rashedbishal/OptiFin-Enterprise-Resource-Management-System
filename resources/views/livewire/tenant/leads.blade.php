@@ -12,15 +12,17 @@
 >
     {{-- Header: heading, actions, and filters stay fixed at top. --}}
     <div class="shrink-0 z-10 flex flex-col gap-2 bg-white px-4 py-3 lg:gap-3.5 lg:px-8 lg:py-4 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700">
-        <div class="flex items-center justify-between gap-2">
+        <div class="flex flex-wrap items-center justify-between gap-2">
             <flux:heading size="lg" class="hidden lg:block lg:text-2xl font-semibold">{{ __('Leads') }}</flux:heading>
-            <div class="flex items-center gap-1.5 sm:gap-2">
+            <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 w-full sm:w-auto">
+                <div class="flex items-center gap-1.5 sm:gap-2 flex-1 sm:flex-initial min-w-0">
+                    @if ($this->canCreateLead)
+                        <flux:button variant="primary" icon="plus" size="sm" wire:click="createLead" class="flex-1 sm:flex-none">{{ __('New Lead') }}</flux:button>
+                    @endif
+                    <flux:button icon="arrow-down-tray" size="sm" wire:click="export" class="flex-1 sm:flex-none">{{ __('Export CSV') }}</flux:button>
+                </div>
                 @if ($this->canCreateLead)
-                    <flux:button variant="primary" icon="plus" size="sm" wire:click="createLead">{{ __('New Lead') }}</flux:button>
-                @endif
-                <flux:button icon="arrow-down-tray" size="sm" wire:click="export">{{ __('Export CSV') }}</flux:button>
-                @if ($this->canCreateLead)
-                    <flux:button icon="arrow-up-tray" size="sm" :href="route('tenant-lead-imports.index')" wire:navigate>{{ __('Import Leads') }}</flux:button>
+                    <flux:button icon="arrow-up-tray" size="sm" :href="route('tenant-lead-imports.index')" wire:navigate class="w-full sm:w-auto flex-initial">{{ __('Import Leads') }}</flux:button>
                 @endif
             </div>
         </div>
@@ -149,7 +151,7 @@
 
         @if ($this->isClientAdmin)
             <div class="flex flex-wrap items-center gap-x-8 gap-y-3">
-                <div class="flex items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2">
                     <flux:switch :checked="auth()->user()->tenant->meeting_alert_enabled" wire:click="toggleMeetingAlert" />
                     <flux:text>{{ __('Meeting date alerts') }}</flux:text>
                     @if (auth()->user()->tenant->meeting_alert_enabled)
@@ -159,7 +161,7 @@
                     @endif
                 </div>
 
-                <div class="flex items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2">
                     <flux:switch :checked="auth()->user()->tenant->followup_alert_enabled" wire:click="toggleFollowUpAlert" />
                     <flux:text>{{ __('Next follow-up alerts') }}</flux:text>
                     @if (auth()->user()->tenant->followup_alert_enabled)
@@ -169,7 +171,7 @@
                     @endif
                 </div>
 
-                <div class="flex items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2">
                     <flux:switch :checked="auth()->user()->tenant->task_alert_enabled" wire:click="toggleTaskAlert" />
                     <flux:text>{{ __('Task due-date alerts') }}</flux:text>
                     @if (auth()->user()->tenant->task_alert_enabled)
@@ -179,7 +181,7 @@
                     @endif
                 </div>
 
-                <div class="flex items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2">
                     <flux:switch :checked="auth()->user()->tenant->lead_nurturing_notify_enabled" wire:click="toggleNurturingNotify" />
                     <flux:text>{{ __('Inactivity notification') }}</flux:text>
                     <flux:switch :checked="auth()->user()->tenant->lead_nurturing_task_enabled" wire:click="toggleNurturingTask" />
@@ -532,8 +534,8 @@
             </div>
 
             {{-- Desktop / Tablet Table View (hidden sm:block) --}}
-            <div class="hidden sm:block">
-                <div class="max-h-[calc(100dvh-18rem)] overflow-y-auto">
+            <div class="hidden sm:block min-w-0 max-w-full">
+                <div class="max-h-[calc(100dvh-18rem)] overflow-x-auto overflow-y-auto">
                 <flux:table>
                     {{-- flux:table renders table-fixed (see vendor Flux's
                     table/index.blade.php) with no explicit column widths, so
