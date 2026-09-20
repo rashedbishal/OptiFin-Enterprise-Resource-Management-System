@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\LeadAttachmentController;
+use App\Http\Controllers\LeadMessageAttachmentController;
 use App\Http\Controllers\NotificationRedirectController;
 use App\Livewire\Tenant\Dashboard;
 use App\Livewire\Tenant\LeadCustomFields\Index as LeadCustomFieldsIndex;
@@ -47,6 +48,7 @@ Route::middleware(['auth', 'verified', 'tenant.identify', 'tenant.active'])->gro
         Route::livewire('leads/import/{leadImport}', LeadImportsShow::class)->name('tenant-lead-imports.show');
         Route::livewire('leads/{lead}', LeadsShow::class)->name('tenant-leads.show');
         Route::get('leads/{lead}/attachments/{attachment}', [LeadAttachmentController::class, 'download'])->name('tenant-leads.attachment.download');
+        Route::get('leads/{lead}/messages/{message}/attachment', [LeadMessageAttachmentController::class, 'show'])->name('tenant-leads.message-attachment');
     });
 });
 

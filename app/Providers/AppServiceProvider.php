@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Enums\LeadSourceType;
+use App\Enums\MessageChannel;
 use App\Enums\TenantStatus;
 use App\Models\Lead;
 use App\Models\LeadSource;
@@ -42,6 +43,7 @@ class AppServiceProvider extends ServiceProvider
         $this->configureDefaults();
         $this->configureAuthorization();
         $this->configureRateLimiting();
+        $this->configureUploads();
     }
 
     /**
@@ -70,6 +72,20 @@ class AppServiceProvider extends ServiceProvider
      * tenant's several forms from one IP. Thresholds are reasonable Phase 1
      * defaults, not deeply researched — easily tunable later.
      */
+    /**
+     * Livewire's temporary-upload pre-check defaults to 12 MB, below the
+     * 25 MB PDF ceiling (MessageChannel::MAX_DOCUMENT_BYTES) the composer
+     * allows — raised to that ceiling plus 5 MB of headroom, so a file just
+     * over a channel's limit reaches the composer's own, specific
+     * "allows up to N MB" message instead of Livewire's generic upload
+     * failure. Every component still applies its own, stricter validation
+     * after the upload (e.g. the CSV import's 10 MB).
+     */
+    protected function configureUploads(): void
+    {
+        config(['livewire.temporary_file_upload.rules' => ['required', 'file', 'max:'.intdiv(MessageChannel::MAX_DOCUMENT_BYTES + 5 * 1024 * 1024, 1024)]]);
+    }
+
     protected function configureRateLimiting(): void
     {
         RateLimiter::for('website-form-per-form', function (Request $request): Limit {

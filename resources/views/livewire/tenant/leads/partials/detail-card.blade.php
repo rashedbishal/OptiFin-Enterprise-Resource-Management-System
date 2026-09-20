@@ -68,14 +68,72 @@
                 }).observe($el);
                 new MutationObserver(() => { $el.scrollTop = $el.scrollHeight; }).observe($el, { childList: true, subtree: true });
             "
-            class="flex {{ $compact ? 'max-h-48' : 'max-h-96' }} flex-col gap-3 overflow-y-auto pe-1"
+            class="flex {{ $compact ? 'max-h-48' : 'max-h-96' }} flex-col gap-2.5 overflow-y-auto pe-1"
         >
+            {{-- Messenger-style feed: what the customer sent (and every
+            attachment, which only ever arrives inbound) sits on the left in
+            a neutral bubble; what this business sent sits on the right in a
+            blue bubble, with its delivery status under it. Presentation
+            only — the order, the data and the scroll behavior above are
+            unchanged. --}}
             @foreach ($timeline as $item)
-                @if ($item['type'] === 'text')
-                    <flux:text class="whitespace-pre-line text-zinc-900 dark:text-zinc-100 font-medium">{{ $item['text'] }}</flux:text>
-                @else
-                    @include('livewire.tenant.leads.partials.attachment-item', ['lead' => $lead, 'attachment' => $item['attachment']])
-                @endif
+                @php
+                    $outgoing = $item['type'] !== 'attachment' && $item['direction'] === \App\Enums\MessageDirection::Outbound;
+                    $sentAt = $item['at'] ?? null;
+                @endphp
+
+                <div class="flex max-w-[85%] flex-col gap-0.5 {{ $outgoing ? 'items-end self-end' : 'items-start self-start' }}">
+                    @if ($item['type'] === 'text')
+                        <div @class([
+                            'rounded-2xl px-3.5 py-2 text-sm break-words whitespace-pre-line',
+                            'rounded-br-md bg-blue-600 text-white' => $outgoing,
+                            'rounded-bl-md bg-zinc-100 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100' => ! $outgoing,
+                        ])><span class="sr-only">{{ $outgoing ? __('You') : __('Customer') }}:</span>{{ $item['text'] }}</div>
+                    @elseif ($item['type'] === 'media')
+                        @php
+                            $mediaUrl = route('tenant-leads.message-attachment', [$lead, $item['media']['message_id']]);
+                        @endphp
+                        <div class="rounded-2xl rounded-br-md bg-blue-600 p-1.5 text-sm break-words text-white">
+                            <span class="sr-only">{{ __('You') }}:</span>
+                            @if ($item['media']['kind'] === 'image')
+                                <a href="{{ $mediaUrl }}" target="_blank" rel="noopener">
+                                    <img src="{{ $mediaUrl }}" alt="{{ $item['media']['name'] }}" loading="lazy" class="max-h-64 w-auto max-w-full rounded-xl object-cover">
+                                </a>
+                            @else
+                                <a href="{{ $mediaUrl }}" target="_blank" rel="noopener" class="flex items-center gap-2 rounded-xl bg-blue-700/60 px-3 py-2 hover:underline">
+                                    <flux:icon icon="document-text" class="size-5 shrink-0" />
+                                    <span class="min-w-0">
+                                        <span class="block truncate font-medium">{{ $item['media']['name'] }}</span>
+                                        <span class="block text-xs opacity-80">{{ collect(['PDF', $item['media']['size'] ? \App\Services\OutboundMediaStorage::humanSize($item['media']['size']) : null])->filter()->implode(' · ') }}</span>
+                                    </span>
+                                </a>
+                            @endif
+                            @if (filled($item['text']))
+                                <div class="px-2 pt-1.5 pb-0.5 whitespace-pre-line">{{ $item['text'] }}</div>
+                            @endif
+                        </div>
+                    @else
+                        <div class="rounded-2xl rounded-bl-md bg-zinc-100 px-3.5 py-2 text-sm dark:bg-zinc-700">
+                            @include('livewire.tenant.leads.partials.attachment-item', ['lead' => $lead, 'attachment' => $item['attachment']])
+                        </div>
+                    @endif
+
+                    @php
+                        // "Sent by <name>" replaces the bare "Sent" status; any
+                        // other status (Pending/Delivered/Read/Failed) still shows.
+                        $status = $outgoing ? $item['status'] : null;
+                        $sender = $outgoing ? $item['sender'] : null;
+                        $caption = collect([
+                            $sender ? __('Sent by :name', ['name' => $sender]) : null,
+                            $status && ! ($sender && $status === \App\Enums\MessageStatus::Sent) ? __($status->label()) : null,
+                        ])->filter()->implode(' · ');
+                    @endphp
+                    @if ($sentAt || $caption !== '')
+                        <span class="px-1 text-[11px] text-zinc-400 dark:text-zinc-500" @if ($sentAt) title="{{ $sentAt->format('M j, Y g:i A') }}" @endif>
+                            {{ collect([$sentAt?->diffForHumans(), $caption])->filter()->implode(' · ') }}
+                        </span>
+                    @endif
+                </div>
             @endforeach
         </div>
     @elseif ($lead->isFacebookLeadAd())

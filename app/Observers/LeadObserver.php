@@ -19,7 +19,13 @@ class LeadObserver
     {
         $paths = $lead->attachments()->whereNotNull('path')->pluck('path');
 
-        Storage::disk('local')->delete($paths->all());
+        // Same reasoning for outbound image/PDF replies: the Message rows
+        // cascade away with the lead, so their files are read first. A
+        // merged-away lead's messages were already reparented onto the
+        // survivor, so nothing the survivor still needs is ever touched.
+        $outboundPaths = $lead->messages()->whereNotNull('attachment_path')->pluck('attachment_path');
+
+        Storage::disk('local')->delete($paths->merge($outboundPaths)->all());
     }
 
     /**

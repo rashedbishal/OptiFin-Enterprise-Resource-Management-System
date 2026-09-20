@@ -36,6 +36,10 @@ use Illuminate\Support\Carbon;
  * @property MessageStatus|null $status
  * @property Carbon|null $status_updated_at
  * @property string|null $failure_reason
+ * @property string|null $attachment_path
+ * @property string|null $attachment_mime
+ * @property string|null $attachment_name
+ * @property int|null $attachment_size
  * @property string|null $resend_message_id
  * @property string|null $sent_by
  * @property array<string, mixed>|null $metadata
@@ -48,6 +52,7 @@ use Illuminate\Support\Carbon;
     'tenant_id', 'conversation_id', 'lead_id', 'channel', 'direction', 'message_type', 'body',
     'external_message_id', 'external_participant_id', 'status', 'status_updated_at',
     'failure_reason', 'sent_by', 'metadata',
+    'attachment_path', 'attachment_mime', 'attachment_name', 'attachment_size',
 ])]
 class Message extends Model
 {
@@ -67,6 +72,16 @@ class Message extends Model
             'status_updated_at' => 'datetime',
             'metadata' => 'array',
         ];
+    }
+
+    /**
+     * True for an outbound Image/Document message whose file is stored on
+     * the private `local` disk (see App\Services\OutboundMediaStorage).
+     */
+    public function hasMedia(): bool
+    {
+        return in_array($this->message_type, [MessageType::Image, MessageType::Document], true)
+            && $this->attachment_path !== null;
     }
 
     /**

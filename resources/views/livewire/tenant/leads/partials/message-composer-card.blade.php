@@ -20,10 +20,37 @@
 
         @if ($canUpdate)
             @if ($eligibility && $eligibility->eligible)
-                <form wire:submit="sendMessage" class="flex flex-col gap-2">
+                @php
+                    $pendingUpload = $this->imageUpload ?? $this->pdfUpload;
+                    $uploadTargets = 'imageUpload,pdfUpload';
+                @endphp
+                <form wire:submit="sendMessage" x-data class="flex flex-col gap-2">
                     <flux:textarea wire:model="newMessageBody" :placeholder="__('Type a reply…')" rows="3" />
-                    <div class="flex justify-end">
-                        <flux:button type="submit" variant="primary" size="sm">{{ __('Send') }}</flux:button>
+                    @error('newMessageBody') <flux:text size="sm" class="text-red-600 dark:text-red-400">{{ $message }}</flux:text> @enderror
+
+                    @if ($pendingUpload)
+                        <div class="flex items-center justify-between gap-2 rounded-lg bg-zinc-100 px-3 py-2 dark:bg-zinc-700">
+                            <div class="flex min-w-0 items-center gap-2">
+                                <flux:icon :icon="$this->imageUpload ? 'photo' : 'document-text'" class="size-5 shrink-0" />
+                                <span class="truncate text-sm">{{ $pendingUpload->getClientOriginalName() }}</span>
+                                <span class="shrink-0 text-xs text-zinc-500">{{ \App\Services\OutboundMediaStorage::humanSize((int) $pendingUpload->getSize()) }}</span>
+                            </div>
+                            <flux:button type="button" size="xs" variant="ghost" icon="x-mark" wire:click="removeUpload" :aria-label="__('Remove file')" />
+                        </div>
+                    @endif
+
+                    @error('imageUpload') <flux:text size="sm" class="text-red-600 dark:text-red-400">{{ $message }}</flux:text> @enderror
+                    @error('pdfUpload') <flux:text size="sm" class="text-red-600 dark:text-red-400">{{ $message }}</flux:text> @enderror
+                    <flux:text size="sm" variant="subtle" wire:loading wire:target="{{ $uploadTargets }}">{{ __('Uploading…') }}</flux:text>
+
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-2">
+                            <input type="file" class="hidden" x-ref="imageInput" wire:model="imageUpload" accept="{{ implode(',', $channel->imageMimeTypes()) }}">
+                            <input type="file" class="hidden" x-ref="pdfInput" wire:model="pdfUpload" accept="application/pdf">
+                            <flux:button type="button" size="sm" icon="photo" x-on:click="$refs.imageInput.value = ''; $refs.imageInput.click()">{{ __('Image') }}</flux:button>
+                            <flux:button type="button" size="sm" icon="document-text" x-on:click="$refs.pdfInput.value = ''; $refs.pdfInput.click()">{{ __('PDF') }}</flux:button>
+                        </div>
+                        <flux:button type="submit" variant="primary" size="sm" wire:loading.attr="disabled" wire:target="{{ $uploadTargets }}">{{ __('Send') }}</flux:button>
                     </div>
                 </form>
             @else
@@ -42,7 +69,15 @@
                 @foreach ($this->outboundMessages as $message)
                     <div class="flex items-start justify-between gap-2" wire:key="outbound-message-{{ $message->id }}">
                         <div>
-                            <flux:text>{{ $message->body }}</flux:text>
+                            @if ($message->hasMedia())
+                                <a href="{{ route('tenant-leads.message-attachment', [$this->lead, $message]) }}" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline dark:text-blue-400">
+                                    <flux:icon :icon="$message->message_type === \App\Enums\MessageType::Image ? 'photo' : 'document-text'" class="size-4" />
+                                    {{ $message->attachment_name }}
+                                </a>
+                            @endif
+                            @if (filled($message->body))
+                                <flux:text>{{ $message->body }}</flux:text>
+                            @endif
                             <flux:text size="sm" variant="subtle">
                                 {{ $message->sentBy?->name ?? __('System') }} · {{ $message->created_at?->diffForHumans() }}
                             </flux:text>

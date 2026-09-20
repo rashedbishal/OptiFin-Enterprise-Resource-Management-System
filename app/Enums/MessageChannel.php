@@ -13,6 +13,9 @@ namespace App\Enums;
  */
 enum MessageChannel: string
 {
+    /** Ceiling for an outbound PDF on any channel: 25 MB. */
+    public const int MAX_DOCUMENT_BYTES = 25 * 1024 * 1024;
+
     case Whatsapp = 'whatsapp';
     case Messenger = 'messenger';
     case Instagram = 'instagram';
@@ -72,5 +75,71 @@ enum MessageChannel: string
             self::Messenger => 24,
             self::Instagram => 24,
         };
+    }
+
+    /**
+     * Outbound media rules, per channel, from Meta's current documentation
+     * (WhatsApp Cloud API media/document messages; Messenger Send API and
+     * Attachment Upload API; Instagram Messaging API, both Facebook Login
+     * and Instagram Login — confirmed with Meta 2026-09). Deliberately the
+     * conservative reading where the docs and behaviour disagree
+     * (Instagram gif is not offered), and PDFs are capped at
+     * MAX_DOCUMENT_BYTES on every channel even where Meta allows more
+     * (WhatsApp: 100 MB), so one upload never ties up a web request or a
+     * queue worker for minutes. Each channel stays its own value so a
+     * future Meta change to one never silently affects the others.
+     *
+     * @return array<int, string>
+     */
+    public function imageMimeTypes(): array
+    {
+        return match ($this) {
+            self::Whatsapp => ['image/jpeg', 'image/png'],
+            self::Messenger => ['image/jpeg', 'image/png', 'image/gif'],
+            self::Instagram => ['image/jpeg', 'image/png'],
+        };
+    }
+
+    public function imageMaxBytes(): int
+    {
+        return match ($this) {
+            self::Whatsapp => 5 * 1024 * 1024,
+            self::Messenger => 25 * 1024 * 1024,
+            self::Instagram => 8 * 1024 * 1024,
+        };
+    }
+
+    /**
+     * PDF only — the one document type all three channels accept.
+     *
+     * @return array<int, string>
+     */
+    public function documentMimeTypes(): array
+    {
+        return ['application/pdf'];
+    }
+
+    public function documentMaxBytes(): int
+    {
+        return match ($this) {
+            self::Whatsapp => self::MAX_DOCUMENT_BYTES,
+            self::Messenger => self::MAX_DOCUMENT_BYTES,
+            self::Instagram => self::MAX_DOCUMENT_BYTES,
+        };
+    }
+
+    /**
+     * Whether the platform lets a caption travel inside the same message as
+     * the media. WhatsApp does (max 1024 chars); Messenger and Instagram
+     * do not — a text and a file there are always two separate messages.
+     */
+    public function supportsMediaCaption(): bool
+    {
+        return $this === self::Whatsapp;
+    }
+
+    public function mediaCaptionMaxLength(): int
+    {
+        return 1024;
     }
 }

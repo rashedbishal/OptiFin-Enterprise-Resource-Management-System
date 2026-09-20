@@ -3,6 +3,7 @@
 namespace App\Contracts;
 
 use App\Models\Conversation;
+use App\Models\Message;
 use App\Support\SendResult;
 
 /**
@@ -21,4 +22,16 @@ use App\Support\SendResult;
 interface MessageSenderInterface
 {
     public function send(Conversation $conversation, string $body): SendResult;
+
+    /**
+     * Sends one already-stored image/PDF Message (see
+     * OutboundMediaStorage) — same "credentials read fresh, confirmed
+     * platform rejection is a SendResult::failure(), a network exception
+     * is left uncaught for the job's retry handling" contract as send().
+     * Any caption travels in the same platform message only where the
+     * channel supports it (MessageChannel::supportsMediaCaption()) —
+     * otherwise the Message's body is null and the text was sent as its
+     * own, separate Message.
+     */
+    public function sendMedia(Conversation $conversation, Message $message): SendResult;
 }

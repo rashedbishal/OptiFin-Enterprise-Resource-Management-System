@@ -316,17 +316,23 @@ class Lead extends Model
      * a legacy counterpart in the first place) is always shown in full.
      * No historical backfill — a lead that never received a single
      * dual-written message simply has no cutover point, so every legacy
-     * entry is kept. Each entry gains two new, always-present keys
-     * (`direction`, `status`) a caller can ignore entirely and get the
-     * exact old two-key shape it always returned.
+     * entry is kept. Each entry gains three new, always-present keys
+     * (`direction`, `status`, `sender`) a caller can ignore entirely and
+     * get the exact old two-key shape it always returned. `sender` is the
+     * sending TenantUser's name for an outbound reply, null otherwise.
+     * An outbound image/PDF reply is an entry too, with a non-null `media`
+     * (its message id, kind, name and size) and `text` set to its caption,
+     * which is null when it has none; every text entry has `media` null.
      *
-     * @return array<int, array{text: string, at: CarbonInterface, direction: MessageDirection, status: mixed}>
+     * @return array<int, array{text: string|null, at: CarbonInterface, direction: MessageDirection, status: mixed, sender: string|null, media: array{message_id: string, kind: string, name: string|null, size: int|null}|null}>
      */
     public function messageTimeline(): array
     {
         $normalized = $this->messages()
-            ->where('message_type', MessageType::Text)
-            ->whereNotNull('body')
+            ->where(fn ($query) => $query
+                ->where(fn ($text) => $text->where('message_type', MessageType::Text)->whereNotNull('body'))
+                ->orWhere(fn ($media) => $media->whereIn('message_type', [MessageType::Image, MessageType::Document])->whereNotNull('attachment_path')))
+            ->with('sentBy:id,name')
             ->orderBy('created_at')
             ->get();
 
@@ -335,6 +341,13 @@ class Lead extends Model
             'at' => $message->created_at ?? now(),
             'direction' => $message->direction,
             'status' => $message->status,
+            'sender' => $message->sentBy?->name,
+            'media' => $message->hasMedia() ? [
+                'message_id' => $message->id,
+                'kind' => $message->message_type === MessageType::Image ? 'image' : 'document',
+                'name' => $message->attachment_name,
+                'size' => $message->attachment_size,
+            ] : null,
         ]);
 
         $earliestDualWriteAt = $normalized
@@ -351,7 +364,7 @@ class Lead extends Model
                     : $this->parseMessagingTimelineEntry($entry))
                 ->filter(fn (array $entry): bool => $entry['text'] !== null)
                 ->filter(fn (array $entry): bool => $earliestDualWriteAt === null || $entry['at']->lt($earliestDualWriteAt))
-                ->map(fn (array $entry): array => array_merge($entry, ['direction' => MessageDirection::Inbound, 'status' => null]))
+                ->map(fn (array $entry): array => array_merge($entry, ['direction' => MessageDirection::Inbound, 'status' => null, 'sender' => null, 'media' => null]))
             : collect();
 
         return $legacyEntries->concat($normalizedEntries)->sortBy('at')->values()->all();

@@ -55,26 +55,33 @@ use App\Services\LeadDuplicateDetectionService;
 use App\Services\LeadMergeService;
 use App\Services\LeadScoringService;
 use App\Services\OutboundEligibilityService;
+use App\Services\OutboundMediaStorage;
 use App\Support\EligibilityResult;
 use Carbon\CarbonInterface;
+use Closure;
 use Flux\Flux;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
 use Livewire\Component;
+use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
+use Livewire\WithFileUploads;
 
 #[Title('Lead Details')]
 class Show extends Component
 {
-    use ConfirmsLeadDeletionPassword;
+    use ConfirmsLeadDeletionPassword, WithFileUploads;
 
     /**
      * Human labels for the CRM fields Contact/Company/Deal-form edits can
@@ -122,6 +129,16 @@ class Show extends Component
      * sendMessage() call, same pattern as $newNote after addNote().
      */
     public string $newMessageBody = '';
+
+    /**
+     * The composer's pending outbound file — at most one of the two is ever
+     * set (choosing one clears the other), each validated against the
+     * lead's own channel the moment it's picked and again, authoritatively,
+     * inside sendMessage(). See MessageChannel's media-rule methods.
+     */
+    public ?TemporaryUploadedFile $imageUpload = null;
+
+    public ?TemporaryUploadedFile $pdfUpload = null;
 
     /**
      * The "Add tag" picker's currently-selected tag, bound to a dropdown
@@ -1066,7 +1083,15 @@ class Show extends Component
      * in the conversation — a thread can carry several of each over time,
      * and neither alone reflects that order on its own.
      *
-     * @return array<int, array{type: 'text', text: string, at: CarbonInterface}|array{type: 'attachment', attachment: LeadAttachment, at: CarbonInterface}>
+     * Each text entry also carries the direction (and, for outbound, the
+     * delivery status) messageTimeline() already computes, purely so the
+     * Details card can render the feed as a chat (incoming left, sent right)
+     * — read-only passthrough, nothing here depends on it.
+     *
+     * An outbound image/PDF reply is a `media` item (the file's message id,
+     * kind, name and size, plus its optional caption as `text`).
+     *
+     * @return array<int, array{type: 'text'|'media', text: string|null, at: CarbonInterface, direction: MessageDirection, status: MessageStatus|null, sender: string|null, media: array{message_id: string, kind: string, name: string|null, size: int|null}|null}|array{type: 'attachment', attachment: LeadAttachment, at: CarbonInterface}>
      */
     #[Computed]
     public function timeline(): array
@@ -1074,7 +1099,15 @@ class Show extends Component
         $items = [];
 
         foreach ($this->lead->messageTimeline() as $entry) {
-            $items[] = ['type' => 'text', 'text' => $entry['text'], 'at' => $entry['at']];
+            $items[] = [
+                'type' => $entry['media'] === null ? 'text' : 'media',
+                'text' => $entry['text'],
+                'at' => $entry['at'],
+                'direction' => $entry['direction'],
+                'status' => $entry['status'],
+                'sender' => $entry['sender'],
+                'media' => $entry['media'],
+            ];
         }
 
         foreach ($this->lead->attachments as $attachment) {
@@ -2192,6 +2225,93 @@ class Show extends Component
 
     private const int OUTBOUND_MESSAGES_PER_TENANT_PER_MINUTE = 100;
 
+    public function updatedImageUpload(): void
+    {
+        $this->acceptUpload('imageUpload', 'pdfUpload', MessageType::Image);
+    }
+
+    public function updatedPdfUpload(): void
+    {
+        $this->acceptUpload('pdfUpload', 'imageUpload', MessageType::Document);
+    }
+
+    /**
+     * The composer's "remove" (×) on the pending-file chip.
+     */
+    public function removeUpload(): void
+    {
+        $this->reset('imageUpload', 'pdfUpload');
+        $this->resetValidation(['imageUpload', 'pdfUpload']);
+    }
+
+    /**
+     * Validates a just-picked file against this lead's channel rules and
+     * drops it (keeping the error visible) when it doesn't pass, so an
+     * invalid file is never held in the composer waiting to be sent.
+     */
+    private function acceptUpload(string $property, string $other, MessageType $type): void
+    {
+        $channel = $this->messagingChannel();
+
+        if ($channel === null) {
+            $this->reset($property);
+
+            return;
+        }
+
+        try {
+            $this->validate([$property => $this->uploadRules($channel, $type)], $this->uploadMessages($channel, $type, $property));
+        } catch (ValidationException $exception) {
+            $this->reset($property);
+
+            throw $exception;
+        }
+
+        $this->reset($other);
+        $this->resetValidation($other);
+    }
+
+    /**
+     * @return array<int, string|Closure>
+     */
+    private function uploadRules(MessageChannel $channel, MessageType $type): array
+    {
+        $maxBytes = $type === MessageType::Image ? $channel->imageMaxBytes() : $channel->documentMaxBytes();
+
+        $allowed = OutboundMediaStorage::mimeTypesFor($channel, $type);
+
+        return [
+            'required',
+            'file',
+            'max:'.intdiv($maxBytes, 1024),
+            function (string $attribute, mixed $value, Closure $fail) use ($allowed, $channel, $type): void {
+                if ($value instanceof UploadedFile && ! in_array(OutboundMediaStorage::sniffMime($value), $allowed, true)) {
+                    $fail($this->uploadMessages($channel, $type, $attribute)["{$attribute}.mimetypes"]);
+                }
+            },
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function uploadMessages(MessageChannel $channel, MessageType $type, string $property): array
+    {
+        $isImage = $type === MessageType::Image;
+        $maxMegabytes = intdiv($isImage ? $channel->imageMaxBytes() : $channel->documentMaxBytes(), 1024 * 1024);
+        $allowed = $isImage
+            ? collect($channel->imageMimeTypes())->map(fn (string $mime): string => strtoupper(str_replace('image/', '', $mime)))->implode(', ')
+            : 'PDF';
+
+        return [
+            "{$property}.mimetypes" => __('Only :types files can be sent on :channel.', ['types' => $allowed, 'channel' => $channel->label()]),
+            "{$property}.max" => __('The file is too large — :channel allows up to :size MB.', ['channel' => $channel->label(), 'size' => $maxMegabytes]),
+            "{$property}.file" => __('The file could not be uploaded. Please try again.'),
+            "{$property}.uploaded" => __('The file could not be uploaded. Please try again.'),
+            "{$property}.required" => __('Please choose a file.'),
+        ];
+    }
+
     public function sendMessage(): void
     {
         if (Gate::denies('update', $this->lead)) {
@@ -2214,6 +2334,12 @@ class Show extends Component
 
         if (! $eligibility->eligible) {
             Flux::toast(variant: 'danger', text: $eligibility->reason);
+
+            return;
+        }
+
+        if ($this->imageUpload !== null || $this->pdfUpload !== null) {
+            $this->sendMediaMessage($conversation);
 
             return;
         }
@@ -2245,6 +2371,86 @@ class Show extends Component
         SendOutboundMessage::dispatch($created);
 
         $this->reset('newMessageBody');
+        unset($this->activeConversation, $this->messagingEligibility, $this->outboundMessages);
+        Flux::toast(variant: 'success', text: __('Message queued for sending.'));
+    }
+
+    /**
+     * Sends the composer's pending image/PDF. Only called from
+     * sendMessage(), after its permission, rate-limit and eligibility
+     * checks. The file is re-validated here against the lead's channel
+     * (never trusting the pick-time check alone), then stored and its
+     * Message row(s) created inside one duplicate-click lock, the same
+     * create-then-dispatch ordering as the text path.
+     *
+     * WhatsApp carries the optional text as the file's own caption (one
+     * Message); Messenger and Instagram cannot, so any text becomes its own
+     * text Message dispatched just before the file's.
+     */
+    private function sendMediaMessage(Conversation $conversation): void
+    {
+        $channel = $conversation->channel;
+        $isImage = $this->imageUpload !== null;
+        $property = $isImage ? 'imageUpload' : 'pdfUpload';
+        $type = $isImage ? MessageType::Image : MessageType::Document;
+        $upload = $this->{$property};
+
+        $this->validate([
+            $property => $this->uploadRules($channel, $type),
+            'newMessageBody' => ['nullable', 'string', 'max:'.($channel->supportsMediaCaption() ? $channel->mediaCaptionMaxLength() : 4096)],
+        ], $this->uploadMessages($channel, $type, $property));
+
+        $caption = trim($this->newMessageBody);
+        $caption = $caption === '' ? null : $caption;
+        $fingerprint = hash_file('sha256', (string) $upload?->getRealPath());
+
+        $lockKey = 'outbound-message:'.$conversation->id.':'.md5($caption.'|'.$fingerprint);
+        $created = Cache::lock($lockKey, 10)->get(function () use ($conversation, $upload, $type, $caption, $channel): array {
+            $file = app(OutboundMediaStorage::class)->store($upload, $conversation, $type);
+
+            try {
+                return DB::transaction(function () use ($conversation, $file, $caption, $channel): array {
+                    $base = [
+                        'tenant_id' => $conversation->tenant_id,
+                        'conversation_id' => $conversation->id,
+                        'lead_id' => $conversation->lead_id,
+                        'channel' => $conversation->channel,
+                        'direction' => MessageDirection::Outbound,
+                        'status' => MessageStatus::Pending,
+                        'status_updated_at' => now(),
+                        'sent_by' => Auth::id(),
+                    ];
+                    $messages = [];
+
+                    if ($caption !== null && ! $channel->supportsMediaCaption()) {
+                        $messages[] = Message::create($base + ['message_type' => MessageType::Text, 'body' => $caption]);
+                    }
+
+                    $messages[] = Message::create($base + $file + [
+                        'body' => $channel->supportsMediaCaption() ? $caption : null,
+                    ]);
+
+                    return $messages;
+                });
+            } catch (\Throwable $exception) {
+                Storage::disk('local')->delete($file['attachment_path']);
+
+                throw $exception;
+            }
+        });
+
+        if (! is_array($created)) {
+            Flux::toast(variant: 'warning', text: __('This message is already being sent.'));
+
+            return;
+        }
+
+        foreach ($created as $message) {
+            SendOutboundMessage::dispatch($message);
+        }
+
+        $this->reset('newMessageBody', 'imageUpload', 'pdfUpload');
+        $this->resetValidation();
         unset($this->activeConversation, $this->messagingEligibility, $this->outboundMessages);
         Flux::toast(variant: 'success', text: __('Message queued for sending.'));
     }
@@ -2313,14 +2519,25 @@ class Show extends Component
                 return null;
             }
 
+            if (in_array($failedMessage->message_type, [MessageType::Image, MessageType::Document], true)
+                && ($failedMessage->attachment_path === null || ! Storage::disk('local')->exists($failedMessage->attachment_path))) {
+                Flux::toast(variant: 'danger', text: __('The attached file is no longer available, so this message cannot be resent.'));
+
+                return null;
+            }
+
             $resend = Message::create([
                 'tenant_id' => $conversation->tenant_id,
                 'conversation_id' => $conversation->id,
                 'lead_id' => $conversation->lead_id,
                 'channel' => $conversation->channel,
                 'direction' => MessageDirection::Outbound,
-                'message_type' => MessageType::Text,
+                'message_type' => $failedMessage->message_type,
                 'body' => $failedMessage->body,
+                'attachment_path' => $failedMessage->attachment_path,
+                'attachment_mime' => $failedMessage->attachment_mime,
+                'attachment_name' => $failedMessage->attachment_name,
+                'attachment_size' => $failedMessage->attachment_size,
                 'status' => MessageStatus::Pending,
                 'status_updated_at' => now(),
                 'sent_by' => Auth::id(),

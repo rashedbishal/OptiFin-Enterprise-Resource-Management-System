@@ -68,7 +68,10 @@ class SendOutboundMessage implements ShouldQueue
             return;
         }
 
-        $sendResult = $senderFactory->make($this->message->channel)->send($conversation, (string) $this->message->body);
+        $sender = $senderFactory->make($this->message->channel);
+        $sendResult = $this->message->hasMedia()
+            ? $sender->sendMedia($conversation, $this->message)
+            : $sender->send($conversation, (string) $this->message->body);
 
         if (! $sendResult->successful) {
             $this->markFailed($sendResult->failureReason);
