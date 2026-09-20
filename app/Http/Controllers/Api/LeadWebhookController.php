@@ -574,13 +574,15 @@ class LeadWebhookController extends Controller
     {
         $tenant = Tenant::where('tenant_code', $tenantCode)
             ->where('status', TenantStatus::Active)
-            ->firstOrFail();
+            ->first();
 
         $form = WebsiteForm::where('token_hash', hash('sha256', $formToken))
             ->where('is_active', true)
-            ->firstOrFail();
+            ->first();
 
-        abort_unless($form->tenant_id === $tenant->id, 404);
+        // One plain 404 for every failure — never firstOrFail(), whose
+        // exception message would name the model that did not resolve.
+        abort_if($tenant === null || $form === null || $form->tenant_id !== $tenant->id, 404);
 
         return $form;
     }
@@ -789,18 +791,30 @@ class LeadWebhookController extends Controller
     /**
      * Resolve the active lead source of the given type for a tenant, by
      * tenant code. Rejects if the tenant itself is not active.
+     *
+     * Every failure (no such tenant code, an inactive tenant, no active
+     * source of that type) is the SAME plain 404 — deliberately not
+     * firstOrFail(), whose ModelNotFoundException message names the missing
+     * model class and so tells an anonymous caller which part did not
+     * resolve (a tenant_code enumeration oracle). Throwable-catching callers
+     * (resolveSourceOrNull(), the always-200 chat handlers) are unaffected:
+     * an HttpException is caught exactly as the model exception was.
      */
     private function resolveSource(string $tenantCode, LeadSourceType $type): LeadSource
     {
         $tenant = Tenant::where('tenant_code', $tenantCode)
             ->where('status', TenantStatus::Active)
-            ->firstOrFail();
+            ->first();
 
-        return LeadSource::query()
+        $source = $tenant === null ? null : LeadSource::query()
             ->where('tenant_id', $tenant->id)
             ->where('type', $type)
             ->where('is_active', true)
-            ->firstOrFail();
+            ->first();
+
+        abort_if($source === null, 404);
+
+        return $source;
     }
 
     private function resolveSourceOrNull(string $tenantCode, LeadSourceType $type): ?LeadSource
