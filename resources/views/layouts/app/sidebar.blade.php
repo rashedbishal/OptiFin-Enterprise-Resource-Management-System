@@ -12,7 +12,7 @@
         <flux:sidebar sticky stashable class="border-e border-zinc-300/70 bg-[#E7E1D2] shadow-[4px_0_16px_-8px_rgba(0,0,0,0.12)] dark:border-zinc-700 dark:bg-gradient-to-b dark:from-[#141414] dark:to-[#0a0a0a] dark:shadow-none">
             <flux:sidebar.header>
                 <x-app-logo :sidebar="true" href="{{ route('dashboard') }}" wire:navigate />
-                <flux:sidebar.collapse />
+                <flux:sidebar.collapse class="lg:hidden" />
             </flux:sidebar.header>
 
             <flux:sidebar.nav>
