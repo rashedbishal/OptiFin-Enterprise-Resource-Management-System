@@ -17,7 +17,9 @@ use App\Services\LeadDuplicateDetectionService;
 use App\Services\LeadScoringService;
 use App\Support\LeadValidationRules;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -35,6 +37,12 @@ use Throwable;
  */
 class CreateLeadFromImport
 {
+    /**
+     * INC-1 D — safety bound on how many merged_into_lead_id hops one
+     * identity resolution will follow (real chains are a handful of hops).
+     */
+    private const int MAX_MERGE_CHAIN_DEPTH = 25;
+
     public function __construct(
         private readonly LeadAssignmentService $assignmentService,
         private readonly LeadScoringService $scoringService,
@@ -292,6 +300,28 @@ class CreateLeadFromImport
     }
 
     /**
+     * INC-1 D — a lead merged away (merged_into_lead_id set) still owns the
+     * email/phone it carried, since a merge leaves the loser's own values on
+     * the loser row. Each incoming identity is therefore resolved to the SET
+     * of ACTIVE leads it belongs to — an active holder directly, a merged
+     * holder by following merged_into_lead_id up its (possibly multi-hop)
+     * chain to the top survivor — and the two sets are then combined by
+     * intersect-else-conflict:
+     *
+     *  - one identity present (or the other unmatched): a single candidate is
+     *    a duplicate of it; several candidates are ambiguous, hence a conflict;
+     *  - both identities matched: exactly one lead common to both sets is the
+     *    duplicate target (email -> {S1, S2}, phone -> S2 is a duplicate of
+     *    S2); no common lead, or more than one, is a conflict (including
+     *    email -> S1, phone -> S2, the original A1 case).
+     *
+     * A survivor is never picked by age, id order or database order: when the
+     * evidence does not single one out, the row is rejected as a conflict
+     * (duplicate_of_lead_id null, no lead created). A merged-away identity
+     * can no longer silently re-enter as a new active lead. Shared by the
+     * pre-lock fast path and DB-2's in-lock re-check, so the two can never
+     * diverge.
+     *
      * @return array{0: string, 1: ?string}|null
      */
     private function checkExistingLeadDuplicate(Tenant $tenant, ?string $normalizedEmail, ?string $normalizedPhone): ?array
@@ -300,25 +330,95 @@ class CreateLeadFromImport
             return null;
         }
 
-        $emailMatch = $normalizedEmail !== null
-            ? Lead::where('tenant_id', $tenant->id)->whereNull('merged_into_lead_id')->where('email_normalized', $normalizedEmail)->first(['id'])
-            : null;
+        $emailCandidates = $normalizedEmail !== null ? $this->resolveMatchedLeadCandidates($tenant, 'email_normalized', $normalizedEmail) : [];
+        $phoneCandidates = $normalizedPhone !== null ? $this->resolveMatchedLeadCandidates($tenant, 'phone_normalized', $normalizedPhone) : [];
 
-        $phoneMatch = $normalizedPhone !== null
-            ? Lead::where('tenant_id', $tenant->id)->whereNull('merged_into_lead_id')->where('phone_normalized', $normalizedPhone)->first(['id'])
-            : null;
+        if ($emailCandidates === [] && $phoneCandidates === []) {
+            return null;
+        }
 
-        if ($emailMatch !== null && $phoneMatch !== null && $emailMatch->id !== $phoneMatch->id) {
+        $targets = match (true) {
+            $emailCandidates === [] => $phoneCandidates,
+            $phoneCandidates === [] => $emailCandidates,
+            default => array_values(array_intersect($emailCandidates, $phoneCandidates)),
+        };
+
+        if (count($targets) !== 1) {
             return [__('Email matches an existing lead and phone matches a different existing lead — rejected as a duplicate conflict.'), null];
         }
 
-        $match = $emailMatch ?? $phoneMatch;
+        return [__('Matches an existing lead (email or phone already on file).'), $targets[0]];
+    }
 
-        if ($match !== null) {
-            return [__('Matches an existing lead (email or phone already on file).'), $match->id];
+    /**
+     * The distinct ACTIVE lead ids one normalized identity value belongs to
+     * (empty when no lead in this tenant holds it). One tenant-scoped,
+     * indexed lookup — the same single query per identity as before merged
+     * leads were resolved. Every holder counts: an active holder is a
+     * candidate itself, a merged holder is resolved through its merge chain
+     * (extra primary-key reads, one per hop, only for merged holders), and
+     * holders resolving to the same lead collapse into one candidate. The
+     * result is a set — no order is meaningful and none is ever used to
+     * select a lead.
+     *
+     * @param  'email_normalized'|'phone_normalized'  $column
+     * @return array<int, string>
+     */
+    private function resolveMatchedLeadCandidates(Tenant $tenant, string $column, string $value): array
+    {
+        $candidates = [];
+
+        foreach (Lead::where('tenant_id', $tenant->id)->where($column, $value)->get(['id', 'merged_into_lead_id']) as $holder) {
+            $candidates[] = $holder->merged_into_lead_id === null ? $holder->id : $this->resolveActiveSurvivorId($tenant, $holder);
         }
 
-        return null;
+        return array_values(array_unique($candidates));
+    }
+
+    /**
+     * Follows merged_into_lead_id from a merged-away lead to the active lead
+     * at the top of its chain (B -> A -> C resolves to C: merges can chain,
+     * since a survivor can itself later be merged away, and a merge never
+     * re-points earlier losers). Every hop stays inside the tenant, and the
+     * walk is bounded and cycle-safe. A broken chain — a loop, a pointer
+     * that leaves the tenant or no longer resolves, or an implausibly deep
+     * chain — can never be safely resolved and must never let the row create
+     * a brand-new lead, so it fails the row (recorded by handle()'s catch)
+     * with a fixed, data-free message; only lead ids are logged.
+     *
+     * @throws RuntimeException
+     */
+    private function resolveActiveSurvivorId(Tenant $tenant, Lead $lead): string
+    {
+        $visited = [$lead->id];
+        $current = $lead;
+
+        while ($current->merged_into_lead_id !== null) {
+            $nextId = $current->merged_into_lead_id;
+
+            if (in_array($nextId, $visited, true) || count($visited) > self::MAX_MERGE_CHAIN_DEPTH) {
+                $this->failUnresolvableMergeChain($lead, in_array($nextId, $visited, true) ? 'cycle' : 'too_deep');
+            }
+
+            $visited[] = $nextId;
+            $current = Lead::where('tenant_id', $tenant->id)->whereKey($nextId)->first(['id', 'merged_into_lead_id']);
+
+            if ($current === null) {
+                $this->failUnresolvableMergeChain($lead, 'missing_target');
+            }
+        }
+
+        return $current->id;
+    }
+
+    /**
+     * @throws RuntimeException
+     */
+    private function failUnresolvableMergeChain(Lead $matched, string $reason): never
+    {
+        Log::warning('CSV import could not resolve a merged lead to its active survivor.', ['matched_lead_id' => $matched->id, 'reason' => $reason]);
+
+        throw new RuntimeException(__('This row matches a merged lead whose merge chain could not be resolved, so it was not imported.'));
     }
 
     /**
