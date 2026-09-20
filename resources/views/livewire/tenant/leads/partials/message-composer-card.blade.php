@@ -16,7 +16,13 @@
     @endphp
 
     <flux:card class="flex flex-col gap-4">
-        <flux:heading size="lg">{{ __(':channel Reply', ['channel' => $channel->label()]) }}</flux:heading>
+        <div class="flex items-center justify-between gap-2">
+            <flux:heading size="lg">{{ __(':channel Reply', ['channel' => $channel->label()]) }}</flux:heading>
+
+            @if ($this->canDeleteConversation)
+                <flux:button type="button" size="xs" variant="ghost" icon="trash" wire:click="confirmDeleteConversation">{{ __('Delete conversation') }}</flux:button>
+            @endif
+        </div>
 
         @if ($canUpdate)
             @if ($eligibility && $eligibility->eligible)
@@ -103,4 +109,18 @@
             </div>
         @endif
     </flux:card>
+
+    @if ($this->canDeleteConversation)
+        @php
+            $deletionSummary = $this->conversationDeletionSummary;
+        @endphp
+
+        <x-confirm-password-delete-modal
+            wire:model.self="showDeleteConversationModal"
+            :title="__('Delete this conversation?')"
+            :description="__('This permanently deletes :messages messages and :files files from this lead\'s conversation, including the files stored on the server. The lead itself is kept. Enter your password to confirm.', ['messages' => $deletionSummary['messages'], 'files' => $deletionSummary['files']])"
+            confirm-action="deleteConversationConfirmed"
+            close-action="closeDeleteConversationModal"
+        />
+    @endif
 @endif

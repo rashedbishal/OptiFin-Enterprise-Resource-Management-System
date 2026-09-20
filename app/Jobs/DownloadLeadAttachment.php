@@ -67,6 +67,12 @@ class DownloadLeadAttachment implements ShouldQueue
 
     public function handle(): void
     {
+        if (! LeadAttachment::whereKey($this->attachment->getKey())->exists()) {
+            // The lead's conversation was deleted (App\Actions\Tenant\
+            // DeleteLeadConversation) while this download was queued.
+            return;
+        }
+
         $credentials = $this->resolveCredentials();
 
         if ($credentials === null) {

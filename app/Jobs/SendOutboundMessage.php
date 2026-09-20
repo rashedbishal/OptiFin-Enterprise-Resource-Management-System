@@ -51,6 +51,13 @@ class SendOutboundMessage implements ShouldQueue
 
     public function handle(OutboundEligibilityService $eligibility, MessageSenderFactory $senderFactory): void
     {
+        if (! Message::whereKey($this->message->getKey())->exists()) {
+            // The conversation was deleted (App\Actions\Tenant\
+            // DeleteLeadConversation) while this job was queued — nothing
+            // left to send or to update.
+            return;
+        }
+
         $this->message->refresh();
 
         if ($this->message->status !== MessageStatus::Pending) {
@@ -98,6 +105,10 @@ class SendOutboundMessage implements ShouldQueue
      */
     public function failed(?Throwable $exception): void
     {
+        if (! Message::whereKey($this->message->getKey())->exists()) {
+            return;
+        }
+
         $this->message->refresh();
 
         if ($this->message->status === MessageStatus::Pending) {

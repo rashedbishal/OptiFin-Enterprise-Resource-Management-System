@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Tenant\Leads;
 
+use App\Actions\Tenant\DeleteLeadConversation;
 use App\Actions\Tenant\RecordLeadConsent;
 use App\Actions\Tenant\RecordLeadDeletionAudit;
 use App\Actions\Tenant\SaveLeadCustomFieldValues;
@@ -317,6 +318,13 @@ class Show extends Component
 
     public bool $showDeleteModal = false;
 
+    /**
+     * The "Delete conversation" confirmation (composer card) — separate
+     * from $showDeleteModal (which deletes the whole lead) but shares its
+     * $deletePassword field, since only one of the two is ever open.
+     */
+    public bool $showDeleteConversationModal = false;
+
     public bool $showCancelMeetingModal = false;
 
     public bool $showCancelFollowUpModal = false;
@@ -572,6 +580,29 @@ class Show extends Component
     public function canDelete(): bool
     {
         return Gate::allows('delete', $this->lead);
+    }
+
+    /**
+     * Whether the "Delete conversation" button is offered: same bar as
+     * deleting the lead (Client Admin + the delete permission), only on a
+     * messaging-channel lead, and only while there is something to delete.
+     */
+    #[Computed]
+    public function canDeleteConversation(): bool
+    {
+        return $this->canDelete()
+            && $this->messagingChannel() !== null
+            && $this->lead->merged_into_lead_id === null
+            && array_sum(app(DeleteLeadConversation::class)->summarize($this->lead)) > 0;
+    }
+
+    /**
+     * @return array{messages: int, conversations: int, attachments: int, files: int}
+     */
+    #[Computed]
+    public function conversationDeletionSummary(): array
+    {
+        return app(DeleteLeadConversation::class)->summarize($this->lead);
     }
 
     #[Computed]
@@ -3095,6 +3126,74 @@ class Show extends Component
         $this->showDeleteModal = false;
         $this->reset('deletePassword');
         $this->resetErrorBag('deletePassword');
+    }
+
+    public function confirmDeleteConversation(): void
+    {
+        if (Gate::denies('delete', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to delete this conversation."));
+
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
+            return;
+        }
+
+        $this->reset('deletePassword');
+        $this->resetErrorBag('deletePassword');
+        $this->showDeleteConversationModal = true;
+    }
+
+    public function closeDeleteConversationModal(): void
+    {
+        $this->showDeleteConversationModal = false;
+        $this->reset('deletePassword');
+        $this->resetErrorBag('deletePassword');
+    }
+
+    public function deleteConversationConfirmed(): void
+    {
+        if (! $this->verifyDeletePassword()) {
+            return;
+        }
+
+        $this->showDeleteConversationModal = false;
+        $this->deleteConversation();
+    }
+
+    /**
+     * Wipes this lead's conversation (messages, files, raw webhook copy) and
+     * leaves the lead itself — see App\Actions\Tenant\DeleteLeadConversation.
+     * Messaging-channel leads only; the same authorization and merged-lead
+     * guard as every other destructive action here.
+     */
+    public function deleteConversation(): void
+    {
+        if (Gate::denies('delete', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to delete this conversation."));
+
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
+            return;
+        }
+
+        if ($this->messagingChannel() === null) {
+            Flux::toast(variant: 'danger', text: __("This lead's source has no conversation to delete."));
+
+            return;
+        }
+
+        $user = Auth::user();
+
+        app(DeleteLeadConversation::class)->handle($this->lead, $user instanceof TenantUser ? $user : null);
+
+        $this->lead->refresh();
+        unset($this->timeline, $this->outboundMessages, $this->activeConversation, $this->messagingEligibility, $this->conversationDeletionSummary, $this->canDeleteConversation);
+        $this->refreshActivity();
+        Flux::toast(variant: 'success', text: __('Conversation deleted.'));
     }
 
     public function deleteConfirmed(): void
