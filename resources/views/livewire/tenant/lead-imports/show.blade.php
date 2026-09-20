@@ -77,6 +77,19 @@
                             @elseif ($row->duplicateOfLead)
                                 {{ __('Duplicate of') }}
                                 <flux:link :href="route('tenant-leads.show', $row->duplicateOfLead)" wire:navigate>{{ $row->duplicateOfLead->name }}</flux:link>
+                                @if (isset($partialMatches[$row->id]))
+                                    @php($partialMatch = $partialMatches[$row->id])
+                                    <flux:text size="sm" variant="subtle">
+                                        {{ __('Matched by: :fields', ['fields' => collect($partialMatch['matched'])->map(fn (string $field): string => $field === 'email' ? __('Email') : __('Phone'))->implode(' + ')]) }}
+                                    </flux:text>
+                                    @if ($partialMatch['unmatched'])
+                                        <flux:text size="sm" variant="subtle">
+                                            {{ $partialMatch['unmatched']['field'] === 'phone'
+                                                ? __('Unmatched phone: :value', ['value' => $partialMatch['unmatched']['value']])
+                                                : __('Unmatched email: :value', ['value' => $partialMatch['unmatched']['value']]) }}
+                                        </flux:text>
+                                    @endif
+                                @endif
                             @elseif ($row->errors)
                                 <flux:text size="sm" class="text-red-600 dark:text-red-400">{{ implode(' ', $row->errors) }}</flux:text>
                             @else
