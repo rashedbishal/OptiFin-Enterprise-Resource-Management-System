@@ -1,12 +1,16 @@
 @include('partials.lead-management-breadcrumbs', ['leadManagementTrail' => [['label' => __('Scoring Rules')]]])
 
 <div class="flex flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8 overflow-y-auto min-h-0">
-    <div class="flex items-center justify-between">
-        <div>
-            <flux:heading size="xl" class="hidden lg:block">{{ __('Lead Scoring Rules') }}</flux:heading>
-            <flux:text variant="subtle">{{ __('Every active rule below is summed for each of your leads, then capped to 0–100, to produce that lead\'s Score.') }}</flux:text>
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex flex-col gap-1 min-w-0">
+            <flux:heading size="xl">{{ __('Lead Scoring Rules') }}</flux:heading>
+            <flux:text class="text-zinc-600 dark:text-zinc-300 font-medium text-sm sm:text-base">{{ __('Every active rule below is summed for each of your leads, then capped to 0–100, to produce that lead\'s Score.') }}</flux:text>
         </div>
-        <flux:button variant="primary" icon="plus" wire:click="create">{{ __('New Rule') }}</flux:button>
+        <div class="shrink-0">
+            <flux:button variant="primary" icon="plus" wire:click="create" class="w-full sm:w-auto">
+                {{ __('New Rule') }}
+            </flux:button>
+        </div>
     </div>
 
     @if ($this->maxPossibleRawTotal > 100)
@@ -17,51 +21,100 @@
         </flux:callout>
     @endif
 
-    <flux:table>
-        <flux:table.columns>
-            <flux:table.column>{{ __('Name') }}</flux:table.column>
-            <flux:table.column>{{ __('Condition') }}</flux:table.column>
-            <flux:table.column>{{ __('Points') }}</flux:table.column>
-            <flux:table.column>{{ __('Active') }}</flux:table.column>
-            <flux:table.column></flux:table.column>
-        </flux:table.columns>
-        <flux:table.rows>
-            @forelse ($this->rules as $rule)
-                <flux:table.row wire:key="scoring-rule-{{ $rule->id }}">
-                    <flux:table.cell>{{ $rule->name }}</flux:table.cell>
-                    <flux:table.cell>
-                        <flux:text size="sm">
-                            {{ $rule->fieldEnum()?->label() ?? $rule->field }}
-                            {{ $rule->operatorEnum()?->label() ?? $rule->operator }}
-                            {{ is_array($rule->value) ? implode(', ', $rule->value) : $rule->value }}
-                        </flux:text>
-                    </flux:table.cell>
-                    <flux:table.cell>
-                        <flux:badge size="sm" :color="$rule->points >= 0 ? 'emerald' : 'red'">
-                            {{ $rule->points >= 0 ? '+' : '' }}{{ $rule->points }}
-                        </flux:badge>
-                    </flux:table.cell>
-                    <flux:table.cell>
+    {{-- Desktop Table View (>= 768px / md) --}}
+    <div class="hidden md:block">
+        <flux:table>
+            <flux:table.columns>
+                <flux:table.column>{{ __('Name') }}</flux:table.column>
+                <flux:table.column>{{ __('Condition') }}</flux:table.column>
+                <flux:table.column>{{ __('Points') }}</flux:table.column>
+                <flux:table.column>{{ __('Active') }}</flux:table.column>
+                <flux:table.column></flux:table.column>
+            </flux:table.columns>
+            <flux:table.rows>
+                @forelse ($this->rules as $rule)
+                    <flux:table.row wire:key="scoring-rule-desktop-{{ $rule->id }}">
+                        <flux:table.cell class="font-medium text-zinc-900 dark:text-white">{{ $rule->name }}</flux:table.cell>
+                        <flux:table.cell>
+                            <flux:text size="sm" class="text-zinc-800 dark:text-zinc-200 font-medium">
+                                {{ $rule->fieldEnum()?->label() ?? $rule->field }}
+                                <span class="text-indigo-600 dark:text-indigo-400 font-semibold">{{ $rule->operatorEnum()?->label() ?? $rule->operator }}</span>
+                                <span class="font-bold text-zinc-900 dark:text-white">{{ is_array($rule->value) ? implode(', ', $rule->value) : $rule->value }}</span>
+                            </flux:text>
+                        </flux:table.cell>
+                        <flux:table.cell>
+                            <flux:badge size="sm" :color="$rule->points >= 0 ? 'emerald' : 'red'">
+                                {{ $rule->points >= 0 ? '+' : '' }}{{ $rule->points }}
+                            </flux:badge>
+                        </flux:table.cell>
+                        <flux:table.cell>
+                            <flux:switch wire:click="toggleActive('{{ $rule->id }}')" :checked="$rule->is_active" />
+                        </flux:table.cell>
+                        <flux:table.cell>
+                            <div class="flex justify-end gap-2">
+                                <flux:button size="sm" wire:click="edit('{{ $rule->id }}')">{{ __('Edit') }}</flux:button>
+                                <flux:button size="sm" variant="danger" wire:click="confirmDelete('{{ $rule->id }}')">
+                                    {{ __('Delete') }}
+                                </flux:button>
+                            </div>
+                        </flux:table.cell>
+                    </flux:table.row>
+                @empty
+                    <flux:table.row>
+                        <flux:table.cell colspan="5">
+                            {{ __('No scoring rules yet — leads will show "Not scored" until at least one active rule exists.') }}
+                        </flux:table.cell>
+                    </flux:table.row>
+                @endforelse
+            </flux:table.rows>
+        </flux:table>
+    </div>
+
+    {{-- Mobile & Tablet Full-Width Card View (< 768px / md) --}}
+    <div class="flex flex-col gap-3.5 w-full md:hidden">
+        @forelse ($this->rules as $rule)
+            <div wire:key="scoring-rule-card-{{ $rule->id }}" class="flex w-full flex-col gap-3 rounded-xl border border-zinc-200/90 bg-white p-4 shadow-2xs dark:border-zinc-700/80 dark:bg-zinc-800/90">
+                <div class="flex items-start justify-between gap-2">
+                    <div class="flex flex-col gap-0.5 min-w-0">
+                        <span class="font-bold text-zinc-900 dark:text-white text-base truncate">{{ $rule->name }}</span>
+                    </div>
+                    <flux:badge size="sm" :color="$rule->points >= 0 ? 'emerald' : 'red'" class="shrink-0 font-semibold">
+                        {{ $rule->points >= 0 ? '+' : '' }}{{ $rule->points }} {{ __('pts') }}
+                    </flux:badge>
+                </div>
+
+                <div class="flex flex-col gap-1 rounded-lg bg-zinc-50 p-3 border border-zinc-200/80 dark:bg-zinc-900/60 dark:border-zinc-700/60">
+                    <span class="text-xs uppercase tracking-wider font-bold text-zinc-700 dark:text-zinc-300">{{ __('Condition') }}</span>
+                    <span class="text-xs sm:text-sm font-medium text-zinc-900 dark:text-zinc-100">
+                        {{ $rule->fieldEnum()?->label() ?? $rule->field }}
+                        <span class="text-indigo-600 dark:text-indigo-400 font-bold">{{ $rule->operatorEnum()?->label() ?? $rule->operator }}</span>
+                        <span class="font-bold text-zinc-900 dark:text-white">{{ is_array($rule->value) ? implode(', ', $rule->value) : $rule->value }}</span>
+                    </span>
+                </div>
+
+                <div class="flex items-center justify-between gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-700/60">
+                    <div class="flex items-center gap-2">
                         <flux:switch wire:click="toggleActive('{{ $rule->id }}')" :checked="$rule->is_active" />
-                    </flux:table.cell>
-                    <flux:table.cell>
-                        <div class="flex justify-end gap-2">
-                            <flux:button size="sm" wire:click="edit('{{ $rule->id }}')">{{ __('Edit') }}</flux:button>
-                            <flux:button size="sm" variant="danger" wire:click="confirmDelete('{{ $rule->id }}')">
-                                {{ __('Delete') }}
-                            </flux:button>
-                        </div>
-                    </flux:table.cell>
-                </flux:table.row>
-            @empty
-                <flux:table.row>
-                    <flux:table.cell colspan="5">
-                        {{ __('No scoring rules yet — leads will show "Not scored" until at least one active rule exists.') }}
-                    </flux:table.cell>
-                </flux:table.row>
-            @endforelse
-        </flux:table.rows>
-    </flux:table>
+                        <span class="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                            {{ $rule->is_active ? __('Active') : __('Inactive') }}
+                        </span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <flux:button size="sm" wire:click="edit('{{ $rule->id }}')">{{ __('Edit') }}</flux:button>
+                        <flux:button size="sm" variant="danger" wire:click="confirmDelete('{{ $rule->id }}')">
+                            {{ __('Delete') }}
+                        </flux:button>
+                    </div>
+                </div>
+            </div>
+        @empty
+            <div class="w-full rounded-xl border border-zinc-200/90 bg-white p-6 text-center shadow-2xs dark:border-zinc-700/80 dark:bg-zinc-800/90">
+                <flux:text class="text-zinc-700 dark:text-zinc-300 font-medium">
+                    {{ __('No scoring rules yet — leads will show "Not scored" until at least one active rule exists.') }}
+                </flux:text>
+            </div>
+        @endforelse
+    </div>
 
     <flux:modal wire:model.self="showModal" :dismissible="false" class="md:w-[36rem]">
         <form wire:submit="save" class="flex flex-col gap-6">
