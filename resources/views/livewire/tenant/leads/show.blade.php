@@ -40,12 +40,19 @@
             {{ __('Assignment & Activities') }}{{ $initialLoadComplete ? ' ('.count($this->activity).')' : '' }}
         </flux:button>
 
-        {{-- No lead-to-client conversion feature exists in this app —
-        disabled placeholder only, matching the requested layout without
-        adding functionality that isn't there. --}}
-        <flux:button type="button" size="sm" variant="ghost" icon="arrow-right-circle" disabled class="ms-auto" title="{{ __('Coming soon') }}">
-            {{ __('Convert to Client') }}
-        </flux:button>
+        {{-- Lead-to-client conversion button: prominent button wrapper --}}
+        <div class="ms-auto flex items-center py-1 sm:py-0">
+            <flux:button
+                type="button"
+                size="sm"
+                variant="subtle"
+                icon="user-plus"
+                class="font-semibold text-zinc-900 dark:text-white bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 border border-zinc-300/80 dark:border-zinc-600/80 shadow-2xs transition-all"
+                title="{{ __('Convert lead to client') }}"
+            >
+                {{ __('Convert to Client') }}
+            </flux:button>
+        </div>
     </div>
 
     @if ($activeTab === 'overview')
