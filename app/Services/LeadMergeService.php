@@ -12,6 +12,7 @@ use App\Models\Deal;
 use App\Models\Lead;
 use App\Models\LeadAssignment;
 use App\Models\LeadAttachment;
+use App\Models\LeadCall;
 use App\Models\LeadConsent;
 use App\Models\LeadConsentEvent;
 use App\Models\LeadCustomFieldValue;
@@ -113,6 +114,7 @@ class LeadMergeService
         LeadConsentEvent::class,
         Conversation::class,
         Message::class,
+        LeadCall::class,
     ];
 
     /**

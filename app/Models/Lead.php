@@ -705,6 +705,17 @@ class Lead extends Model
     }
 
     /**
+     * WhatsApp inbound calling — every call this lead has had, one row per
+     * Meta call id. A Lead created via any other channel simply has none.
+     *
+     * @return HasMany<LeadCall, $this>
+     */
+    public function calls(): HasMany
+    {
+        return $this->hasMany(LeadCall::class);
+    }
+
+    /**
      * This lead's Tasks — a Lead may have many, each independently tracked
      * to completion (see App\Models\Task's docblock). Complementary to, and
      * never a replacement for, next_follow_up_at/meeting_date below, which

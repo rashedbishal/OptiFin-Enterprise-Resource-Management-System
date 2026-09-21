@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Lead;
+use App\Models\LeadCall;
 use App\Support\EligibilityResult;
 
 /**
@@ -46,6 +47,11 @@ class LeadDeletionEligibilityService
         return __('This lead has merged leads and can no longer be deleted.');
     }
 
+    public static function activeCallReason(): string
+    {
+        return __('This lead has a call in progress and can\'t be deleted until it ends.');
+    }
+
     public function evaluate(Lead $lead, bool $lock = true): EligibilityResult
     {
         $query = Lead::where('tenant_id', $lead->tenant_id)->whereKey($lead->id);
@@ -65,6 +71,14 @@ class LeadDeletionEligibilityService
 
         if (Lead::where('tenant_id', $current->tenant_id)->where('merged_into_lead_id', $current->id)->exists()) {
             return EligibilityResult::ineligible(self::survivorReason());
+        }
+
+        // WhatsApp calling — deleting the lead mid-call would cascade the
+        // live call row away, leaving the agent's call unmanageable and a
+        // late Meta terminate webhook nothing to attach to. Terminal calls
+        // never block: they are deleted with the lead like any other child.
+        if (LeadCall::where('tenant_id', $current->tenant_id)->where('lead_id', $current->id)->active()->exists()) {
+            return EligibilityResult::ineligible(self::activeCallReason());
         }
 
         return EligibilityResult::eligible();

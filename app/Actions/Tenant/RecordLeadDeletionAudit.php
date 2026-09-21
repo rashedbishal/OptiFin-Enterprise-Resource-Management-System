@@ -136,6 +136,7 @@ class RecordLeadDeletionAudit
             'custom_field_values' => $lead->customFieldValues()->count(),
             'conversations' => $lead->conversations()->count(),
             'messages' => $lead->messages()->count(),
+            'calls' => $lead->calls()->count(),
             'duplicate_links' => $lead->duplicateLinksAsLead()->count() + $lead->duplicateLinksAsDuplicate()->count(),
         ];
     }

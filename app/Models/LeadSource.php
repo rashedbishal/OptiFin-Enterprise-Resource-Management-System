@@ -25,6 +25,9 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $last_signature_rejection_at
  * @property string|null $last_signature_rejection_reason
  * @property Carbon|null $token_expires_at
+ * @property bool $calling_enabled
+ * @property string|null $calling_meta_status
+ * @property Carbon|null $calling_meta_checked_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Tenant $tenant
@@ -32,6 +35,7 @@ use Illuminate\Support\Carbon;
 #[Fillable([
     'tenant_id', 'type', 'name', 'config', 'is_active', 'last_synced_at',
     'last_signature_rejection_at', 'last_signature_rejection_reason', 'token_expires_at',
+    'calling_enabled', 'calling_meta_status', 'calling_meta_checked_at',
 ])]
 class LeadSource extends Model
 {
@@ -50,6 +54,8 @@ class LeadSource extends Model
             'last_synced_at' => 'datetime',
             'last_signature_rejection_at' => 'datetime',
             'token_expires_at' => 'datetime',
+            'calling_enabled' => 'boolean',
+            'calling_meta_checked_at' => 'datetime',
         ];
     }
 
