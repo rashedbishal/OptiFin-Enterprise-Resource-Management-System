@@ -10,6 +10,7 @@ use App\Models\Lead;
 use App\Models\LeadCall;
 use App\Models\LeadSource;
 use App\Services\CallRouter;
+use App\Support\LeadCallBroadcaster;
 use App\Support\WhatsAppCallEvent;
 use Closure;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -212,9 +213,15 @@ class RecordInboundCall
                 };
             }
 
-            return $this->cacheOfferOrFail($call, $source, $event)
-                ? self::OUTCOME_RECORDED
-                : self::OUTCOME_OFFER_CACHE_FAILED;
+            if (! $this->cacheOfferOrFail($call, $source, $event)) {
+                return self::OUTCOME_OFFER_CACHE_FAILED;
+            }
+
+            // Announce the ring only now: the offer is safely cached, so an
+            // agent who answers straight away can always claim it.
+            LeadCallBroadcaster::updated($call, CallStatus::Ringing);
+
+            return self::OUTCOME_RECORDED;
         });
     }
 
@@ -326,7 +333,9 @@ class RecordInboundCall
      */
     private function applyTerminate(string $callId, LeadSource $source, WhatsAppCallEvent $event): string
     {
-        return DB::transaction(function () use ($callId, $source, $event): string {
+        $transition = null;
+
+        $outcome = DB::transaction(function () use ($callId, $source, $event, &$transition): string {
             $call = LeadCall::query()
                 ->where('tenant_id', $source->tenant_id)
                 ->whereKey($callId)
@@ -377,8 +386,18 @@ class RecordInboundCall
 
             $call->update($updates);
 
+            $transition = [$call, $next];
+
             return self::OUTCOME_TERMINATE_APPLIED;
         });
+
+        // Announced after the transaction has committed, and only when the
+        // call's status actually changed (a fill-only terminate changes none).
+        if ($transition !== null) {
+            LeadCallBroadcaster::updated($transition[0], $transition[1]);
+        }
+
+        return $outcome;
     }
 
     /**

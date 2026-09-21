@@ -13,6 +13,7 @@ use App\Models\TenantUser;
 use App\Services\WhatsAppCallingClient;
 use App\Support\CallingApiResult;
 use App\Support\LeadCallActionResult;
+use App\Support\LeadCallBroadcaster;
 use App\Support\LeadCallSdp;
 use Illuminate\Support\Carbon;
 
@@ -79,18 +80,16 @@ class AnswerLeadCall
             return $refusal;
         }
 
-        if ($call->meta_stage === CallMetaStage::PreAccepted) {
-            $this->logCallAction('answer', $user, $call, 'answer_repeated');
-
-            return LeadCallActionResult::success($call);
-        }
-
         $normalized = $sdpType === 'answer' ? LeadCallSdp::normalizeAnswer($sdp) : null;
 
         if ($normalized === null) {
             $this->logCallAction('answer', $user, $call, 'invalid_sdp');
 
             return LeadCallActionResult::error(422, 'invalid_sdp', __('The answer SDP is missing or not valid.'));
+        }
+
+        if ($call->meta_stage === CallMetaStage::PreAccepted) {
+            return $this->repeatedAnswer($user, $call, $source, $normalized);
         }
 
         return $this->withActionLock($call, function () use ($user, $call, $source, $normalized): LeadCallActionResult {
@@ -105,7 +104,7 @@ class AnswerLeadCall
             }
 
             if ($current->meta_stage === CallMetaStage::PreAccepted) {
-                return LeadCallActionResult::success($current);
+                return $this->repeatedAnswer($user, $current, $source, $normalized);
             }
 
             // A retry after a retryable failure must send the SAME answer the
@@ -143,6 +142,8 @@ class AnswerLeadCall
             }
 
             $this->logCallAction('answer', $user, $current, 'pre_accepted', $api);
+
+            LeadCallBroadcaster::updated($current, CallStatus::Answering);
 
             return LeadCallActionResult::success($this->freshCall($current) ?? $current);
         });
@@ -204,7 +205,10 @@ class AnswerLeadCall
 
             if ($answer === null) {
                 // Without the exact pre_accept SDP the call cannot be accepted.
-                $this->failAnswering($current, $user->id, CallEndReason::SdpCacheFailure);
+                if ($this->failAnswering($current, $user->id, CallEndReason::SdpCacheFailure)) {
+                    LeadCallBroadcaster::updated($current, CallStatus::Failed);
+                }
+
                 $this->forgetSdp($current, $source);
                 $this->logCallAction('accept', $user, $current, 'answer_unavailable');
 
@@ -235,8 +239,34 @@ class AnswerLeadCall
             $this->forgetSdp($current, $source);
             $this->logCallAction('accept', $user, $current, 'connected', $api);
 
+            LeadCallBroadcaster::updated($current, CallStatus::Connected);
+
             return LeadCallActionResult::success($this->freshCall($current) ?? $current);
         });
+    }
+
+    /**
+     * A repeated `answer` for a call that is already pre-accepted. It stays an
+     * idempotent 200 that never calls Meta again — but only when the submitted
+     * answer IS the one Meta was given. A different SDP (a second browser tab of
+     * the same claimant, say) is a 409 that changes nothing and overwrites
+     * nothing: it could otherwise be "accepted" while the audio belongs to a peer
+     * connection Meta never negotiated with. If the cached answer is gone the
+     * two cannot be compared, which is treated the same way.
+     */
+    private function repeatedAnswer(TenantUser $user, LeadCall $call, LeadSource $source, string $normalized): LeadCallActionResult
+    {
+        $cached = LeadCallSdp::readAnswer($source, $call->external_call_id);
+
+        if ($cached === null || $cached !== $normalized) {
+            $this->logCallAction('answer', $user, $call, 'sdp_mismatch');
+
+            return LeadCallActionResult::error(409, 'sdp_mismatch', __('Send the same answer SDP as your first attempt.'));
+        }
+
+        $this->logCallAction('answer', $user, $call, 'answer_repeated');
+
+        return LeadCallActionResult::success($call);
     }
 
     /**
@@ -315,6 +345,8 @@ class AnswerLeadCall
 
         $this->forgetSdp($call, $source);
         $this->logCallAction($action, $user, $call, 'meta_failed', $api);
+
+        LeadCallBroadcaster::updated($call, CallStatus::Failed);
 
         return LeadCallActionResult::error(502, 'meta_rejected', __('WhatsApp could not connect this call.'));
     }

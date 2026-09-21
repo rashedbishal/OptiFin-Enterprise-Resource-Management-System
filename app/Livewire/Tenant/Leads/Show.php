@@ -29,6 +29,7 @@ use App\Models\Deal;
 use App\Models\DealStatusLog;
 use App\Models\Lead;
 use App\Models\LeadAttachment;
+use App\Models\LeadCall;
 use App\Models\LeadConsent;
 use App\Models\LeadConsentEvent;
 use App\Models\LeadCustomFieldDefinition;
@@ -508,7 +509,16 @@ class Show extends Component
     {
         return [
             'echo-private:lead.'.$this->lead->id.',.lead.updated' => 'refreshLead',
+            // WhatsApp calling — every call transition is announced on the
+            // routed user's own channel (payload: id + status only); the card
+            // simply re-queries, like refreshLead() above.
+            'echo-private:tenant-user.'.Auth::id().',.call.updated' => 'refreshCalls',
         ];
+    }
+
+    public function refreshCalls(): void
+    {
+        unset($this->leadCalls);
     }
 
     /**
@@ -766,6 +776,25 @@ class Show extends Component
     public function currentConsents(): Collection
     {
         return $this->lead->consents()->get()->keyBy(fn (LeadConsent $consent): string => $consent->consent_type->value);
+    }
+
+    /**
+     * WhatsApp calling — the Lead Calls card's rows: this lead's latest 10
+     * calls, newest first (the (tenant_id, lead_id, created_at) index serves
+     * it), with the claimant loaded up front so the card never queries per row.
+     * A merged lead's calls were reparented onto the survivor, so they show here.
+     *
+     * @return Collection<int, LeadCall>
+     */
+    #[Computed]
+    public function leadCalls(): Collection
+    {
+        return $this->lead->calls()
+            ->where('tenant_id', $this->lead->tenant_id)
+            ->with('claimedBy:id,name')
+            ->latest('created_at')
+            ->limit(10)
+            ->get();
     }
 
     /**

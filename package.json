@@ -4,7 +4,8 @@
     "type": "module",
     "scripts": {
         "build": "vite build",
-        "dev": "vite"
+        "dev": "vite",
+        "test": "vitest run"
     },
     "dependencies": {
         "@tailwindcss/vite": "^4.1.11",
@@ -20,7 +21,9 @@
         "lightningcss-linux-x64-gnu": "^1.29.1"
     },
     "devDependencies": {
+        "jsdom": "^30.1.0",
         "laravel-echo": "^2.4.0",
-        "pusher-js": "^8.6.0"
+        "pusher-js": "^8.6.0",
+        "vitest": "^5.0.1"
     }
 }

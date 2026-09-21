@@ -13,6 +13,8 @@
 
     @include('livewire.tenant.leads.partials.consent-card', ['lead' => $lead])
 
+    @include('livewire.tenant.leads.partials.calls-card')
+
     @include('livewire.tenant.leads.partials.message-composer-card')
 
     @include('livewire.tenant.leads.partials.notes-card')

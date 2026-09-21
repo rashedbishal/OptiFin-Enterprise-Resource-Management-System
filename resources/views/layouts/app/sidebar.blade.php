@@ -152,6 +152,18 @@
 
         {{ $slot }}
 
+        {{-- WhatsApp inbound calling: the softphone lives in the shell, persisted
+        across wire:navigate so a live call survives page changes. Only for users
+        who can actually take calls (the Lead Management module + update rights,
+        the same bar CallRouter rings by). --}}
+        @auth
+            @if ((auth()->user()->tenant?->activeModules ?? collect())->contains('slug', 'lead-management') && auth()->user()->hasModulePermission('lead-management', 'update'))
+                @persist('softphone')
+                    <x-softphone :user-id="auth()->id()" />
+                @endpersist
+            @endif
+        @endauth
+
         @persist('toast')
             <flux:toast.group>
                 <flux:toast />

@@ -11,6 +11,7 @@ use App\Models\TenantUser;
 use App\Services\WhatsAppCallingClient;
 use App\Support\CallingApiResult;
 use App\Support\LeadCallActionResult;
+use App\Support\LeadCallBroadcaster;
 use Illuminate\Support\Carbon;
 
 /**
@@ -120,6 +121,10 @@ class RejectLeadCall
      */
     private function rejectedAtMeta(TenantUser $user, LeadCall $call, ?LeadSource $source): LeadCallActionResult
     {
+        // The local rejection has committed: tell the other routed users now,
+        // before the Meta request, so their ringing cards clear immediately.
+        LeadCallBroadcaster::updated($call, CallStatus::Rejected);
+
         $api = $source === null
             ? null
             : (new WhatsAppCallingClient($source))->reject($call->external_call_id);

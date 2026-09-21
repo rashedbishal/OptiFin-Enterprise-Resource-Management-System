@@ -9,6 +9,7 @@ use App\Models\LeadCall;
 use App\Models\LeadSource;
 use App\Models\TenantUser;
 use App\Support\LeadCallActionResult;
+use App\Support\LeadCallBroadcaster;
 use App\Support\LeadCallSdp;
 use Illuminate\Support\Carbon;
 
@@ -76,9 +77,13 @@ class ClaimLeadCall
                 ->whereNull('claimed_by')
                 ->update($this->failedValues(CallEndReason::SdpCacheFailure)) === 1;
 
-            return $failed
-                ? $this->offerUnavailable($user, $call)
-                : $this->afterLostClaim($user, $call, $source);
+            if ($failed) {
+                LeadCallBroadcaster::updated($call, CallStatus::Failed);
+
+                return $this->offerUnavailable($user, $call);
+            }
+
+            return $this->afterLostClaim($user, $call, $source);
         }
 
         $won = $this->scoped($call)
@@ -97,6 +102,8 @@ class ClaimLeadCall
         }
 
         $this->logCallAction('claim', $user, $call, 'claimed');
+
+        LeadCallBroadcaster::updated($call, CallStatus::Answering);
 
         return LeadCallActionResult::success($this->freshCall($call) ?? $call, $this->session($offer));
     }
@@ -118,9 +125,13 @@ class ClaimLeadCall
         $offer = LeadCallSdp::readOffer($source, $call->external_call_id);
 
         if ($offer === null) {
-            return $this->failAnswering($call, $user->id, CallEndReason::SdpCacheFailure)
-                ? $this->offerUnavailable($user, $call)
-                : $this->refused($user, $call, 'call_state_changed', __('The call changed while your request was in progress.'));
+            if ($this->failAnswering($call, $user->id, CallEndReason::SdpCacheFailure)) {
+                LeadCallBroadcaster::updated($call, CallStatus::Failed);
+
+                return $this->offerUnavailable($user, $call);
+            }
+
+            return $this->refused($user, $call, 'call_state_changed', __('The call changed while your request was in progress.'));
         }
 
         $this->logCallAction('claim', $user, $call, 'claim_repeated');

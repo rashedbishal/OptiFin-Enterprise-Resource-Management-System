@@ -90,4 +90,19 @@ return [
 
     'action_lock_seconds' => (int) env('CALLING_ACTION_LOCK_SECONDS', 20),
 
+    /*
+    |--------------------------------------------------------------------------
+    | WhatsApp Inbound Calling — Step 5 Softphone
+    |--------------------------------------------------------------------------
+    |
+    | active_window_minutes: how long an Answering or Connected call stays in the
+    | softphone's "my active calls" read (measured from when it was claimed /
+    | connected). A call whose terminate webhook never arrived would otherwise be
+    | listed forever; the read never changes a call, so this only bounds what is
+    | shown until the later reconciliation step ends such rows properly.
+    |
+    */
+
+    'active_window_minutes' => (int) env('CALLING_ACTIVE_WINDOW_MINUTES', 120),
+
 ];

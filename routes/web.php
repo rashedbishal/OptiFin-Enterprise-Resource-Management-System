@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ActiveLeadCallsController;
 use App\Http\Controllers\LeadAttachmentController;
 use App\Http\Controllers\LeadCallController;
 use App\Http\Controllers\LeadMessageAttachmentController;
@@ -50,6 +51,10 @@ Route::middleware(['auth', 'verified', 'tenant.identify', 'tenant.active'])->gro
         // WhatsApp inbound calling — JSON actions on a live call. The call id is
         // the only browser-supplied identifier; the actions resolve it inside
         // the authenticated tenant. Fail-open throttle: see the limiter's note.
+        Route::get('calls/active', ActiveLeadCallsController::class)
+            ->middleware('throttle.fail-open:lead-call-actions')
+            ->name('tenant-lead-calls.active');
+
         Route::middleware('throttle.fail-open:lead-call-actions')->prefix('calls/{leadCall}')->group(function () {
             Route::post('claim', [LeadCallController::class, 'claim'])->name('tenant-lead-calls.claim');
             Route::post('answer', [LeadCallController::class, 'answer'])->name('tenant-lead-calls.answer');
