@@ -12,36 +12,9 @@
 
     @include('livewire.tenant.leads.partials.score-breakdown', ['lead' => $lead])
 
-    {{-- Active tab reads as a raised "file tab" merging into the panel
-    below (card-like surface + -mb-px so its bottom edge overlaps the
-    divider) rather than only a colored underline — plain text on the bare
-    canvas didn't give the tab bar enough presence on its own. --}}
-    <div class="flex flex-wrap items-center gap-1 border-b border-zinc-200 dark:border-zinc-700">
-        <flux:button
-            type="button"
-            size="sm"
-            variant="ghost"
-            wire:click="switchTab('overview')"
-            class="-mb-px rounded-t-lg rounded-b-none transition-colors duration-150 {{ $activeTab === 'overview' ? 'border border-b-0 border-zinc-200 bg-white text-accent dark:border-zinc-700 dark:bg-white/10' : 'text-zinc-500 dark:text-zinc-400' }}"
-        >
-            {{ __('Overview & Intel') }}
-        </flux:button>
-        <flux:button
-            type="button"
-            size="sm"
-            variant="ghost"
-            wire:click="switchTab('activity')"
-            class="-mb-px rounded-t-lg rounded-b-none transition-colors duration-150 {{ $activeTab === 'activity' ? 'border border-b-0 border-zinc-200 bg-white text-accent dark:border-zinc-700 dark:bg-white/10' : 'text-zinc-500 dark:text-zinc-400' }}"
-        >
-            {{-- Blank instead of "(0)" before initialLoadComplete — activity()
-            returns [] while deferred, and a literal 0 would misleadingly
-            claim this lead has no activity at all rather than "not loaded
-            yet". --}}
-            {{ __('Assignment & Activities') }}{{ $initialLoadComplete ? ' ('.count($this->activity).')' : '' }}
-        </flux:button>
-
-        {{-- Lead-to-client conversion button: prominent button wrapper --}}
-        <div class="ms-auto flex items-center py-1 sm:py-0">
+    <div class="flex flex-col gap-3">
+        {{-- For tablet and mobile devices (below lg): move the Convert to Client button above the tabs --}}
+        <div class="flex items-center justify-end lg:hidden">
             <flux:button
                 type="button"
                 size="sm"
@@ -52,6 +25,49 @@
             >
                 {{ __('Convert to Client') }}
             </flux:button>
+        </div>
+
+        {{-- Tabs Bar: responsive grid on mobile, flex row on sm+ --}}
+        <div class="flex flex-col gap-2.5 sm:flex-row sm:items-center justify-between border-b border-zinc-200 dark:border-zinc-700">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:items-center gap-2 sm:gap-1.5">
+                <button
+                    type="button"
+                    wire:click="switchTab('overview')"
+                    @class([
+                        'flex items-center justify-center sm:justify-start px-4 py-2 sm:py-1.5 text-xs sm:text-sm font-medium rounded-lg sm:rounded-t-lg sm:rounded-b-none transition-all duration-150 sm:-mb-px',
+                        'border border-zinc-300/90 bg-white text-zinc-900 font-semibold shadow-2xs dark:border-zinc-600/90 dark:bg-zinc-800 dark:text-white sm:border-b-0' => $activeTab === 'overview',
+                        'border border-zinc-200/80 bg-zinc-100/70 text-zinc-600 hover:bg-zinc-200/70 hover:text-zinc-900 dark:border-zinc-700/60 dark:bg-zinc-900/60 dark:text-zinc-400 dark:hover:bg-zinc-800/70 dark:hover:text-zinc-200 sm:border-b-0' => $activeTab !== 'overview',
+                    ])
+                >
+                    {{ __('Overview & Intel') }}
+                </button>
+
+                <button
+                    type="button"
+                    wire:click="switchTab('activity')"
+                    @class([
+                        'flex items-center justify-center sm:justify-start px-4 py-2 sm:py-1.5 text-xs sm:text-sm font-medium rounded-lg sm:rounded-t-lg sm:rounded-b-none transition-all duration-150 sm:-mb-px',
+                        'border border-zinc-300/90 bg-white text-zinc-900 font-semibold shadow-2xs dark:border-zinc-600/90 dark:bg-zinc-800 dark:text-white sm:border-b-0' => $activeTab === 'activity',
+                        'border border-zinc-200/80 bg-zinc-100/70 text-zinc-600 hover:bg-zinc-200/70 hover:text-zinc-900 dark:border-zinc-700/60 dark:bg-zinc-900/60 dark:text-zinc-400 dark:hover:bg-zinc-800/70 dark:hover:text-zinc-200 sm:border-b-0' => $activeTab !== 'activity',
+                    ])
+                >
+                    {{ __('Assignment & Activities') }}{{ $initialLoadComplete ? ' ('.count($this->activity).')' : '' }}
+                </button>
+            </div>
+
+            {{-- Convert to Client Button on desktop (lg+): positioned with clear bottom gap above the divider line --}}
+            <div class="hidden lg:flex items-center mb-2">
+                <flux:button
+                    type="button"
+                    size="sm"
+                    variant="subtle"
+                    icon="user-plus"
+                    class="font-semibold text-zinc-900 dark:text-white bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 border border-zinc-300/80 dark:border-zinc-600/80 shadow-2xs transition-all"
+                    title="{{ __('Convert lead to client') }}"
+                >
+                    {{ __('Convert to Client') }}
+                </flux:button>
+            </div>
         </div>
     </div>
 
