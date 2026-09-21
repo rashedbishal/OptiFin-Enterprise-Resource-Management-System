@@ -1223,3 +1223,41 @@ background) since these are solid placeholder shapes, not letters.
     }
 }
 
+@keyframes notification-fade-in {
+    from {
+        opacity: 0;
+        transform: translateY(3px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-notification-fade {
+    animation: notification-fade-in 450ms var(--motion-ease-gentle) forwards;
+}
+
+/*
+3D elevated shadow system for the notification panel.
+Creates a multi-layered ambient and directional shadow with an subtle edge ring
+to give the panel an elevated, floating 3D depth off the page surface.
+*/
+.notification-panel-elevation {
+    box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.05),
+        0 8px 20px -4px rgba(0, 0, 0, 0.1),
+        0 20px 48px -10px rgba(0, 0, 0, 0.18),
+        0 35px 80px -20px rgba(0, 0, 0, 0.15);
+}
+
+:where(.dark, .dark *) .notification-panel-elevation {
+    box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.08),
+        0 8px 24px -4px rgba(0, 0, 0, 0.5),
+        0 20px 50px -10px rgba(0, 0, 0, 0.7),
+        0 40px 85px -20px rgba(0, 0, 0, 0.85);
+}
+
+
+

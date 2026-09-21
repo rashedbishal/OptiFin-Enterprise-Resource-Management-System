@@ -14,8 +14,7 @@
     for content that didn't exist in the DOM yet. --}}
     <button
         type="button"
-        wire:click="openNotifications"
-        x-on:click="open = ! open"
+        x-on:click="open = ! open; if (open && ! $wire.notificationsLoaded) { $wire.openNotifications(); }"
         :aria-expanded="open"
         aria-label="{{ __('Notifications') }}"
         class="relative flex size-9 items-center justify-center rounded-full text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-700 dark:hover:text-zinc-200 cursor-pointer"
@@ -63,13 +62,14 @@
     <div
         x-cloak
         x-show="open"
-        x-transition:enter="transition duration-900 ease-[var(--motion-ease-premium)]"
+        wire:ignore.self
+        x-transition:enter="transition duration-1000 ease-[var(--motion-ease-premium)]"
         x-transition:enter-start="opacity-0 scale-95 -translate-y-2"
         x-transition:enter-end="opacity-100 scale-100 translate-y-0"
-        x-transition:leave="transition duration-800 ease-[var(--motion-ease-premium)]"
+        x-transition:leave="transition duration-900 ease-[var(--motion-ease-premium)]"
         x-transition:leave-start="opacity-100 scale-100 translate-y-0"
         x-transition:leave-end="opacity-0 scale-95 -translate-y-2"
-        class="fixed inset-x-3 top-14 z-50 max-h-[calc(100dvh-5rem)] rounded-xl border border-zinc-200/90 bg-white/95 shadow-2xl backdrop-blur-md dark:border-zinc-700/90 dark:bg-zinc-900/95 sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:mt-2 sm:w-96 sm:max-w-none origin-top-right"
+        class="fixed inset-x-3 top-14 z-50 max-h-[calc(100dvh-5rem)] rounded-2xl overflow-hidden border border-zinc-200 bg-white notification-panel-elevation dark:border-zinc-800 dark:bg-zinc-900 sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:mt-2 sm:w-96 sm:max-w-none origin-top-right"
     >
         <div class="flex items-center justify-between gap-2.5 border-b border-zinc-200 px-3.5 py-3 dark:border-zinc-700 sm:px-4">
             <flux:heading size="sm" class="shrink-0 font-semibold">{{ __('Notifications') }}</flux:heading>
@@ -94,7 +94,7 @@
             all), toggled by wire:loading otherwise — never a bare
             wire:loading/.remove, see leads.blade.php's long comment for
             why. --}}
-            <div wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" class="{{ $this->notificationsLoaded ? '' : '!hidden' }} contents">
+            <div wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" class="{{ $this->notificationsLoaded ? 'animate-notification-fade' : '!hidden' }} contents">
                 @forelse ($this->notifications as $n)
                     {{-- The lead link is a "stretched" anchor (absolute
                     inset-0) rather than wrapping the title/message text —
