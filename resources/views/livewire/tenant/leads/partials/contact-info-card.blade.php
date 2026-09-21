@@ -17,67 +17,93 @@
 @endphp
 
 <flux:card class="flex flex-col gap-4">
-    <flux:heading size="lg">{{ __('Contact Information') }}</flux:heading>
+    <div class="flex items-center gap-2 border-b border-zinc-100 pb-3 dark:border-zinc-800">
+        <div class="flex size-7 items-center justify-center rounded-lg bg-accent/10 text-accent">
+            <flux:icon.user variant="micro" class="size-4" />
+        </div>
+        <flux:heading size="lg" class="font-semibold">{{ __('Contact Information') }}</flux:heading>
+    </div>
 
     {{-- Real content: hidden by default before initialLoadComplete, toggled
     by wire:loading otherwise — never a bare wire:loading/.remove, see
     leads.blade.php's long comment for why. --}}
     <div wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" class="{{ $showSkeletonByDefault ? '!hidden' : '' }} contents">
     @if ($hasContactDetails)
-        <div class="flex flex-col gap-3">
+        <div class="flex flex-col gap-2.5">
             @if ($lead->phone)
-                <div class="flex items-center gap-2">
-                    <flux:icon.phone variant="micro" class="size-4 shrink-0 text-zinc-600 dark:text-zinc-300" />
-                    <span class="text-xs sm:text-sm font-semibold text-zinc-800 dark:text-zinc-200">{{ __('Phone / WhatsApp:') }}</span>
-                    <span class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white">{{ $lead->phone }}</span>
+                <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200/80 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                    <div class="flex items-center gap-2.5 min-w-0">
+                        <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
+                            <flux:icon.phone variant="micro" class="size-4" />
+                        </div>
+                        <div class="min-w-0">
+                            <span class="block text-[11px] font-medium text-zinc-500 dark:text-zinc-400">{{ __('Phone / WhatsApp') }}</span>
+                            <span class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white">{{ $lead->phone }}</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1.5 ms-auto">
+                        @if ($telNumber)
+                            <flux:button type="button" size="xs" variant="subtle" icon="phone" href="tel:{{ $telNumber }}" class="cursor-pointer">
+                                {{ __('Call') }}
+                            </flux:button>
+                        @endif
+                        @if ($whatsappDigits)
+                            <flux:button type="button" size="xs" variant="subtle" icon="chat-bubble-left-right" href="https://wa.me/{{ $whatsappDigits }}" target="_blank" class="cursor-pointer">
+                                {{ __('WhatsApp') }}
+                            </flux:button>
+                        @endif
+                    </div>
                 </div>
             @endif
+
             @if ($lead->email)
-                <div class="flex items-center gap-2">
-                    <flux:icon.envelope variant="micro" class="size-4 shrink-0 text-zinc-600 dark:text-zinc-300" />
-                    <span class="text-xs sm:text-sm font-semibold text-zinc-800 dark:text-zinc-200">{{ __('Email Address:') }}</span>
-                    <span class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white break-all">{{ $lead->email }}</span>
+                <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200/80 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                    <div class="flex items-center gap-2.5 min-w-0">
+                        <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
+                            <flux:icon.envelope variant="micro" class="size-4" />
+                        </div>
+                        <div class="min-w-0">
+                            <span class="block text-[11px] font-medium text-zinc-500 dark:text-zinc-400">{{ __('Email Address') }}</span>
+                            <span class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white break-all">{{ $lead->email }}</span>
+                        </div>
+                    </div>
+                    <flux:button type="button" size="xs" variant="subtle" icon="envelope" href="mailto:{{ $lead->email }}" class="cursor-pointer ms-auto">
+                        {{ __('Email') }}
+                    </flux:button>
                 </div>
             @endif
+
             @if ($lead->website)
-                <div class="flex items-center gap-2">
-                    <flux:icon.globe-alt variant="micro" class="size-4 shrink-0 text-zinc-600 dark:text-zinc-300" />
-                    <span class="text-xs sm:text-sm font-semibold text-zinc-800 dark:text-zinc-200">{{ __('Website:') }}</span>
-                    <a href="{{ $lead->website }}" target="_blank" rel="noopener noreferrer" class="text-xs sm:text-sm font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 break-all underline">
-                        {{ __('Visit site') }} &#8599;
-                    </a>
+                <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200/80 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                    <div class="flex items-center gap-2.5 min-w-0">
+                        <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-purple-50 text-purple-600 dark:bg-purple-950/60 dark:text-purple-400">
+                            <flux:icon.globe-alt variant="micro" class="size-4" />
+                        </div>
+                        <div class="min-w-0">
+                            <span class="block text-[11px] font-medium text-zinc-500 dark:text-zinc-400">{{ __('Website') }}</span>
+                            <span class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white break-all">{{ $lead->website }}</span>
+                        </div>
+                    </div>
+                    <flux:button type="button" size="xs" variant="subtle" icon="arrow-top-right-on-square" href="{{ $lead->website }}" target="_blank" rel="noopener noreferrer" class="cursor-pointer ms-auto">
+                        {{ __('Visit Site') }}
+                    </flux:button>
                 </div>
             @endif
+
             @if ($lead->location)
-                <div class="flex items-center gap-2">
-                    <flux:icon.map-pin variant="micro" class="size-4 shrink-0 text-zinc-600 dark:text-zinc-300" />
-                    <span class="text-xs sm:text-sm font-semibold text-zinc-800 dark:text-zinc-200">{{ __('Location:') }}</span>
-                    <span class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white break-words">{{ $lead->location }}</span>
+                <div class="flex items-center gap-2.5 rounded-xl border border-zinc-200/80 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                    <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400">
+                        <flux:icon.map-pin variant="micro" class="size-4" />
+                    </div>
+                    <div class="min-w-0">
+                        <span class="block text-[11px] font-medium text-zinc-500 dark:text-zinc-400">{{ __('Location') }}</span>
+                        <span class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white break-words">{{ $lead->location }}</span>
+                    </div>
                 </div>
             @endif
         </div>
-
-        @if ($telNumber || $whatsappDigits || $lead->email)
-            <div class="flex flex-wrap gap-2">
-                @if ($telNumber)
-                    <flux:button type="button" size="sm" icon="phone" href="tel:{{ $telNumber }}">
-                        {{ __('Call Now') }}
-                    </flux:button>
-                @endif
-                @if ($whatsappDigits)
-                    <flux:button type="button" size="sm" icon="chat-bubble-left-right" href="https://wa.me/{{ $whatsappDigits }}" target="_blank">
-                        {{ __('WhatsApp') }}
-                    </flux:button>
-                @endif
-                @if ($lead->email)
-                    <flux:button type="button" size="sm" icon="envelope" href="mailto:{{ $lead->email }}">
-                        {{ __('Send Email') }}
-                    </flux:button>
-                @endif
-            </div>
-        @endif
     @else
-        <span class="text-xs sm:text-sm font-medium text-zinc-600 dark:text-zinc-400">{{ __('No contact details yet.') }}</span>
+        <span class="text-xs sm:text-sm font-medium text-zinc-600 dark:text-zinc-400 italic">{{ __('No contact details yet.') }}</span>
     @endif
     </div>
 
@@ -94,3 +120,4 @@
         @endfor
     </div>
 </flux:card>
+

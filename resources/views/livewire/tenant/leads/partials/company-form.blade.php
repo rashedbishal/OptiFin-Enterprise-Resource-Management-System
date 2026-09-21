@@ -6,13 +6,21 @@
     $canEdit = $canEdit ?? false;
 @endphp
 
-<flux:card>
-    <div class="mb-4 flex items-center justify-between gap-2">
-        <flux:heading size="lg">{{ __('Company') }}</flux:heading>
+<flux:card class="flex flex-col gap-4">
+    <div class="flex items-center justify-between gap-2 border-b border-zinc-100 pb-3 dark:border-zinc-800">
+        <div class="flex items-center gap-2">
+            <div class="flex size-7 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
+                <flux:icon.building-office variant="micro" class="size-4" />
+            </div>
+            <flux:heading size="lg" class="font-semibold">{{ __('Company Information') }}</flux:heading>
+        </div>
         @if ($canEdit && ! $editable)
-            <flux:link as="button" type="button" variant="subtle" class="text-xs" wire:click="startEditingCompany">{{ __('Edit') }}</flux:link>
+            <flux:button size="xs" variant="subtle" icon="pencil-square" wire:click="startEditingCompany" class="cursor-pointer font-semibold">
+                {{ __('Edit') }}
+            </flux:button>
         @endif
     </div>
+
     @if ($editable)
         <form wire:submit="updateCompany" class="flex flex-col gap-3">
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -24,7 +32,7 @@
                 <flux:input wire:model="leadIndustry" :label="__('Industry Sector')" />
                 <flux:input wire:model="leadLocation" :label="__('Location / City')" />
             </div>
-            <div class="flex gap-2">
+            <div class="flex gap-2 pt-1">
                 <flux:button type="submit" variant="primary" size="sm">{{ __('Save') }}</flux:button>
                 @if ($canEdit)
                     <flux:button type="button" size="sm" wire:click="cancelEditingCompany">{{ __('Cancel') }}</flux:button>
@@ -34,34 +42,67 @@
     @else
         @php $hasCompanyDetails = collect([$lead->company, $lead->website, $lead->industry, $lead->location])->filter()->isNotEmpty(); @endphp
         @if ($hasCompanyDetails)
-            <div class="flex flex-col gap-3">
+            <div class="flex flex-col gap-3.5">
+                {{-- Company Name Hero Box --}}
                 @if ($lead->company)
-                    <div>
-                        <flux:text size="sm" variant="subtle">{{ __('Company') }}</flux:text>
-                        <flux:text class="block break-words">{{ $lead->company }}</flux:text>
+                    <div class="flex items-center gap-3 rounded-xl border border-zinc-200/80 bg-zinc-50/60 p-3.5 shadow-2xs dark:border-zinc-800 dark:bg-zinc-900/60">
+                        <div class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
+                            <flux:icon.building-office class="size-5" />
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <span class="text-xs font-medium text-zinc-500 dark:text-zinc-400">{{ __('Company / Organization') }}</span>
+                            <p class="text-sm font-semibold text-zinc-900 dark:text-white break-words">{{ $lead->company }}</p>
+                        </div>
                     </div>
                 @endif
+
+                {{-- Company Attribute Badges & Cards --}}
+                <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                    @if ($lead->industry)
+                        <div class="flex items-center gap-2.5 rounded-xl border border-zinc-200/80 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                            <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-purple-50 text-purple-600 dark:bg-purple-950/60 dark:text-purple-400">
+                                <flux:icon.briefcase variant="micro" class="size-4" />
+                            </div>
+                            <div class="min-w-0">
+                                <span class="block text-[11px] font-medium text-zinc-500 dark:text-zinc-400">{{ __('Industry') }}</span>
+                                <span class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white break-words">{{ $lead->industry }}</span>
+                            </div>
+                        </div>
+                    @endif
+
+                    @if ($lead->location)
+                        <div class="flex items-center gap-2.5 rounded-xl border border-zinc-200/80 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                            <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400">
+                                <flux:icon.map-pin variant="micro" class="size-4" />
+                            </div>
+                            <div class="min-w-0">
+                                <span class="block text-[11px] font-medium text-zinc-500 dark:text-zinc-400">{{ __('Location') }}</span>
+                                <span class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white break-words">{{ $lead->location }}</span>
+                            </div>
+                        </div>
+                    @endif
+                </div>
+
                 @if ($lead->website)
-                    <div>
-                        <flux:text size="sm" variant="subtle">{{ __('Website') }}</flux:text>
-                        <a href="{{ $lead->website }}" target="_blank" rel="noopener noreferrer" class="block w-fit max-w-full break-all underline">{{ $lead->website }}</a>
-                    </div>
-                @endif
-                @if ($lead->industry)
-                    <div>
-                        <flux:text size="sm" variant="subtle">{{ __('Industry') }}</flux:text>
-                        <flux:text class="block break-words">{{ $lead->industry }}</flux:text>
-                    </div>
-                @endif
-                @if ($lead->location)
-                    <div>
-                        <flux:text size="sm" variant="subtle">{{ __('Location') }}</flux:text>
-                        <flux:text class="block break-words">{{ $lead->location }}</flux:text>
+                    <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200/80 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                        <div class="flex items-center gap-2.5 min-w-0">
+                            <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
+                                <flux:icon.globe-alt variant="micro" class="size-4" />
+                            </div>
+                            <div class="min-w-0">
+                                <span class="block text-[11px] font-medium text-zinc-500 dark:text-zinc-400">{{ __('Website URL') }}</span>
+                                <span class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white break-all">{{ $lead->website }}</span>
+                            </div>
+                        </div>
+                        <flux:button type="button" size="xs" variant="subtle" icon="arrow-top-right-on-square" href="{{ $lead->website }}" target="_blank" rel="noopener noreferrer" class="cursor-pointer ms-auto">
+                            {{ __('Visit Site') }}
+                        </flux:button>
                     </div>
                 @endif
             </div>
         @else
-            <flux:text variant="subtle">{{ __('No company details yet.') }}</flux:text>
+            <p class="text-xs font-medium text-zinc-500 dark:text-zinc-400 italic">{{ __('No company details recorded yet.') }}</p>
         @endif
     @endif
 </flux:card>
+

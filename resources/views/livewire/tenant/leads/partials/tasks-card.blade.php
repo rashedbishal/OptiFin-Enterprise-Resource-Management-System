@@ -105,7 +105,7 @@
         <flux:text class="font-medium text-zinc-600 dark:text-zinc-400">{{ __('No tasks yet for this lead.') }}</flux:text>
     @endforelse
 
-    <flux:modal wire:model.self="showTaskModal" :dismissible="false" class="md:w-[32rem]">
+    <flux:modal wire:model.self="showTaskModal" :dismissible="false" class="sm:max-w-lg md:max-w-xl md:w-[34rem]">
         <form wire:submit="saveTask" class="flex flex-col gap-4">
             <flux:heading size="lg">{{ $editingTaskId ? __('Edit Task') : __('New Task') }}</flux:heading>
 
@@ -113,9 +113,16 @@
 
             <flux:textarea wire:model="taskDescription" :label="__('Description')" rows="2" />
 
-            <div class="flex flex-col gap-4 sm:flex-row">
-                <x-date-picker wire:model="taskDueDate" :label="__('Due Date')" :placeholder="__('Due Date')" class="sm:flex-1" />
-                <flux:input wire:model="taskDueTime" type="time" :label="__('Due Time')" class="sm:flex-1" />
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <flux:field>
+                    <flux:label>{{ __('Due Date') }}</flux:label>
+                    <x-date-picker wire:model="taskDueDate" :placeholder="__('Due Date')" />
+                </flux:field>
+
+                <flux:field>
+                    <flux:label>{{ __('Due Time') }}</flux:label>
+                    <flux:input wire:model="taskDueTime" type="time" class="w-full" />
+                </flux:field>
             </div>
 
             <x-dropdown-select wire:model="taskPriority" :label="__('Priority')" :options="collect(\App\Enums\LeadPriority::cases())->map(fn ($p) => ['value' => $p->value, 'label' => $p->label()])->toArray()" />
