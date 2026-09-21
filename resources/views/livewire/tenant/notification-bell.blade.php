@@ -69,7 +69,7 @@
         x-transition:leave="transition duration-900 ease-[var(--motion-ease-premium)]"
         x-transition:leave-start="opacity-100 scale-100 translate-y-0"
         x-transition:leave-end="opacity-0 scale-95 -translate-y-2"
-        class="fixed inset-x-3 top-14 max-h-[calc(100dvh-4.5rem)] z-50 flex flex-col rounded-2xl overflow-hidden border border-zinc-200 bg-white notification-panel-elevation dark:border-zinc-800 dark:bg-zinc-900 sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:mt-2 sm:w-96 sm:max-h-none origin-top-right"
+        class="fixed inset-x-4 top-14 max-h-[min(32rem,calc(100dvh-6rem))] z-50 flex flex-col rounded-2xl overflow-hidden border border-zinc-200 bg-white notification-panel-elevation dark:border-zinc-800 dark:bg-zinc-900 sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:mt-2 sm:w-96 sm:max-h-none origin-top-right"
     >
         <div class="flex shrink-0 items-center justify-between gap-2.5 border-b border-zinc-200 px-3.5 py-2.5 dark:border-zinc-700 sm:px-4">
             <flux:heading size="sm" class="shrink-0 font-semibold text-xs sm:text-sm">{{ __('Notifications') }}</flux:heading>
@@ -87,7 +87,7 @@
             </div>
         </div>
 
-        <div class="max-h-[calc(100dvh-8.5rem)] sm:max-h-80 flex-1 min-h-0 overflow-y-auto">
+        <div class="flex-1 min-h-0 overflow-y-auto sm:max-h-80">
             {{-- Real content: hidden by default until notificationsLoaded
             (see $notificationsLoaded's docblock — the dropdown can be
             open, via Alpine, before the server has confirmed any fetch at

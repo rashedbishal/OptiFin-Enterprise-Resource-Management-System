@@ -36,6 +36,16 @@ test('the bell mounts exactly once per page, not once for desktop and once for m
     expect(substr_count($response->getContent(), 'aria-label="Notifications"'))->toBe(1);
 });
 
+test('the mobile notification panel stays within padded viewport bounds', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+
+    $response = $this->actingAs($clientAdmin)->get(route('tenant-leads.index'));
+
+    $response->assertOk()
+        ->assertSee('inset-x-4 top-14 max-h-[min(32rem,calc(100dvh-6rem))]', false)
+        ->assertSee('flex-1 min-h-0 overflow-y-auto sm:max-h-80', false);
+});
+
 test('a client user (sales rep) also sees the bell on their page load', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
     $rep = clientUserWithLeadPermission($tenant);
