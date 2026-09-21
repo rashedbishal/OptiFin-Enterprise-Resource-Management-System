@@ -69,10 +69,10 @@
         x-transition:leave="transition duration-900 ease-[var(--motion-ease-premium)]"
         x-transition:leave-start="opacity-100 scale-100 translate-y-0"
         x-transition:leave-end="opacity-0 scale-95 -translate-y-2"
-        class="fixed inset-x-3 top-14 z-50 max-h-[calc(100dvh-5rem)] rounded-2xl overflow-hidden border border-zinc-200 bg-white notification-panel-elevation dark:border-zinc-800 dark:bg-zinc-900 sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:mt-2 sm:w-96 sm:max-w-none origin-top-right"
+        class="fixed inset-x-3 top-14 max-h-[calc(100dvh-4.5rem)] z-50 flex flex-col rounded-2xl overflow-hidden border border-zinc-200 bg-white notification-panel-elevation dark:border-zinc-800 dark:bg-zinc-900 sm:absolute sm:inset-auto sm:top-full sm:right-0 sm:mt-2 sm:w-96 sm:max-h-none origin-top-right"
     >
-        <div class="flex items-center justify-between gap-2.5 border-b border-zinc-200 px-3.5 py-3 dark:border-zinc-700 sm:px-4">
-            <flux:heading size="sm" class="shrink-0 font-semibold">{{ __('Notifications') }}</flux:heading>
+        <div class="flex shrink-0 items-center justify-between gap-2.5 border-b border-zinc-200 px-3.5 py-2.5 dark:border-zinc-700 sm:px-4">
+            <flux:heading size="sm" class="shrink-0 font-semibold text-xs sm:text-sm">{{ __('Notifications') }}</flux:heading>
             <div class="flex flex-wrap items-center justify-end gap-2 text-xs sm:gap-3">
                 @if ($this->unreadCount > 0)
                     <button type="button" wire:click="markAllAsRead" class="cursor-pointer font-semibold text-accent hover:underline">
@@ -87,7 +87,7 @@
             </div>
         </div>
 
-        <div class="max-h-[calc(100dvh-9rem)] sm:max-h-96 overflow-y-auto">
+        <div class="max-h-[calc(100dvh-8.5rem)] sm:max-h-80 flex-1 min-h-0 overflow-y-auto">
             {{-- Real content: hidden by default until notificationsLoaded
             (see $notificationsLoaded's docblock — the dropdown can be
             open, via Alpine, before the server has confirmed any fetch at
@@ -105,14 +105,14 @@
                     link sidesteps that entirely, and still lets the unread
                     dot below sit above it (z-10) to stay independently
                     clickable. --}}
-                    <div wire:key="notification-{{ $n['id'] }}" class="relative flex items-start gap-3 border-b border-zinc-100 px-3.5 sm:px-4 py-3 last:border-b-0 dark:border-zinc-800 {{ $n['read'] ? '' : 'bg-accent/5' }}">
-                        <div class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
-                            <flux:icon :icon="$n['icon']" variant="micro" class="size-4 text-zinc-600 dark:text-zinc-300" />
+                    <div wire:key="notification-{{ $n['id'] }}" class="relative flex items-start gap-2.5 border-b border-zinc-100 px-3.5 sm:px-4 py-2.5 last:border-b-0 dark:border-zinc-800 {{ $n['read'] ? '' : 'bg-accent/5' }}">
+                        <div class="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
+                            <flux:icon :icon="$n['icon']" variant="micro" class="size-3.5 text-zinc-600 dark:text-zinc-300" />
                         </div>
 
                         <div class="min-w-0 flex-1">
-                            <p class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white leading-snug break-words">{{ $n['title'] }}</p>
-                            <p class="mt-0.5 text-xs font-medium text-zinc-600 dark:text-zinc-300 leading-normal break-words">{{ $n['message'] }}</p>
+                            <p class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-white leading-tight break-words">{{ $n['title'] }}</p>
+                            <p class="mt-0.5 text-xs font-medium text-zinc-600 dark:text-zinc-300 leading-snug break-words">{{ $n['message'] }}</p>
                             <p class="mt-1 text-[11px] font-medium text-zinc-400 dark:text-zinc-500">{{ $n['created_at']->diffForHumans() }}</p>
                         </div>
 
@@ -134,13 +134,13 @@
                             <button
                                 type="button"
                                 wire:click.stop.prevent="markAsRead('{{ $n['id'] }}')"
-                                class="relative z-10 mt-1.5 size-2.5 shrink-0 cursor-pointer rounded-full bg-accent"
+                                class="relative z-10 mt-1 size-2 shrink-0 cursor-pointer rounded-full bg-accent"
                                 aria-label="{{ __('Mark as read') }}"
                             ></button>
                         @endunless
                     </div>
                 @empty
-                    <div class="flex flex-col items-center gap-2 px-4 py-10 text-center">
+                    <div class="flex flex-col items-center gap-2 px-4 py-8 text-center">
                         <flux:icon icon="bell" class="size-6 text-zinc-300 dark:text-zinc-600" />
                         <span class="text-xs sm:text-sm font-medium text-zinc-600 dark:text-zinc-400">{{ __('No notifications yet.') }}</span>
                     </div>
@@ -155,8 +155,8 @@
             RECENT_LIMIT but never paginated. --}}
             <div class="{{ $this->notificationsLoaded ? '!hidden' : '' }} contents" wire:loading.remove.class="!hidden" wire:target="{{ $listLoadingTargets }}">
                 @for ($i = 0; $i < 4; $i++)
-                    <div wire:key="notification-skeleton-{{ $i }}" class="flex items-start gap-3 border-b border-zinc-100 px-3.5 sm:px-4 py-3 last:border-b-0 dark:border-zinc-800">
-                        <div class="mt-0.5 size-8 shrink-0 skeleton-shimmer rounded-full"></div>
+                    <div wire:key="notification-skeleton-{{ $i }}" class="flex items-start gap-2.5 border-b border-zinc-100 px-3.5 sm:px-4 py-2.5 last:border-b-0 dark:border-zinc-800">
+                        <div class="mt-0.5 size-7 shrink-0 skeleton-shimmer rounded-full"></div>
                         <div class="min-w-0 flex-1 flex flex-col gap-1.5">
                             <div class="h-3 w-32 skeleton-shimmer rounded"></div>
                             <div class="h-2.5 w-full skeleton-shimmer rounded"></div>

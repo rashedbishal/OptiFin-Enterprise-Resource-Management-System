@@ -1,37 +1,50 @@
 import {
-    defineConfig
+    defineConfig,
+    loadEnv,
 } from 'vite';
 import laravel from 'laravel-vite-plugin';
 import { bunny } from 'laravel-vite-plugin/fonts';
 import tailwindcss from "@tailwindcss/vite";
 
-export default defineConfig({
-    plugins: [
-        laravel({
-            input: [
-                'resources/css/app.css',
-                'resources/js/app.js',
-            ],
-            refresh: true,
-            fonts: [
-                bunny('Instrument Sans', {
-                    weights: [400, 500, 600],
-                }),
-            ],
-        }),
-        tailwindcss(),
-    ],
-    server: {
-        cors: true,
-        watch: {
-            ignored: [
-                '**/.agents/**',
-                '**/.claude/**',
-                '**/.cursor/**',
-                '**/.junie/**',
-                '**/storage/framework/views/**',
-                '**/vendor/**',
-            ],
+export default defineConfig(({ mode }) => {
+    const env = loadEnv(mode, process.cwd(), '');
+    const appHost = new URL(env.APP_URL ?? 'http://localhost:8000').hostname;
+
+    return {
+        plugins: [
+            laravel({
+                input: [
+                    'resources/css/app.css',
+                    'resources/js/app.js',
+                ],
+                refresh: true,
+                fonts: [
+                    bunny('Instrument Sans', {
+                        weights: [400, 500, 600],
+                    }),
+                ],
+            }),
+            tailwindcss(),
+        ],
+        server: {
+            host: '0.0.0.0',
+            port: 5173,
+            strictPort: true,
+            cors: true,
+            hmr: {
+                host: appHost,
+                port: 5173,
+            },
+            watch: {
+                ignored: [
+                    '**/.agents/**',
+                    '**/.claude/**',
+                    '**/.cursor/**',
+                    '**/.junie/**',
+                    '**/storage/framework/views/**',
+                    '**/vendor/**',
+                ],
+            },
         },
-    },
+    };
 });
