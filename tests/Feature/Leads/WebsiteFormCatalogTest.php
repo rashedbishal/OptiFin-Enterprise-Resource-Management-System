@@ -169,3 +169,15 @@ test('a website form token is stored only as a sha-256 hash, never in plaintext'
     expect($form->token_hash)->not->toBe($token);
     expect($form->token_hash)->toBe(hash('sha256', $token));
 });
+
+test('the integration details modal renders the submission endpoint with a {token} placeholder', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+
+    $component = Livewire::actingAs($clientAdmin)->test(Index::class);
+    $component->call('create')->set('name', 'Contact Us')->call('save')->assertHasNoErrors();
+    $form = WebsiteForm::where('tenant_id', $tenant->id)->firstOrFail();
+
+    $component->call('viewIntegrationDetails', $form->id)
+        ->assertSet('showIntegrationModal', true)
+        ->assertSee('/api/webhook/website-form/'.$tenant->tenant_code.'/{token}');
+});

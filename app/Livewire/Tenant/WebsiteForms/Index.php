@@ -407,8 +407,19 @@ class Index extends Component
             ->find($this->viewingId);
     }
 
+    /**
+     * route() treats a literal "{token}" value as an unfilled parameter and
+     * throws, so the URL is generated with a sentinel and the display value
+     * (the "{token}" placeholder by default) is swapped in afterwards.
+     */
     public function submissionUrl(WebsiteForm $form, string $token = '{token}'): string
     {
-        return route('api.webhook.website-form.submit', [Auth::user()->tenant->tenant_code, $token]);
+        $sentinel = 'TOKENPLACEHOLDER';
+
+        return str_replace(
+            $sentinel,
+            $token,
+            route('api.webhook.website-form.submit', [Auth::user()->tenant->tenant_code, $sentinel]),
+        );
     }
 }
