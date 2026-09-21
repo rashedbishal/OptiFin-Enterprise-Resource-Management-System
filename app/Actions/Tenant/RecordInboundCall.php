@@ -11,6 +11,7 @@ use App\Models\LeadCall;
 use App\Models\LeadSource;
 use App\Services\CallRouter;
 use App\Support\LeadCallBroadcaster;
+use App\Support\LeadCallMissedNotifier;
 use App\Support\WhatsAppCallEvent;
 use Closure;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -394,6 +395,7 @@ class RecordInboundCall
         // Announced after the transaction has committed, and only when the
         // call's status actually changed (a fill-only terminate changes none).
         if ($transition !== null) {
+            LeadCallMissedNotifier::dispatch($transition[0]);
             LeadCallBroadcaster::updated($transition[0], $transition[1]);
         }
 
@@ -459,6 +461,11 @@ class RecordInboundCall
         // The row has committed (this runs after DB::transaction() returned),
         // so remembering the id can never outlive a rolled-back insert.
         $this->rememberCall($source, $event->callId);
+
+        // A row created already Missed (a stale or terminate-first arrival, or
+        // no one to ring) is its own Missed transition: notify once, only now
+        // that it has committed. Any other status is refused by the notifier.
+        LeadCallMissedNotifier::dispatch($call);
 
         return $call;
     }

@@ -105,4 +105,27 @@ return [
 
     'active_window_minutes' => (int) env('CALLING_ACTIVE_WINDOW_MINUTES', 120),
 
+    /*
+    |--------------------------------------------------------------------------
+    | WhatsApp Inbound Calling — Step 6 Stale-Call Reconciliation
+    |--------------------------------------------------------------------------
+    |
+    | stale_grace_seconds: how long past `ringing_expires_at` a Ringing or
+    | Answering call is left alone before `calls:reconcile-stale` ends it. Meta's
+    | own `terminate` normally arrives within seconds of the ring window and
+    | carries the real outcome, so the sweep waits for it; the grace also outlasts
+    | any in-flight Meta request of an `answer` / `accept` (action_lock_seconds
+    | plus api_timeout_seconds), so the sweep can never race one. A Connected
+    | call goes stale after `active_window_minutes` (Step 5) — one number for
+    | what the softphone hides and what the server ends.
+    |
+    | reconcile_batch_limit: the most rows one `calls:reconcile-stale` run will
+    | examine. The rest are picked up by the next run (it runs every minute).
+    |
+    */
+
+    'stale_grace_seconds' => (int) env('CALLING_STALE_GRACE_SECONDS', 120),
+
+    'reconcile_batch_limit' => (int) env('CALLING_RECONCILE_BATCH_LIMIT', 500),
+
 ];

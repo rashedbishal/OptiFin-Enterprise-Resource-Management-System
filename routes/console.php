@@ -40,3 +40,8 @@ $monitored('leads:recalculate-scores')->daily();
 $monitored('leads:detect-duplicates')->daily();
 $monitored('tasks:send-alert-notifications')->dailyAt('08:00');
 $monitored('leads:nurture-inactive-leads')->dailyAt('08:00')->withoutOverlapping();
+// WhatsApp calling Step 6 — ends calls whose terminate webhook never arrived.
+// The overlap mutex is deliberately short (10 min, not the 24h default): a run
+// killed mid-sweep must not stall reconciliation for a day. Correctness never
+// depends on it — every transition is a compare-and-set.
+$monitored('calls:reconcile-stale')->everyMinute()->withoutOverlapping(10);

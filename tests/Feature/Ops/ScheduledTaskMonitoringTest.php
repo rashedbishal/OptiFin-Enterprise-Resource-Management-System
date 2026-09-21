@@ -27,6 +27,7 @@ const OPS_SCHEDULED_COMMANDS = [
     'leads:detect-duplicates',
     'tasks:send-alert-notifications',
     'leads:nurture-inactive-leads',
+    'calls:reconcile-stale',
 ];
 
 /**
@@ -55,7 +56,7 @@ beforeEach(function () {
     Notification::fake();
 });
 
-test('exactly the 8 approved commands are scheduled, and every one of them reports its own failure', function () {
+test('exactly the 9 approved commands are scheduled, and every one of them reports its own failure', function () {
     $events = scheduledEventsByCommand();
 
     expect(array_keys($events))->toEqualCanonicalizing(OPS_SCHEDULED_COMMANDS);
@@ -71,7 +72,7 @@ test('exactly the 8 approved commands are scheduled, and every one of them repor
         );
     }
 
-    Notification::assertSentOnDemandTimes(OpsAlertNotification::class, 8);
+    Notification::assertSentOnDemandTimes(OpsAlertNotification::class, 9);
 });
 
 test('a failure is logged with only the command name, exit code and a timestamp', function () {

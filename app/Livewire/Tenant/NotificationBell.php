@@ -10,6 +10,7 @@ use App\Notifications\LeadInactivityAlertNotification;
 use App\Notifications\MeetingAlertNotification;
 use App\Notifications\MeetingCancelledNotification;
 use App\Notifications\MeetingUpdatedNotification;
+use App\Notifications\MissedCallNotification;
 use App\Notifications\NewLeadNotification;
 use App\Notifications\TaskAlertNotification;
 use App\Notifications\TaskAssignedNotification;
@@ -231,6 +232,13 @@ class NotificationBell extends Component
                 // keys MeetingAlertNotification uses for 'name'/'meeting_date', see
                 // that notification class's own docblock.
                 $this->dateReminderMessage($data, 'due_date'),
+            ],
+            MissedCallNotification::class => [
+                'phone-x-mark',
+                __('Missed call'),
+                __(':name called on WhatsApp and the call was not answered', [
+                    'name' => $data['name'] ?? __('A lead'),
+                ]),
             ],
             LeadInactivityAlertNotification::class => [
                 'moon',
