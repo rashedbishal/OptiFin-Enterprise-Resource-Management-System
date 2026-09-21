@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Actions\Tenant\RecordInboundCall;
 use App\Actions\Tenant\RecordInboundMessage;
 use App\Actions\Tenant\RecordLeadConsent;
 use App\Actions\Tenant\SaveLeadCustomFieldValues;
@@ -24,6 +25,7 @@ use App\Models\LeadSource;
 use App\Models\Message;
 use App\Models\Tenant;
 use App\Models\WebsiteForm;
+use App\Support\WhatsAppCallEvent;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Client\ConnectionException;
@@ -334,6 +336,7 @@ class LeadWebhookController extends Controller
         try {
             $source = $this->resolveSource($tenant_code, LeadSourceType::Whatsapp);
             $entries = $request->array('entry');
+            $callsWithinCap = $this->whatsappCallsWithinCap($entries, $tenant_code);
 
             foreach ($entries as $entry) {
                 foreach (($entry['changes'] ?? []) as $change) {
@@ -417,6 +420,15 @@ class LeadWebhookController extends Controller
                                 'error' => $e->getMessage(),
                             ]);
                         }
+                    }
+
+                    // WhatsApp inbound calling (Step 2) — purely additive: a
+                    // distinct `calls[]` array beside the statuses[]/messages[]
+                    // loops above, which it never reads or changes. It carries
+                    // its own per-item isolation and can never throw out of
+                    // here, so it cannot affect the rest of this payload.
+                    if ($callsWithinCap) {
+                        $this->processWhatsappCalls($source, $tenant_code, $change);
                     }
                 }
             }
@@ -1404,6 +1416,178 @@ class LeadWebhookController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * WhatsApp inbound calling (Step 2) — whether this request's `calls[]`
+     * items, summed across every entry, stay within the same per-request
+     * ceiling the message path applies (config webhooks.
+     * max_inbound_messages_per_request), counted independently of messages so
+     * the existing message cap and its exact behavior are untouched. Over the
+     * ceiling, every call item in the request is skipped (logged once, by
+     * count only) — the request is still acknowledged with 200.
+     *
+     * @param  array<mixed>  $entries
+     */
+    private function whatsappCallsWithinCap(array $entries, string $tenantCode): bool
+    {
+        $count = 0;
+
+        foreach ($entries as $entry) {
+            $changes = is_array($entry) ? ($entry['changes'] ?? null) : null;
+
+            if (! is_array($changes)) {
+                continue;
+            }
+
+            foreach ($changes as $change) {
+                $calls = is_array($change) && is_array($change['value'] ?? null) ? ($change['value']['calls'] ?? null) : null;
+
+                if (is_array($calls)) {
+                    $count += count($calls);
+                }
+            }
+        }
+
+        if ($count === 0 || ! $this->exceedsInboundMessageCap($count)) {
+            return true;
+        }
+
+        Log::channel('whatsapp')->warning('WA CALL CAP EXCEEDED', [
+            'tenant_code' => $tenantCode,
+            'call_count' => $count,
+        ]);
+
+        return false;
+    }
+
+    /**
+     * WhatsApp inbound calling (Step 2) — runs every `calls[]` item of one
+     * change through handleWhatsappCall(), each in its own try/catch so a
+     * broken item is logged (class and call id only — an exception message can
+     * embed a phone number or SQL bindings) and never stops the next one.
+     */
+    private function processWhatsappCalls(LeadSource $source, string $tenantCode, mixed $change): void
+    {
+        if (! is_array($change) || ! is_array($change['value'] ?? null)) {
+            return;
+        }
+
+        $calls = $change['value']['calls'] ?? null;
+
+        if (! is_array($calls)) {
+            return;
+        }
+
+        foreach ($calls as $call) {
+            try {
+                $this->handleWhatsappCall($source, $tenantCode, $change, $call);
+            } catch (Throwable $e) {
+                Log::channel('whatsapp')->error('WA CALL FAILED', [
+                    'tenant_code' => $tenantCode,
+                    'call_id' => WhatsAppCallEvent::loggableId($call),
+                    'exception' => $e::class,
+                ]);
+            }
+        }
+    }
+
+    /**
+     * WhatsApp inbound calling (Step 2) — the source-level gates for one call
+     * item, then hands it to RecordInboundCall. Every ignored item is logged
+     * with its reason and call id only: no payload, no SDP, no phone number.
+     *
+     * Gates, in order: the source must have an app_secret (calls are only
+     * trusted from a source whose Meta signature is actually being verified —
+     * the signature middleware is opt-in and is deliberately left unchanged);
+     * the item must parse; a phone_number_id mismatch is ignored when both
+     * sides are known; a valid `connect` records Meta's calling status as
+     * observed-ENABLED; and calling must be enabled locally to accept a NEW
+     * call (a terminate for an already-recorded call is still applied).
+     *
+     * @param  array<mixed>  $change
+     */
+    private function handleWhatsappCall(LeadSource $source, string $tenantCode, array $change, mixed $call): void
+    {
+        $config = $source->config ?? [];
+        $appSecret = $config['app_secret'] ?? null;
+
+        if (! is_string($appSecret) || $appSecret === '') {
+            $this->logWhatsappCall($tenantCode, WhatsAppCallEvent::loggableId($call), null, 'ignored_no_app_secret');
+
+            return;
+        }
+
+        $event = WhatsAppCallEvent::fromWebhook($change, $call);
+
+        if (is_string($event)) {
+            $this->logWhatsappCall($tenantCode, WhatsAppCallEvent::loggableId($call), null, 'ignored_'.$event);
+
+            return;
+        }
+
+        if (! $event->matchesPhoneNumberId($config['phone_number_id'] ?? null)) {
+            $this->logWhatsappCall($tenantCode, $event->callId, $event->event, 'ignored_phone_number_mismatch');
+
+            return;
+        }
+
+        if ($event->isConnect()) {
+            $this->observeWhatsappCallingStatus($source);
+        }
+
+        // Calling switched off refuses NEW calls only: a `connect` is ignored
+        // here, while a `terminate` continues so an already-recorded call can
+        // still be closed (RecordInboundCall ignores a terminate for an
+        // unrecorded call when it is told new calls are not accepted).
+        $acceptNewCalls = (bool) $source->calling_enabled;
+
+        if (! $acceptNewCalls && $event->isConnect()) {
+            $this->logWhatsappCall($tenantCode, $event->callId, $event->event, RecordInboundCall::OUTCOME_IGNORED_CALLING_DISABLED);
+
+            return;
+        }
+
+        $outcome = app(RecordInboundCall::class)->handle($event, $source, fn (): Lead => $this->createLead($source, [
+            'name' => $event->callerName ?? ('WhatsApp User '.$event->callerPhone),
+            'phone' => $event->callerPhone,
+            'message' => null,
+            // Deliberately null: a call's payload carries the SDP offer, which
+            // must never be persisted on the Lead.
+            'source_data' => null,
+        ]), $acceptNewCalls);
+
+        $this->logWhatsappCall($tenantCode, $event->callId, $event->event, $outcome);
+    }
+
+    /**
+     * A received `connect` proves Meta's calling is enabled for this number,
+     * whatever our local flag says — recorded so the platform admin can see a
+     * mismatch. Never changes calling_enabled, and skipped when the marker was
+     * already refreshed within the last minute to avoid a write per webhook.
+     */
+    private function observeWhatsappCallingStatus(LeadSource $source): void
+    {
+        $checkedAt = $source->calling_meta_checked_at;
+
+        if ($source->calling_meta_status === 'ENABLED' && $checkedAt !== null && $checkedAt->gt(Carbon::now()->subMinute())) {
+            return;
+        }
+
+        $source->update([
+            'calling_meta_status' => 'ENABLED',
+            'calling_meta_checked_at' => Carbon::now(),
+        ]);
+    }
+
+    private function logWhatsappCall(string $tenantCode, ?string $callId, ?string $event, string $outcome): void
+    {
+        Log::channel('whatsapp')->info('WA CALL', [
+            'tenant_code' => $tenantCode,
+            'call_id' => $callId,
+            'event' => $event,
+            'outcome' => $outcome,
+        ]);
     }
 
     /**
