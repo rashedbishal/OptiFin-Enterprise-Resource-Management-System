@@ -150,47 +150,62 @@
         </div>
 
         @if ($this->isClientAdmin)
-            <div class="flex flex-wrap items-center gap-x-8 gap-y-3">
-                <div class="flex flex-wrap items-center gap-2">
-                    <flux:switch :checked="auth()->user()->tenant->meeting_alert_enabled" wire:click="toggleMeetingAlert" />
-                    <flux:text>{{ __('Meeting date alerts') }}</flux:text>
-                    @if (auth()->user()->tenant->meeting_alert_enabled)
-                        <flux:link as="button" type="button" variant="subtle" wire:click="openMeetingAlertDaysEditor">
-                            {{ trans_choice('(:count day before)|(:count days before)', auth()->user()->tenant->meeting_alert_days_before, ['count' => auth()->user()->tenant->meeting_alert_days_before]) }}
-                        </flux:link>
-                    @endif
-                </div>
+            <div class="rounded-2xl border border-zinc-200/90 bg-zinc-50/80 p-3 sm:p-3.5 shadow-2xs dark:border-zinc-800/90 dark:bg-zinc-950/60">
+                <div class="flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2.5">
+                    <div class="flex w-full min-w-0 items-center gap-2.5 rounded-xl border border-zinc-200/90 bg-white p-2.5 shadow-2xs transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 sm:w-auto sm:px-3 sm:py-2">
+                        <flux:switch class="shrink-0" :checked="auth()->user()->tenant->meeting_alert_enabled" wire:click="toggleMeetingAlert" />
+                        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
+                            <span class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-zinc-100 whitespace-normal break-words">{{ __('Meeting date alerts') }}</span>
+                            @if (auth()->user()->tenant->meeting_alert_enabled)
+                                <flux:link as="button" type="button" variant="subtle" wire:click="openMeetingAlertDaysEditor" class="text-xs font-medium whitespace-normal break-words">
+                                    {{ trans_choice('(:count day before)|(:count days before)', auth()->user()->tenant->meeting_alert_days_before, ['count' => auth()->user()->tenant->meeting_alert_days_before]) }}
+                                </flux:link>
+                            @endif
+                        </div>
+                    </div>
 
-                <div class="flex flex-wrap items-center gap-2">
-                    <flux:switch :checked="auth()->user()->tenant->followup_alert_enabled" wire:click="toggleFollowUpAlert" />
-                    <flux:text>{{ __('Next follow-up alerts') }}</flux:text>
-                    @if (auth()->user()->tenant->followup_alert_enabled)
-                        <flux:link as="button" type="button" variant="subtle" wire:click="openFollowUpAlertDaysEditor">
-                            {{ trans_choice('(:count day before)|(:count days before)', auth()->user()->tenant->followup_alert_days_before, ['count' => auth()->user()->tenant->followup_alert_days_before]) }}
-                        </flux:link>
-                    @endif
-                </div>
+                    <div class="flex w-full min-w-0 items-center gap-2.5 rounded-xl border border-zinc-200/90 bg-white p-2.5 shadow-2xs transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 sm:w-auto sm:px-3 sm:py-2">
+                        <flux:switch class="shrink-0" :checked="auth()->user()->tenant->followup_alert_enabled" wire:click="toggleFollowUpAlert" />
+                        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
+                            <span class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-zinc-100 whitespace-normal break-words">{{ __('Next follow-up alerts') }}</span>
+                            @if (auth()->user()->tenant->followup_alert_enabled)
+                                <flux:link as="button" type="button" variant="subtle" wire:click="openFollowUpAlertDaysEditor" class="text-xs font-medium whitespace-normal break-words">
+                                    {{ trans_choice('(:count day before)|(:count days before)', auth()->user()->tenant->followup_alert_days_before, ['count' => auth()->user()->tenant->followup_alert_days_before]) }}
+                                </flux:link>
+                            @endif
+                        </div>
+                    </div>
 
-                <div class="flex flex-wrap items-center gap-2">
-                    <flux:switch :checked="auth()->user()->tenant->task_alert_enabled" wire:click="toggleTaskAlert" />
-                    <flux:text>{{ __('Task due-date alerts') }}</flux:text>
-                    @if (auth()->user()->tenant->task_alert_enabled)
-                        <flux:link as="button" type="button" variant="subtle" wire:click="openTaskAlertDaysEditor">
-                            {{ trans_choice('(:count day before)|(:count days before)', auth()->user()->tenant->task_alert_days_before, ['count' => auth()->user()->tenant->task_alert_days_before]) }}
-                        </flux:link>
-                    @endif
-                </div>
+                    <div class="flex w-full min-w-0 items-center gap-2.5 rounded-xl border border-zinc-200/90 bg-white p-2.5 shadow-2xs transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 sm:w-auto sm:px-3 sm:py-2">
+                        <flux:switch class="shrink-0" :checked="auth()->user()->tenant->task_alert_enabled" wire:click="toggleTaskAlert" />
+                        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
+                            <span class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-zinc-100 whitespace-normal break-words">{{ __('Task due-date alerts') }}</span>
+                            @if (auth()->user()->tenant->task_alert_enabled)
+                                <flux:link as="button" type="button" variant="subtle" wire:click="openTaskAlertDaysEditor" class="text-xs font-medium whitespace-normal break-words">
+                                    {{ trans_choice('(:count day before)|(:count days before)', auth()->user()->tenant->task_alert_days_before, ['count' => auth()->user()->tenant->task_alert_days_before]) }}
+                                </flux:link>
+                            @endif
+                        </div>
+                    </div>
 
-                <div class="flex flex-wrap items-center gap-2">
-                    <flux:switch :checked="auth()->user()->tenant->lead_nurturing_notify_enabled" wire:click="toggleNurturingNotify" />
-                    <flux:text>{{ __('Inactivity notification') }}</flux:text>
-                    <flux:switch :checked="auth()->user()->tenant->lead_nurturing_task_enabled" wire:click="toggleNurturingTask" />
-                    <flux:text>{{ __('Inactivity follow-up task') }}</flux:text>
-                    @if (auth()->user()->tenant->lead_nurturing_notify_enabled || auth()->user()->tenant->lead_nurturing_task_enabled)
-                        <flux:link as="button" type="button" variant="subtle" wire:click="openNurturingDaysEditor">
-                            {{ trans_choice('(inactive after :count day)|(inactive after :count days)', auth()->user()->tenant->lead_nurturing_inactive_days, ['count' => auth()->user()->tenant->lead_nurturing_inactive_days]) }}
-                        </flux:link>
-                    @endif
+                    <div class="flex w-full min-w-0 items-center gap-2.5 rounded-xl border border-zinc-200/90 bg-white p-2.5 shadow-2xs transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 sm:w-auto sm:px-3 sm:py-2">
+                        <flux:switch class="shrink-0" :checked="auth()->user()->tenant->lead_nurturing_notify_enabled" wire:click="toggleNurturingNotify" />
+                        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
+                            <span class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-zinc-100 whitespace-normal break-words">{{ __('Inactivity notification') }}</span>
+                        </div>
+                    </div>
+
+                    <div class="flex w-full min-w-0 items-center gap-2.5 rounded-xl border border-zinc-200/90 bg-white p-2.5 shadow-2xs transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-900 sm:w-auto sm:px-3 sm:py-2">
+                        <flux:switch class="shrink-0" :checked="auth()->user()->tenant->lead_nurturing_task_enabled" wire:click="toggleNurturingTask" />
+                        <div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
+                            <span class="text-xs sm:text-sm font-semibold text-zinc-900 dark:text-zinc-100 whitespace-normal break-words">{{ __('Inactivity follow-up task') }}</span>
+                            @if (auth()->user()->tenant->lead_nurturing_notify_enabled || auth()->user()->tenant->lead_nurturing_task_enabled)
+                                <flux:link as="button" type="button" variant="subtle" wire:click="openNurturingDaysEditor" class="text-xs font-medium whitespace-normal break-words">
+                                    {{ trans_choice('(inactive after :count day)|(inactive after :count days)', auth()->user()->tenant->lead_nurturing_inactive_days, ['count' => auth()->user()->tenant->lead_nurturing_inactive_days]) }}
+                                </flux:link>
+                            @endif
+                        </div>
+                    </div>
                 </div>
             </div>
         @endif
