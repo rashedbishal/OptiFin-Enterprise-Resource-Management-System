@@ -23,6 +23,8 @@ vendor/bin/pest path/to/FileTest.php     # single file
 composer run test                        # config:clear + lint:check + types:check + full test suite (CI gate)
 
 php artisan route:list
+php artisan app:create-mother-admin      # bootstrap the single Platform mother_admin (nothing else creates one)
+php artisan schema:verify-enum-constraints  # manual, Postgres-only: live CHECK constraints vs PHP enum cases (not in CI)
 php artisan leads:fetch-emails           # poll IMAP lead sources, create Lead + ProcessEmailLeadSource job
 php artisan leads:retry-failed-emails    # retry durably-recorded failed email lead-processing messages that are due
 php artisan leads:cleanup-attachments    # delete orphaned lead attachment files
@@ -34,6 +36,8 @@ php artisan leads:recalculate-scores     # daily sweep: recompute every lead's s
 php artisan meta:subscribe-leadgen {leadSourceId?}  # subscribe a Facebook Page to the leadgen webhook field (omit id to subscribe every active source)
 php artisan leads:fetch-test {leadgen_id} --source={leadSourceId}  # manually fetch one Facebook Lead Ad by id, no real webhook needed
 ```
+
+**Test vs. dev database differ:** `phpunit.xml` runs the suite on in-memory SQLite (`QUEUE_CONNECTION=sync`, `BROADCAST_CONNECTION=null`), while `.env.example` targets PostgreSQL + `database` queue + Reverb. CI (`.github/workflows/tests.yml`: `composer setup` → `composer ci:check`) is SQLite-only, so Postgres-specific behavior (partial unique indexes, enum `CHECK` constraints) is not exercised by tests — verify it by hand, e.g. with `schema:verify-enum-constraints` after changing an enum-backed column such as `LeadSourceType`. Queue workers must be running locally for IMAP polling, notifications and CSV imports (`composer run dev` starts one).
 
 `README.md` covers only a runbook for testing Facebook Lead Ads (Instant Forms) ingestion — no general project docs there.
 
@@ -86,6 +90,9 @@ The notification bell (`App\Livewire\Tenant\NotificationBell`, embedded once in 
 
 ### Multi-currency
 `App\Models\Currency` is a Platform-Admin-managed catalog (same shape as `LeadStatus`): not tenant-scoped itself, shared across tenants that opt in via the `tenant_currencies` pivot (`Tenant::currencies()`). Tenants pick which currencies they support at `/admin/clients/{tenant}/lead-sources` (`LeadSources::toggleCurrency()`); those choices populate the per-field currency dropdowns on `estimated_budget`/`deal_value`. A currency in use (enabled by any tenant, or referenced by a Lead's `estimated_budget_currency_id`/`deal_value_currency_id`) can't be deleted — enforced in `App\Livewire\Platform\LeadManagement\Settings::deleteCurrency()`. The currencies-catalog migration unconditionally seeds a "USD" row, so it's a permanent baseline fixture in every test (same trap as `LeadStatus`'s legacy-seeded statuses) — see `.ai/rules/migrations-models.md`.
+
+### Scheduler & ops monitoring
+Every scheduled command in `routes/console.php` must be registered through the `$monitored(...)` helper (not bare `Schedule::command()`), so a non-zero exit is logged/emailed by `App\Services\ScheduledTaskMonitor`; `leads:fetch-emails` (every minute) doubles as the scheduler heartbeat. IMAP outage alerting lives in `ProcessEmailLeadSource`. Config is `config/ops.php` (`OPS_ALERT_EMAIL`, `OPS_SCHEDULER_HEARTBEAT_URL`, both optional); see `docs/lead-management/OPS-MONITORING.md` for what is and isn't detected (notably a dead queue worker is not).
 
 ### Exports & audit logging
 `app/Exports` holds `maatwebsite/excel` export classes, one per download — currently only `FacebookLeadAdsExport`, streamed via `Excel::download()` from `App\Livewire\Tenant\Leads\SourceLeads` and mirroring that view's dynamic per-Instant-Form-field columns. Add new exports here as sibling classes rather than inlining spreadsheet-building logic into a Livewire component.
