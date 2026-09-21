@@ -140,6 +140,60 @@
                             <flux:badge :color="$source->is_active ? 'green' : 'zinc'" size="sm">
                                 {{ $source->is_active ? __('Active') : __('Inactive') }}
                             </flux:badge>
+
+                            @if ($source->type === \App\Enums\LeadSourceType::Whatsapp)
+                                @php
+                                    $callingState = \App\Enums\CallingControlState::for($source);
+                                    $enableBlockedReason = $this->callingEnableBlockedReason($source);
+                                    $callingDetail = $callingDetails[$source->id] ?? ['restrictions' => [], 'warnings' => []];
+                                @endphp
+                                <div class="mt-3 flex max-w-xs flex-col gap-1.5" wire:key="calling-controls-{{ $source->id }}">
+                                    <div class="flex flex-wrap items-center gap-1.5">
+                                        <flux:text size="xs" variant="strong">{{ __('Calling') }}</flux:text>
+                                        <flux:badge :color="$callingState->color()" size="sm">{{ $callingState->label() }}</flux:badge>
+                                    </div>
+                                    <flux:text size="xs" variant="subtle">
+                                        {{ __('This app: :local', ['local' => $source->calling_enabled ? __('on') : __('off')]) }}
+                                        ·
+                                        {{ __('WhatsApp: :meta', ['meta' => $source->calling_meta_status ? strtolower($source->calling_meta_status) : __('not checked')]) }}
+                                        @if ($source->calling_meta_checked_at)
+                                            · {{ __('checked :time', ['time' => $source->calling_meta_checked_at->diffForHumans()]) }}
+                                        @endif
+                                    </flux:text>
+                                    <div class="flex flex-wrap gap-1.5">
+                                        <flux:button
+                                            size="xs"
+                                            wire:click="enableCalling('{{ $source->id }}')"
+                                            wire:loading.attr="disabled"
+                                            wire:target="enableCalling('{{ $source->id }}')"
+                                            :disabled="$enableBlockedReason !== null"
+                                        >{{ __('Enable') }}</flux:button>
+                                        <flux:button
+                                            size="xs"
+                                            wire:click="confirmDisableCalling('{{ $source->id }}')"
+                                            wire:loading.attr="disabled"
+                                            wire:target="confirmDisableCalling('{{ $source->id }}'), disableCallingConfirmed"
+                                        >{{ __('Disable') }}</flux:button>
+                                        <flux:button
+                                            size="xs"
+                                            wire:click="checkCalling('{{ $source->id }}')"
+                                            wire:loading.attr="disabled"
+                                            wire:target="checkCalling('{{ $source->id }}')"
+                                        >{{ __('Check') }}</flux:button>
+                                    </div>
+                                    @if ($enableBlockedReason !== null)
+                                        <flux:text size="xs" variant="subtle">{{ $enableBlockedReason }}</flux:text>
+                                    @endif
+                                    @foreach ($callingDetail['warnings'] as $warning)
+                                        <flux:text size="xs" class="text-amber-600 dark:text-amber-400">{{ $warning }}</flux:text>
+                                    @endforeach
+                                    @foreach ($callingDetail['restrictions'] as $restriction)
+                                        <flux:text size="xs" class="text-amber-600 dark:text-amber-400">
+                                            {{ $this->restrictionLabel($restriction['type']) }}@if ($restriction['expiration']) {{ __('until :time', ['time' => \Illuminate\Support\Carbon::createFromTimestamp($restriction['expiration'])->toDayDateTimeString()]) }}@endif
+                                        </flux:text>
+                                    @endforeach
+                                </div>
+                            @endif
                         </flux:table.cell>
                         <flux:table.cell>
                             <div class="flex justify-end gap-2">
@@ -237,6 +291,14 @@
         :title="__('Delete this lead source?')"
         confirm-action="deleteConfirmed"
         :confirm-label="__('Delete')"
+    />
+
+    <x-confirm-modal
+        wire:model.self="showDisableCallingModal"
+        :title="__('Turn calling off for this WhatsApp number?')"
+        :description="__('Customers will no longer be able to call this number through WhatsApp. You can turn it back on later.')"
+        confirm-action="disableCallingConfirmed"
+        :confirm-label="__('Disable calling')"
     />
 
     <x-confirm-modal

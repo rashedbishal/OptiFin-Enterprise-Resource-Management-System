@@ -41,4 +41,32 @@ return [
 
     'seen_ttl_seconds' => (int) env('CALLING_SEEN_TTL_SECONDS', 604800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | WhatsApp Inbound Calling — Step 3 Meta Calling API
+    |--------------------------------------------------------------------------
+    |
+    | graph_version: the Graph API version used ONLY by the calling client
+    | (settings + call actions). Deliberately separate from the versions the
+    | message senders use, so raising one never moves the other.
+    |
+    | api_timeout_seconds / api_connect_timeout_seconds: total and connect
+    | timeouts for every Calling API request.
+    |
+    | enable_action_available: the safe-rollout gate. While false (the default
+    | everywhere except an environment that sets it) a Platform Admin cannot
+    | ENABLE calling for a source — Checking and Disabling stay available. It
+    | must stay false in production until answering/ringing exists, otherwise
+    | Meta would start routing customers' calls to a number nobody can answer.
+    |
+    */
+
+    'graph_version' => env('CALLING_GRAPH_VERSION', 'v25.0'),
+
+    'api_timeout_seconds' => (int) env('CALLING_API_TIMEOUT_SECONDS', 10),
+
+    'api_connect_timeout_seconds' => (int) env('CALLING_API_CONNECT_TIMEOUT_SECONDS', 3),
+
+    'enable_action_available' => (bool) env('CALLING_ENABLE_ACTION_AVAILABLE', false),
+
 ];

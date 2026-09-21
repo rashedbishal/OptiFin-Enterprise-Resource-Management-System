@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Platform\Clients;
 
+use App\Actions\Platform\ManageWhatsAppCalling;
 use App\Enums\LeadSourceType;
 use App\Models\Conversation;
 use App\Models\Currency;
@@ -21,6 +22,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 
@@ -51,6 +53,21 @@ class LeadSources extends Component
     public bool $showDeleteModal = false;
 
     public ?string $confirmingDeleteId = null;
+
+    public bool $showDisableCallingModal = false;
+
+    public ?string $confirmingDisableCallingId = null;
+
+    /**
+     * Transient result of the last Enable/Check per WhatsApp source (Meta's
+     * eligibility restrictions and a SIP warning). Deliberately not persisted —
+     * it lives only as long as this component's state, so it disappears on the
+     * next page load. Locked: the browser can never write to it.
+     *
+     * @var array<string, array{restrictions: array<int, array{type: string, expiration: ?int}>, warnings: array<int, string>}>
+     */
+    #[Locked]
+    public array $callingDetails = [];
 
     public bool $showRemoveStatusModal = false;
 
@@ -492,6 +509,70 @@ class LeadSources extends Component
 
         $source = $this->tenant->leadSources()->findOrFail($id);
         $source->update(['is_active' => ! $source->is_active]);
+    }
+
+    public function enableCalling(string $id): void
+    {
+        $this->runCallingAction('enable', $id);
+    }
+
+    public function checkCalling(string $id): void
+    {
+        $this->runCallingAction('check', $id);
+    }
+
+    public function confirmDisableCalling(string $id): void
+    {
+        Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
+
+        $this->confirmingDisableCallingId = $this->tenant->leadSources()->findOrFail($id)->id;
+        $this->showDisableCallingModal = true;
+    }
+
+    public function disableCallingConfirmed(): void
+    {
+        $id = $this->confirmingDisableCallingId;
+
+        $this->showDisableCallingModal = false;
+        $this->confirmingDisableCallingId = null;
+
+        if ($id !== null) {
+            $this->runCallingAction('disable', $id);
+        }
+    }
+
+    /**
+     * The id is browser-supplied, so the action authorizes and resolves it
+     * through this tenant's own lead sources — another tenant's id is a 404.
+     */
+    private function runCallingAction(string $action, string $id): void
+    {
+        $manager = app(ManageWhatsAppCalling::class);
+        $actor = Auth::guard('platform')->user();
+
+        $result = match ($action) {
+            'enable' => $manager->enable($actor, $this->tenant, $id),
+            'disable' => $manager->disable($actor, $this->tenant, $id),
+            default => $manager->check($actor, $this->tenant, $id),
+        };
+
+        $this->callingDetails[$id] = ['restrictions' => $result->restrictions, 'warnings' => $result->warnings];
+
+        Flux::toast(variant: $result->variant, text: $result->message);
+    }
+
+    public function callingEnableBlockedReason(LeadSource $source): ?string
+    {
+        return app(ManageWhatsAppCalling::class)->enableBlockedReason($source);
+    }
+
+    public function restrictionLabel(string $type): string
+    {
+        return match ($type) {
+            'RESTRICTED_USER_INITIATED_CALLING' => __('Customers are restricted from calling this number'),
+            'RESTRICTED_BUSINESS_INITIATED_CALLING' => __('Business-initiated calling is restricted'),
+            default => Str::headline(strtolower($type)),
+        };
     }
 
     public function confirmDelete(string $id): void
