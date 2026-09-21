@@ -88,6 +88,16 @@ class AppServiceProvider extends ServiceProvider
 
     protected function configureRateLimiting(): void
     {
+        // WhatsApp inbound calling (Step 4) — the claim/answer/accept/reject
+        // actions, per authenticated user (per IP as a fallback). 60 a minute is
+        // far above any real call (a handful of requests plus retries) and only
+        // there to blunt a runaway client. Evaluated by ThrottleRequestsFailOpen:
+        // the actions' real protection is their atomic compare-and-set, so an
+        // unreachable limiter backend must not stop an agent answering a call.
+        RateLimiter::for('lead-call-actions', function (Request $request): Limit {
+            return Limit::perMinute(60)->by('lead-call-actions:'.($request->user()?->getAuthIdentifier() ?? $request->ip()));
+        });
+
         RateLimiter::for('website-form-per-form', function (Request $request): Limit {
             $formToken = (string) $request->route('form_token');
 

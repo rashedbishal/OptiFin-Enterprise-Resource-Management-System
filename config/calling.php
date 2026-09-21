@@ -69,4 +69,25 @@ return [
 
     'enable_action_available' => (bool) env('CALLING_ENABLE_ACTION_AVAILABLE', false),
 
+    /*
+    |--------------------------------------------------------------------------
+    | WhatsApp Inbound Calling — Step 4 Claim / Answer / Accept / Reject
+    |--------------------------------------------------------------------------
+    |
+    | answer_ttl_seconds: how long the claimant's (encrypted) SDP answer stays
+    | cached between `pre_accept` and `accept`. Meta requires the accept SDP to
+    | equal the pre_accept SDP, so accept reads this cached answer and never a
+    | newly submitted one. Longer than the ring window, like the offer's TTL.
+    |
+    | action_lock_seconds: the short per-call cache lock taken around the Meta
+    | request of `answer` / `accept`, so two browser tabs of the same claimant
+    | cannot send duplicate Meta operations. It expires by itself, so a crashed
+    | request can never wedge a call; it is never a database lock.
+    |
+    */
+
+    'answer_ttl_seconds' => (int) env('CALLING_ANSWER_TTL_SECONDS', 120),
+
+    'action_lock_seconds' => (int) env('CALLING_ACTION_LOCK_SECONDS', 20),
+
 ];

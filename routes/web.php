@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\LeadAttachmentController;
+use App\Http\Controllers\LeadCallController;
 use App\Http\Controllers\LeadMessageAttachmentController;
 use App\Http\Controllers\NotificationRedirectController;
 use App\Livewire\Tenant\Dashboard;
@@ -46,6 +47,16 @@ Route::middleware(['auth', 'verified', 'tenant.identify', 'tenant.active'])->gro
         Route::livewire('leads/reports', LeadReportsIndex::class)->name('tenant-leads.reports');
         Route::livewire('leads/import', LeadImportsIndex::class)->name('tenant-lead-imports.index');
         Route::livewire('leads/import/{leadImport}', LeadImportsShow::class)->name('tenant-lead-imports.show');
+        // WhatsApp inbound calling — JSON actions on a live call. The call id is
+        // the only browser-supplied identifier; the actions resolve it inside
+        // the authenticated tenant. Fail-open throttle: see the limiter's note.
+        Route::middleware('throttle.fail-open:lead-call-actions')->prefix('calls/{leadCall}')->group(function () {
+            Route::post('claim', [LeadCallController::class, 'claim'])->name('tenant-lead-calls.claim');
+            Route::post('answer', [LeadCallController::class, 'answer'])->name('tenant-lead-calls.answer');
+            Route::post('accept', [LeadCallController::class, 'accept'])->name('tenant-lead-calls.accept');
+            Route::post('reject', [LeadCallController::class, 'reject'])->name('tenant-lead-calls.reject');
+        });
+
         Route::livewire('leads/{lead}', LeadsShow::class)->name('tenant-leads.show');
         Route::get('leads/{lead}/attachments/{attachment}', [LeadAttachmentController::class, 'download'])->name('tenant-leads.attachment.download');
         Route::get('leads/{lead}/messages/{message}/attachment', [LeadMessageAttachmentController::class, 'show'])->name('tenant-leads.message-attachment');
