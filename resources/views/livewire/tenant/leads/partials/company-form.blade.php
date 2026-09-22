@@ -59,7 +59,7 @@
                 {{-- Company Attribute Badges & Cards --}}
                 <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                     @if ($lead->industry)
-                        <div class="flex items-center gap-2.5 rounded-xl border border-zinc-200/80 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                        <div class="flex items-center gap-2.5 rounded-xl border border-[#e4d6be] bg-[#f7f5f0] p-3 dark:border-zinc-800 dark:bg-zinc-900">
                             <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-purple-50 text-purple-600 dark:bg-purple-950/60 dark:text-purple-400">
                                 <flux:icon.briefcase variant="micro" class="size-4" />
                             </div>
@@ -71,7 +71,7 @@
                     @endif
 
                     @if ($lead->location)
-                        <div class="flex items-center gap-2.5 rounded-xl border border-zinc-200/80 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                        <div class="flex items-center gap-2.5 rounded-xl border border-[#e4d6be] bg-[#f7f5f0] p-3 dark:border-zinc-800 dark:bg-zinc-900">
                             <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400">
                                 <flux:icon.map-pin variant="micro" class="size-4" />
                             </div>
@@ -84,7 +84,7 @@
                 </div>
 
                 @if ($lead->website)
-                    <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200/80 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                    <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#e4d6be] bg-[#f7f5f0] p-3 dark:border-zinc-800 dark:bg-zinc-900">
                         <div class="flex items-center gap-2.5 min-w-0">
                             <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
                                 <flux:icon.globe-alt variant="micro" class="size-4" />

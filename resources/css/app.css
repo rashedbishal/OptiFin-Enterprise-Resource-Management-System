@@ -75,8 +75,17 @@ ever hides something for the brief pre-hydration window it's meant to.
     --color-zinc-900: #171717;
     --color-zinc-950: #0a0a0a;
 
-    --color-accent: var(--color-zinc-900);
-    --color-accent-content: var(--color-zinc-900);
+    /*
+    Oxblood accent — light mode's primary buttons, active nav text, links,
+    and focus rings all read this token (see Flux's button/navlist/sidebar
+    stubs), so this one change is the app-wide "brand color" for the bright
+    theme. Deliberately not pure black/white: flat zinc-900 gave every
+    interactive surface zero hue, which is what read as generic rather than
+    premium against the cream canvas below. Dark mode is untouched — it
+    already has its own navy-steel identity.
+    */
+    --color-accent: #6b1d2b;
+    --color-accent-content: #6b1d2b;
     --color-accent-foreground: var(--color-white);
 
     /*
@@ -260,10 +269,27 @@ flux:card — they need the same elevation treatment cards get.
     overrides a card/table's own background/border, so losing the
     override-friendliness isn't a real cost here.
     */
+    /*
+    Warm Ledger elevation (light mode only) — a cold zinc-300 border and a
+    flat-black shadow read as generic against the cream canvas/oxblood
+    accent. Swapping to a warm taupe border and an umber-tinted shadow (same
+    alpha curve as before, just re-hued) makes elevation feel like fine
+    stationery rather than a default Tailwind card. Dark mode's navy-steel
+    treatment is untouched.
+    */
+    /*
+    Quiet-luxury pass — an earlier champagne fill (#fbf3e2) read as too
+    yellow once applied to every card/table body, not just borders/shadows.
+    Reverted the fill itself to near-pure white; the taupe border, umber
+    shadow, and gold table-header hairline (elsewhere in this file and in
+    flux/table/*.blade.php) now carry the "premium" identity on their own,
+    the way white-surface fintech UIs (Stripe, Mercury) use color only as a
+    precise accent rather than tinting the whole surface.
+    */
     .card-surface {
-        background-color: #ffffff;
-        border-color: rgb(212 212 216);
-        box-shadow: 0 1px 3px rgb(0 0 0 / 0.08), 0 20px 40px -20px rgb(0 0 0 / 0.22);
+        background-color: #fefefc;
+        border-color: #e4d6be;
+        box-shadow: 0 1px 3px rgb(90 61 28 / 0.10), 0 20px 40px -20px rgb(74 48 20 / 0.28);
     }
 
     .dark .card-surface {
@@ -273,8 +299,8 @@ flux:card — they need the same elevation treatment cards get.
     }
 
     .card-surface-nested {
-        background-color: #f0ede4;
-        border-color: rgb(212 212 216 / 0.8);
+        background-color: #f7f5f0;
+        border-color: rgb(228 214 190 / 0.8);
     }
 
     .dark .card-surface-nested {

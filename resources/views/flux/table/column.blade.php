@@ -12,7 +12,9 @@
 $classes = Flux::classes()
     ->add('py-3 px-3 first:ps-0 last:pe-0')
     ->add('text-start text-sm font-medium text-zinc-800 dark:text-white')
-    ->add('border-b border-zinc-800/10 dark:border-white/20')
+    // Warm Ledger — a thin gold rule instead of a plain gray hairline under
+    // the header row, paired with columns.blade.php's ivory header band.
+    ->add('border-b border-[#c7a15b]/60 dark:border-white/20')
     ->add(match($align) {
         'center' => 'group/center-align',
         'end' => 'group/end-align',

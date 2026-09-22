@@ -39,7 +39,7 @@
                     $val = $row['value'];
                     $hasVal = $val !== null && $val !== '';
                 @endphp
-                <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200/80 bg-white p-3 shadow-2xs dark:border-zinc-800 dark:bg-zinc-900" wire:key="custom-field-display-{{ $def->id }}">
+                <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#e4d6be] bg-[#f7f5f0] p-3 shadow-2xs dark:border-zinc-800 dark:bg-zinc-900" wire:key="custom-field-display-{{ $def->id }}">
                     <div class="flex items-center gap-2.5 min-w-0">
                         <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
                             @switch($type)

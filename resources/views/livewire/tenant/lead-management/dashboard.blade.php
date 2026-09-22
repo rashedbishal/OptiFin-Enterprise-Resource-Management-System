@@ -197,7 +197,7 @@
                 <a
                     href="{{ route($tile['route']) }}"
                     wire:navigate
-                    class="group relative flex flex-col gap-4 overflow-hidden rounded-xl border border-zinc-200/80 bg-white p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 active:translate-y-0 dark:border-zinc-700/80 dark:bg-zinc-800 dark:hover:border-zinc-600"
+                    class="group relative flex flex-col gap-4 overflow-hidden rounded-xl border border-[#e4d6be] bg-[#f7f5f0] p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 active:translate-y-0 dark:border-zinc-700/80 dark:bg-zinc-800 dark:hover:border-zinc-600"
                 >
                     {{-- Hairline glow along the tile's top edge on hover. --}}
                     <div aria-hidden="true" class="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent {{ $glowClasses }} to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>

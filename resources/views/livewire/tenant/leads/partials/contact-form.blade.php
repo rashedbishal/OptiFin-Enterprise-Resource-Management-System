@@ -55,7 +55,7 @@
             {{-- Details Grid --}}
             <div class="grid grid-cols-1 gap-2.5">
                 @if ($lead->phone)
-                    <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200/80 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                    <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#e4d6be] bg-[#f7f5f0] p-3 dark:border-zinc-800 dark:bg-zinc-900">
                         <div class="flex items-center gap-2.5 min-w-0">
                             <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
                                 <flux:icon.phone variant="micro" class="size-4" />
@@ -81,7 +81,7 @@
                 @endif
 
                 @if ($lead->email)
-                    <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200/80 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                    <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#e4d6be] bg-[#f7f5f0] p-3 dark:border-zinc-800 dark:bg-zinc-900">
                         <div class="flex items-center gap-2.5 min-w-0">
                             <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
                                 <flux:icon.envelope variant="micro" class="size-4" />

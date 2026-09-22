@@ -136,7 +136,7 @@
                 {{-- Financial Metrics Grid --}}
                 <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
                     @if ($lead->estimated_budget !== null)
-                        <div class="flex items-center gap-2.5 rounded-xl border border-zinc-200/80 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                        <div class="flex items-center gap-2.5 rounded-xl border border-[#e4d6be] bg-[#f7f5f0] p-3 dark:border-zinc-800 dark:bg-zinc-900">
                             <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
                                 <flux:icon.calculator variant="micro" class="size-4" />
                             </div>
@@ -164,7 +164,7 @@
                     @endif
 
                     @if ($lead->win_probability !== null)
-                        <div class="flex items-center gap-2.5 rounded-xl border border-zinc-200/80 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                        <div class="flex items-center gap-2.5 rounded-xl border border-[#e4d6be] bg-[#f7f5f0] p-3 dark:border-zinc-800 dark:bg-zinc-900">
                             <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-600 dark:bg-sky-950/60 dark:text-sky-400">
                                 <flux:icon.chart-bar variant="micro" class="size-4" />
                             </div>
