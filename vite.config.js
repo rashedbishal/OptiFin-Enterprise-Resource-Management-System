@@ -8,7 +8,11 @@ import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), '');
-    const appHost = new URL(env.APP_URL ?? 'http://localhost:8000').hostname;
+    // Independent of APP_URL (which stays pointed at the Cloudflare tunnel
+    // domain for the app itself): the tunnel has no ingress rule for port
+    // 5173, so deriving the Vite dev host from APP_URL breaks local dev.
+    // Defaults to localhost; set VITE_DEV_HOST to test over the LAN/tunnel.
+    const appHost = env.VITE_DEV_HOST || 'localhost';
 
     return {
         plugins: [
