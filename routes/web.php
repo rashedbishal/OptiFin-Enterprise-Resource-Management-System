@@ -60,6 +60,7 @@ Route::middleware(['auth', 'verified', 'tenant.identify', 'tenant.active'])->gro
             Route::post('answer', [LeadCallController::class, 'answer'])->name('tenant-lead-calls.answer');
             Route::post('accept', [LeadCallController::class, 'accept'])->name('tenant-lead-calls.accept');
             Route::post('reject', [LeadCallController::class, 'reject'])->name('tenant-lead-calls.reject');
+            Route::post('hangup', [LeadCallController::class, 'hangup'])->name('tenant-lead-calls.hangup');
         });
 
         Route::livewire('leads/{lead}', LeadsShow::class)->name('tenant-leads.show');

@@ -514,12 +514,36 @@ describe('a connected call', () => {
         return made;
     }
 
-    it('shows a connected card with a running timer and Mute, but no hangup', async () => {
+    it('shows a connected card with a running timer, Mute and Hang up (Step 7a)', async () => {
         const { cards } = await connected();
         await vi.advanceTimersByTimeAsync(7000);
 
-        expect(cards()[0]).toMatchObject({ mode: MODE.CONNECTED, canDecline: false, canAnswer: false });
+        expect(cards()[0]).toMatchObject({ mode: MODE.CONNECTED, canDecline: false, canAnswer: false, canHangup: true });
         expect(cards()[0].elapsedSeconds).toBeGreaterThanOrEqual(7);
+    });
+
+    it('the elapsed timer still runs even when the server\'s connected_at never reaches this tab', async () => {
+        // Reproduces the real bug exactly: the poll/realtime round-trip that
+        // would normally populate call.connectedAt from the server never
+        // lands (a dropped realtime event, a slow/failed poll, a flaky mobile
+        // network) — the timer must still tick from this tab's own locally
+        // observed connect moment, not sit frozen on a `?? 0` fallback.
+        const made = setup({ calls: [rawCall({ id: 'a' })] });
+        made.controller.start();
+        await flush();
+        // connected_at stays null forever, unlike the connected() helper above.
+        made.state.calls = [rawCall({ id: 'a', status: 'connected', claimed_by_me: true, expires_in_seconds: null, connected_at: null })];
+
+        made.controller.answer('a');
+        await vi.waitFor(() => expect(made.controller.session?.phase).toBe('connecting'));
+        FakePeerConnection.instances.at(-1).setState('connected');
+        await vi.waitFor(() => expect(made.controller.session.phase).toBe('connected'));
+        await made.controller.refresh(); // server still reports connected_at: null
+
+        await vi.advanceTimersByTimeAsync(5000);
+
+        expect(made.cards()[0].mode).toBe(MODE.CONNECTED);
+        expect(made.cards()[0].elapsedSeconds).toBeGreaterThanOrEqual(5);
     });
 
     it('mute toggles the microphone and sends nothing to the server', async () => {
@@ -542,6 +566,53 @@ describe('a connected call', () => {
         await flush();
 
         expect(() => controller.toggleMute()).not.toThrow();
+    });
+
+    it('hangs up through the hangup endpoint once, ignoring duplicate clicks, and tears the session down immediately', async () => {
+        const { controller, api, state, stream, cards } = await connected();
+        state.calls = [];
+
+        controller.hangup('a');
+        controller.hangup('a');
+        await flush();
+
+        expect(api.hangup).toHaveBeenCalledTimes(1);
+        expect(api.hangup).toHaveBeenCalledWith('a');
+        expect(controller.session).toBeNull();
+        expect(stream.tracks[0].stopped).toBe(true);
+        expect(cards()).toHaveLength(0);
+        expect(controller.snapshot().notices.map((notice) => notice.text)).toContain('The call ended.');
+    });
+
+    it('a conflict on hangup (the call already ended some other way) still tears the session down quietly', async () => {
+        const { controller, api, stream } = await connected();
+        api.hangup.mockRejectedValueOnce(new ApiError({ status: 409, code: 'call_not_connected', message: 'x', retryable: false }));
+
+        await controller.hangup('a');
+
+        expect(controller.session).toBeNull();
+        expect(stream.tracks[0].stopped).toBe(true);
+    });
+
+    it('shows other hangup errors to the agent without tearing the session down', async () => {
+        const { controller, api } = await connected();
+        api.hangup.mockRejectedValueOnce(new ApiError({ status: 0, code: 'network', message: 'Could not reach the server.', retryable: true }));
+
+        await controller.hangup('a');
+
+        expect(controller.session).not.toBeNull();
+        expect(controller.snapshot().notices.map((notice) => notice.text)).toContain('Could not reach the server.');
+    });
+
+    it('does nothing for a call this tab does not own as a live session', async () => {
+        const { controller, api } = setup({ calls: [rawCall({ status: 'answering', claimed_by_me: true })] });
+        controller.start();
+        await flush();
+
+        controller.hangup('c1');
+        await flush();
+
+        expect(api.hangup).not.toHaveBeenCalled();
     });
 });
 
@@ -605,6 +676,54 @@ describe('reload, second tab and stale state', () => {
         await controller.answer('ghost');
 
         expect(api.claim).not.toHaveBeenCalled();
+    });
+});
+
+describe('primaryCallId (mobile full-screen)', () => {
+    it('is null when there is no session and nothing ringing', async () => {
+        const { controller } = setup({ calls: [] });
+        controller.start();
+        await flush();
+
+        expect(controller.snapshot().primaryCallId).toBeNull();
+    });
+
+    it('is the first ringing call when nothing is being answered yet', async () => {
+        const { controller } = setup({ calls: [rawCall({ id: 'a' }), rawCall({ id: 'b' })] });
+        controller.start();
+        await flush();
+
+        expect(controller.snapshot().primaryCallId).toBe('a');
+    });
+
+    it('is this tab\'s own session once it owns one, even while another call is also ringing', async () => {
+        const { controller } = setup({ calls: [rawCall({ id: 'a' }), rawCall({ id: 'b' })] });
+        controller.start();
+        await flush();
+
+        controller.answer('a');
+        await flush();
+
+        expect(controller.snapshot().primaryCallId).toBe('a');
+    });
+
+    it('is null for a call this tab does not own as a live session (other-tab / lost), even though it is claimedByMe', async () => {
+        const { controller } = setup({ calls: [rawCall({ status: 'answering', claimed_by_me: true })] });
+        controller.start();
+        await flush();
+
+        expect(controller.snapshot().primaryCallId).toBeNull();
+    });
+
+    it('stays on the own session\'s id through connecting, connected and failed — only the template decides which of those get full-screen', async () => {
+        const { controller, cards } = setup({ calls: [rawCall({ id: 'a' })] });
+        controller.start();
+        await flush();
+
+        controller.answer('a');
+        await vi.waitFor(() => expect(controller.session?.phase).toBe('connecting'));
+        expect(controller.snapshot().primaryCallId).toBe('a');
+        expect(cards().find((c) => c.id === 'a').mode).toBe(MODE.CONNECTING);
     });
 });
 

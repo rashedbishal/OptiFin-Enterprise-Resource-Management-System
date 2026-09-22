@@ -2,6 +2,7 @@
 
 use App\Actions\Tenant\AnswerLeadCall;
 use App\Actions\Tenant\ClaimLeadCall;
+use App\Actions\Tenant\HangupLeadCall;
 use App\Actions\Tenant\RecordInboundCall;
 use App\Actions\Tenant\RejectLeadCall;
 use App\Enums\CallEndReason;
@@ -298,6 +299,36 @@ test('reject announces Rejected as soon as the local state is committed, before 
 
     expect($announcedBeforeMeta)->toBe(1);
     Event::assertDispatched(LeadCallUpdated::class, fn (LeadCallUpdated $e): bool => $e->status === 'rejected');
+});
+
+test('hangup (Step 7a) announces Completed as soon as the local state is committed, before Meta is asked', function () {
+    Lc::fakeMeta();
+    $x = Lc::make()->connected();
+    $announcedBeforeMeta = null;
+
+    Event::fake([LeadCallUpdated::class]);
+    Lc::fakeMeta(function () use (&$announcedBeforeMeta) {
+        $announcedBeforeMeta = Event::dispatched(LeadCallUpdated::class)->count();
+
+        return null;
+    });
+
+    app(HangupLeadCall::class)->handle($x->agent, $x->call->id);
+
+    expect($announcedBeforeMeta)->toBe(1);
+    Event::assertDispatched(LeadCallUpdated::class, fn (LeadCallUpdated $e): bool => $e->status === 'completed' && $e->callId === $x->call->id);
+});
+
+test('a hangup refusal or an idempotent repeat announces nothing', function () {
+    Lc::fakeMeta();
+    $x = Lc::make()->connected();
+    app(HangupLeadCall::class)->handle($x->agent, $x->call->id);
+    Event::fake([LeadCallUpdated::class]);
+
+    app(HangupLeadCall::class)->handle($x->agent, $x->call->id); // idempotent repeat
+    app(HangupLeadCall::class)->handle($x->other, $x->call->id); // not the claimant
+
+    Event::assertNotDispatched(LeadCallUpdated::class);
 });
 
 test('a permanent Meta failure or a missing offer announces Failed', function (string $how) {
