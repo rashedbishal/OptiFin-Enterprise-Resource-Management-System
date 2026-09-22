@@ -24,7 +24,7 @@
     <div wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" class="{{ $showSkeletonByDefault ? '!hidden' : '' }} contents">
     <div class="flex flex-col gap-2.5">
         {{-- Source Channel & Referred Via --}}
-        <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#e4d6be] bg-[#f7f5f0] p-3 dark:border-zinc-800 dark:bg-zinc-900">
+        <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/70 bg-white/40 bg-[image:linear-gradient(165deg,rgb(255_255_255_/_0.22),rgb(255_248_224_/_0.12))] backdrop-blur-[20px] backdrop-saturate-[260%] shadow-[inset_0_1px_1px_rgb(255_255_255_/_0.75),inset_0_-1px_1px_rgb(120_90_40_/_0.05)] p-3 dark:border-zinc-800 dark:bg-zinc-900 dark:bg-[image:none] dark:backdrop-blur-none dark:backdrop-saturate-100 dark:shadow-none">
             <div class="flex items-center gap-2.5 min-w-0">
                 <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
                     <flux:icon.funnel variant="micro" class="size-4" />
@@ -37,7 +37,7 @@
         </div>
 
         @if ($lead->industry)
-            <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#e4d6be] bg-[#f7f5f0] p-3 dark:border-zinc-800 dark:bg-zinc-900">
+            <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/70 bg-white/40 bg-[image:linear-gradient(165deg,rgb(255_255_255_/_0.22),rgb(255_248_224_/_0.12))] backdrop-blur-[20px] backdrop-saturate-[260%] shadow-[inset_0_1px_1px_rgb(255_255_255_/_0.75),inset_0_-1px_1px_rgb(120_90_40_/_0.05)] p-3 dark:border-zinc-800 dark:bg-zinc-900 dark:bg-[image:none] dark:backdrop-blur-none dark:backdrop-saturate-100 dark:shadow-none">
                 <div class="flex items-center gap-2.5 min-w-0">
                     <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-purple-50 text-purple-600 dark:bg-purple-950/60 dark:text-purple-400">
                         <flux:icon.briefcase variant="micro" class="size-4" />
@@ -49,7 +49,7 @@
         @endif
 
         @if ($isManual && $lead->lead_source)
-            <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#e4d6be] bg-[#f7f5f0] p-3 dark:border-zinc-800 dark:bg-zinc-900">
+            <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/70 bg-white/40 bg-[image:linear-gradient(165deg,rgb(255_255_255_/_0.22),rgb(255_248_224_/_0.12))] backdrop-blur-[20px] backdrop-saturate-[260%] shadow-[inset_0_1px_1px_rgb(255_255_255_/_0.75),inset_0_-1px_1px_rgb(120_90_40_/_0.05)] p-3 dark:border-zinc-800 dark:bg-zinc-900 dark:bg-[image:none] dark:backdrop-blur-none dark:backdrop-saturate-100 dark:shadow-none">
                 <div class="flex items-center gap-2.5 min-w-0">
                     <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-950/60 dark:text-indigo-400">
                         <flux:icon.arrow-right-end-on-rectangle variant="micro" class="size-4" />
@@ -60,7 +60,7 @@
             </div>
         @endif
 
-        <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#e4d6be] bg-[#f7f5f0] p-3 dark:border-zinc-800 dark:bg-zinc-900">
+        <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/70 bg-white/40 bg-[image:linear-gradient(165deg,rgb(255_255_255_/_0.22),rgb(255_248_224_/_0.12))] backdrop-blur-[20px] backdrop-saturate-[260%] shadow-[inset_0_1px_1px_rgb(255_255_255_/_0.75),inset_0_-1px_1px_rgb(120_90_40_/_0.05)] p-3 dark:border-zinc-800 dark:bg-zinc-900 dark:bg-[image:none] dark:backdrop-blur-none dark:backdrop-saturate-100 dark:shadow-none">
             <div class="flex items-center gap-2.5 min-w-0">
                 <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
                     <flux:icon.user variant="micro" class="size-4" />
@@ -73,7 +73,7 @@
         </div>
 
         @if ($lead->estimated_budget !== null)
-            <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#e4d6be] bg-[#f7f5f0] p-3 dark:border-zinc-800 dark:bg-zinc-900">
+            <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/70 bg-white/40 bg-[image:linear-gradient(165deg,rgb(255_255_255_/_0.22),rgb(255_248_224_/_0.12))] backdrop-blur-[20px] backdrop-saturate-[260%] shadow-[inset_0_1px_1px_rgb(255_255_255_/_0.75),inset_0_-1px_1px_rgb(120_90_40_/_0.05)] p-3 dark:border-zinc-800 dark:bg-zinc-900 dark:bg-[image:none] dark:backdrop-blur-none dark:backdrop-saturate-100 dark:shadow-none">
                 <div class="flex items-center gap-2.5 min-w-0">
                     <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
                         <flux:icon.calculator variant="micro" class="size-4" />
@@ -140,7 +140,7 @@
             </div>
         @endif
 
-        <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#e4d6be] bg-[#f7f5f0] p-3 dark:border-zinc-800 dark:bg-zinc-900">
+        <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/70 bg-white/40 bg-[image:linear-gradient(165deg,rgb(255_255_255_/_0.22),rgb(255_248_224_/_0.12))] backdrop-blur-[20px] backdrop-saturate-[260%] shadow-[inset_0_1px_1px_rgb(255_255_255_/_0.75),inset_0_-1px_1px_rgb(120_90_40_/_0.05)] p-3 dark:border-zinc-800 dark:bg-zinc-900 dark:bg-[image:none] dark:backdrop-blur-none dark:backdrop-saturate-100 dark:shadow-none">
             <div class="flex items-center gap-2.5 min-w-0">
                 <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
                     <flux:icon.calendar variant="micro" class="size-4" />

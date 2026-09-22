@@ -8,8 +8,8 @@
     row for `main` is a real, capped size rather than growing with page
     content — that's what lets `main` become its own scroll region below
     instead of the whole document (sidebar included) scrolling. --}}
-    <body class="h-dvh overflow-hidden bg-zinc-50 dark:bg-[#0e1826]">
-        <flux:sidebar sticky stashable class="border-e border-zinc-300/70 bg-[#E7E1D2] shadow-[4px_0_16px_-8px_rgba(0,0,0,0.12)] dark:border-zinc-700 dark:bg-gradient-to-b dark:from-[#141414] dark:to-[#0a0a0a] dark:shadow-none">
+    <body class="h-dvh overflow-hidden bg-white dark:bg-[#0e1826]">
+        <flux:sidebar sticky stashable class="border-e border-zinc-300/70 bg-[#FFFFFF] shadow-[4px_0_16px_-8px_rgba(0,0,0,0.12)] dark:border-zinc-700 dark:bg-gradient-to-b dark:from-[#141414] dark:to-[#0a0a0a] dark:shadow-none">
             <flux:sidebar.header>
                 <x-app-logo :sidebar="true" href="{{ route('dashboard') }}" wire:navigate />
             </flux:sidebar.header>
@@ -73,7 +73,7 @@
         </flux:sidebar>
 
         <!-- Mobile User Header -->
-        <flux:header class="lg:hidden border-b border-zinc-300/70 bg-[#E7E1D2]/90 backdrop-blur-sm dark:border-zinc-700/70 dark:bg-[#0a0a0a]/90">
+        <flux:header class="lg:hidden border-b border-zinc-300/70 bg-[#FFFFFF]/90 backdrop-blur-sm dark:border-zinc-700/70 dark:bg-[#0a0a0a]/90">
             <flux:sidebar.toggle class="lg:hidden" icon="bars-2" inset="left" />
 
             <img

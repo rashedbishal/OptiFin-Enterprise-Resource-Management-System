@@ -7,13 +7,12 @@
 @php
     $classes = Flux::classes()
         ->add($sticky ? 'sticky top-0 z-20' : '')
-        // Warm Ledger header — a light gold-tinted band against the card's
-        // now near-white fill (.card-surface, see app.css). Toned down from
-        // an earlier, more saturated gold once the surrounding card fill
-        // went back to white — the same gold saturation read as too heavy
-        // against a brighter card body. The gold underline lives per-cell,
-        // see flux/table/column.blade.php.
-        ->add('bg-[#f3ead6] dark:bg-transparent')
+        // Warm Ledger header — a deeper-tinted glass band riding on top of
+        // the table's own .card-surface glass (flux/table/index.blade.php),
+        // so it reads as "part of the same frosted card" rather than a
+        // mismatched opaque accent. The gold underline lives per-cell, see
+        // flux/table/column.blade.php.
+        ->add('bg-white/45 bg-[linear-gradient(165deg,rgb(255_255_255_/_0.3),rgb(251_224_120_/_0.16))] backdrop-blur-md backdrop-saturate-[220%] dark:bg-transparent dark:bg-none dark:backdrop-blur-none dark:backdrop-saturate-100')
     ;
 @endphp
 

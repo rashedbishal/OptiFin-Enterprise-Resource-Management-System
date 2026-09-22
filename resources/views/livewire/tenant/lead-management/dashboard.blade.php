@@ -197,7 +197,7 @@
                 <a
                     href="{{ route($tile['route']) }}"
                     wire:navigate
-                    class="group relative flex flex-col gap-4 overflow-hidden rounded-xl border border-[#e4d6be] bg-[#f7f5f0] p-5 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 active:translate-y-0 dark:border-zinc-700/80 dark:bg-zinc-800 dark:hover:border-zinc-600"
+                    class="group relative flex flex-col gap-4 overflow-hidden rounded-xl border border-white/85 bg-gradient-to-br from-white/50 to-[#fff8e0]/18 backdrop-blur-[40px] backdrop-saturate-[260%] backdrop-brightness-110 inset-ring-1 inset-ring-white/80 p-5 shadow-[inset_0_1px_1px_rgb(255_255_255_/_0.95),0_14px_30px_-10px_rgb(74_48_20_/_0.18)] transition-all duration-200 hover:-translate-y-0.5 hover:border-zinc-300 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-900 active:translate-y-0 dark:border-zinc-700/80 dark:bg-zinc-800 dark:bg-none dark:backdrop-blur-none dark:backdrop-saturate-100 dark:backdrop-brightness-100 dark:shadow-sm dark:inset-ring-0 dark:hover:border-zinc-600"
                 >
                     {{-- Hairline glow along the tile's top edge on hover. --}}
                     <div aria-hidden="true" class="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent {{ $glowClasses }} to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100"></div>

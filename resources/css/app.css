@@ -180,8 +180,33 @@ html.dark {
     color-scheme: dark;
 }
 
+/*
+Liquid-glass canvas — the app reads as white at a glance, but isn't a flat
+fill: several low-alpha, oversized, multi-hue radial gradients sit behind
+everything on a fixed ::before layer, giving elevated glass surfaces
+(.card-surface / .card-surface-nested / table header band / the sidebar's
+active-item pill) something to actually refract via backdrop-filter.
+Without this, `backdrop-filter: blur()` over a perfectly flat body color is
+a no-op — blurring one solid color produces that same solid color, so the
+"glass" would just be a translucent box with a shadow, not real glass.
+
+Alpha here is kept deliberately low (0.16-0.26) so the BARE canvas (the
+gaps between cards, never blurred) still reads as white/near-white at a
+glance. The trick that makes the glass itself read as vivid rather than
+"barely-there" is `saturate()` in .card-surface's backdrop-filter below:
+it amplifies whatever faint chroma is sitting behind a card several-fold,
+so the same low-alpha blob that's nearly invisible on the open canvas
+becomes a clearly tinted, living color once seen through a blurred+
+saturated card. This is the actual mechanism iOS's frosted materials use
+(blur reveals shape, saturate reveals color) — a flat, un-saturated blur
+is what read as "just a translucent gray box" before this rewrite.
+
+Dark mode keeps its own separate canvas gradient (.dark body, below) and
+is untouched.
+*/
 body {
     position: relative;
+    background-color: #ffffff;
 }
 
 body::before {
@@ -190,19 +215,16 @@ body::before {
     inset: 0;
     z-index: -1;
     pointer-events: none;
-    /*
-    Cream atmosphere — wider ellipses (100%/85% vs the old 70%/60%) so the
-    tint spreads across most of the canvas instead of staying pinned to
-    two corners, plus a third, very faint full-bleed linear wash so the
-    center of the page isn't left untinted between the two radials.
-    Alpha stays low (0.10-0.35) precisely because coverage is now much
-    larger — a small tight ellipse can afford more opacity without
-    reading as "yellow"; a wide one can't.
-    */
     background-image:
-        radial-gradient(ellipse 100% 85% at 20% 0%, rgb(253 251 212 / 0.65), transparent 70%),
-        radial-gradient(ellipse 100% 85% at 100% 100%, rgb(253 251 212 / 0.45), transparent 75%),
-        linear-gradient(135deg, rgb(253 251 212 / 0.12), transparent 55%);
+        radial-gradient(circle at 8% 8%, rgb(255 179 64 / 0.24), transparent 20%),
+        radial-gradient(circle at 92% 5%, rgb(88 150 255 / 0.2), transparent 20%),
+        radial-gradient(circle at 96% 58%, rgb(255 110 170 / 0.15), transparent 18%),
+        radial-gradient(circle at 4% 62%, rgb(70 210 165 / 0.16), transparent 18%),
+        radial-gradient(circle at 50% 100%, rgb(255 196 60 / 0.16), transparent 22%);
+}
+
+.dark body::before {
+    content: none;
 }
 
 /*
@@ -224,34 +246,23 @@ never stack.
         linear-gradient(168deg, rgb(12 26 46) 0%, rgb(10 18 32) 48%, rgb(8 14 24) 100%);
 }
 
-.dark body::before {
-    background-image: none;
-}
-
 /*
 Card material system — a three-level elevation scale (canvas → card →
-nested-card), the same idea already applied to the sidebar (a distinctly
-different, opaque tone from the canvas, not just a faint border).
-
-An earlier version of this used translucent (alpha < 1) backgrounds to get
-a "glass" look. In practice, over this app's tinted canvas (cream in light
-mode, a gradient in dark mode) translucent white/black blended into
-whatever was behind it closely enough to read as "no color at all" — see
-the dashboard/table/lead-detail screenshots that prompted this rewrite.
-Every level below is now a fully OPAQUE, deliberately chosen tone so the
-elevation is unambiguous regardless of what's behind it; the "glass" read
-comes from the top-edge highlight (inset-ring-white, applied alongside
-these classes — same technique as the Kanban lead-card) + shadow, not from
-transparency. This keeps the "selective glass" scope (menus/mobile
-header/dropdowns only) intact for real backdrop-filter blur.
+nested-card). Light mode is real liquid glass: translucent, blurred,
+saturated, with a bright top-edge sheen and a soft warm shadow, over the
+ambient blobs painted on body::before above. Dark mode stays the earlier
+opaque navy-steel treatment untouched — the navy canvas gradient there
+already reads richly enough that translucency added little, and it keeps
+dark mode's contrast predictable.
 
 .card-surface = the outer/raised surface (a card floating on the canvas).
-.card-surface-nested = an inner surface *within* a card — a different,
-flatter, more muted opaque tone with no shadow, so it reads as recessed
-relative to the card around it rather than as another floating panel.
 Also applied to flux:table's own container (see flux/table/index.blade.php)
-since most tables in this app sit directly on the canvas, not inside a
-flux:card — they need the same elevation treatment cards get.
+and the table header band (flux/table/columns.blade.php), since most
+tables in this app sit directly on the canvas rather than inside a
+flux:card. .card-surface-nested = an inner surface *within* a card/table —
+a flatter, more transparent, less blurred glass so it reads as recessed
+relative to the surface around it (used by the small info "chips" across
+the lead detail partials) rather than as another floating pane.
 */
 @layer utilities {
     /*
@@ -270,42 +281,104 @@ flux:card — they need the same elevation treatment cards get.
     override-friendliness isn't a real cost here.
     */
     /*
-    Warm Ledger elevation (light mode only) — a cold zinc-300 border and a
-    flat-black shadow read as generic against the cream canvas/oxblood
-    accent. Swapping to a warm taupe border and an umber-tinted shadow (same
-    alpha curve as before, just re-hued) makes elevation feel like fine
-    stationery rather than a default Tailwind card. Dark mode's navy-steel
-    treatment is untouched.
-    */
-    /*
-    Quiet-luxury pass — an earlier champagne fill (#fbf3e2) read as too
-    yellow once applied to every card/table body, not just borders/shadows.
-    Reverted the fill itself to near-pure white; the taupe border, umber
-    shadow, and gold table-header hairline (elsewhere in this file and in
-    flux/table/*.blade.php) now carry the "premium" identity on their own,
-    the way white-surface fintech UIs (Stripe, Mercury) use color only as a
-    precise accent rather than tinting the whole surface.
+    iPhone-style frosted glass. The first version of this rule read as a
+    flat pastel box, not glass, for one specific reason: its own tint used
+    the SAME warm cream hue as body::before's ambient blobs, so there was
+    nothing visually distinguishing "color coming from behind, blurred and
+    saturated" from "color painted on the card itself" — the eye needs a
+    contrast between the two to register "glass" at all. Fixed by making
+    the card's own tint close to neutral white (barely-there warmth) so
+    body::before's varied hues (gold/blue/rose/mint at different screen
+    positions) read as visibly, distinctly showing through per card,
+    exactly like frosted glass over a colorful surface.
+
+    Four ingredients, all required together:
+    1. Near-NEUTRAL, low-alpha background (~0.5 white, a whisper of warmth)
+       — see above for why hue-matching the backdrop was the actual bug.
+    2. blur(40px) saturate(2.6) brightness(1.06) — heavy blur so the
+       backdrop reads as soft color/shape rather than a legible page,
+       strong saturate to pull real color out of body::before's low-alpha
+       blobs (the classic "liquid glass" tell), brightness to keep the
+       result feeling like frosted white glass rather than frosted gray.
+    3. A real specular highlight, not just a border: the ::before diagonal
+       sheen (light-to-transparent-to-light band, blended with `screen` so
+       it visibly brightens rather than just subtly shifting tone,
+       `border-radius: inherit` so it stays clipped to the card's own
+       corners without needing `overflow: hidden`, which would risk
+       clipping dropdowns/tooltips anchored inside the card) plus an inset
+       box-shadow pair (bright top edge, soft dark bottom edge) reading as
+       true glass thickness/bevel.
+    4. A crisp, bright 1px border (not just a faint tint) — this is what
+       actually separates "glass panel with a defined edge" from "translucent
+       smear with no boundary" at a glance.
+
+    inset-ring-white/60 (applied alongside this class at each call site)
+    layers on top as the outer rim of the same highlight.
     */
     .card-surface {
-        background-color: #fefefc;
-        border-color: #e4d6be;
-        box-shadow: 0 1px 3px rgb(90 61 28 / 0.10), 0 20px 40px -20px rgb(74 48 20 / 0.28);
+        position: relative;
+        background-color: rgb(255 255 255 / 0.5);
+        background-image: linear-gradient(165deg, rgb(255 255 255 / 0.32) 0%, rgb(255 248 224 / 0.14) 100%);
+        -webkit-backdrop-filter: blur(40px) saturate(3.2) brightness(1.06);
+        backdrop-filter: blur(40px) saturate(3.2) brightness(1.06);
+        border-color: rgb(255 255 255 / 0.85);
+        box-shadow:
+            inset 0 1px 1px rgb(255 255 255 / 0.95),
+            inset 0 -1px 1px rgb(120 90 40 / 0.08),
+            0 1px 2px rgb(90 61 28 / 0.06),
+            0 14px 30px -10px rgb(74 48 20 / 0.18),
+            0 32px 64px -24px rgb(74 48 20 / 0.2);
+    }
+
+    .card-surface::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        pointer-events: none;
+        background-image: linear-gradient(115deg, rgb(255 255 255 / 0.65) 0%, transparent 26%, transparent 70%, rgb(255 255 255 / 0.35) 100%);
+        mix-blend-mode: screen;
     }
 
     .dark .card-surface {
         background-color: var(--color-zinc-800);
+        /* The base (light) rule above sets background-image and
+        backdrop-filter with no dark: guard of their own — being a plain
+        class selector, .dark .card-surface only wins the properties it
+        actually declares. Without these two resets, dark mode kept the
+        light gradient tint and the blur/saturate/brightness filter
+        layered on top of this opaque fill, which is what made dark cards
+        read as a hazy, cloudy smear instead of flat navy-steel. */
+        background-image: none;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
         border-color: rgb(120 160 200 / 0.16);
         box-shadow: 0 1px 2px rgb(0 0 0 / 0.4), 0 20px 40px -18px rgb(0 0 0 / 0.55);
     }
 
+    .dark .card-surface::before {
+        content: none;
+    }
+
     .card-surface-nested {
-        background-color: #f7f5f0;
-        border-color: rgb(228 214 190 / 0.8);
+        position: relative;
+        background-color: rgb(255 255 255 / 0.38);
+        background-image: linear-gradient(165deg, rgb(255 255 255 / 0.2) 0%, rgb(255 248 224 / 0.1) 100%);
+        -webkit-backdrop-filter: blur(22px) saturate(2.8);
+        backdrop-filter: blur(22px) saturate(2.8);
+        border-color: rgb(255 255 255 / 0.7);
+        box-shadow:
+            inset 0 1px 1px rgb(255 255 255 / 0.8),
+            inset 0 -1px 1px rgb(120 90 40 / 0.05);
     }
 
     .dark .card-surface-nested {
         background-color: var(--color-zinc-900);
+        background-image: none;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
         border-color: rgb(120 160 200 / 0.10);
+        box-shadow: none;
     }
 }
 
