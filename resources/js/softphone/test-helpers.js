@@ -75,6 +75,7 @@ export function fakeApi(overrides = {}) {
         answer: vi.fn(async () => ({ call: { id: 'c1', status: 'answering' } })),
         accept: vi.fn(async () => ({ call: { id: 'c1', status: 'connected' } })),
         reject: vi.fn(async () => ({ call: { id: 'c1', status: 'rejected' }, meta_confirmed: true })),
+        hangup: vi.fn(async () => ({ call: { id: 'c1', status: 'completed' }, meta_confirmed: true })),
         ...overrides,
     };
 }

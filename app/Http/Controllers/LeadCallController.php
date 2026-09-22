@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Actions\Tenant\AnswerLeadCall;
 use App\Actions\Tenant\ClaimLeadCall;
+use App\Actions\Tenant\HangupLeadCall;
 use App\Actions\Tenant\RejectLeadCall;
 use App\Models\TenantUser;
 use App\Support\LeadCallActionResult;
@@ -13,12 +14,12 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * WhatsApp inbound calling (Step 4) — the thin JSON surface over the claim /
- * answer / accept / reject actions. Everything that matters (tenant-scoped
- * lookup, authorization, state checks, Meta) lives in the actions, so it holds
- * for any caller, not just these routes. The call id in the URL is the only
- * identifier taken from the browser: no lead, source, tenant, phone number id
- * or credential is ever accepted.
+ * WhatsApp inbound calling (Steps 4 and 7a) — the thin JSON surface over the
+ * claim / answer / accept / reject / hangup actions. Everything that matters
+ * (tenant-scoped lookup, authorization, state checks, Meta) lives in the
+ * actions, so it holds for any caller, not just these routes. The call id in
+ * the URL is the only identifier taken from the browser: no lead, source,
+ * tenant, phone number id or credential is ever accepted.
  *
  * Responses are never cacheable — a claim's body carries the SDP offer.
  */
@@ -45,6 +46,11 @@ class LeadCallController extends Controller
     }
 
     public function reject(Request $request, string $leadCall, RejectLeadCall $action): JsonResponse
+    {
+        return $this->respond($request, fn (TenantUser $user): LeadCallActionResult => $action->handle($user, $leadCall));
+    }
+
+    public function hangup(Request $request, string $leadCall, HangupLeadCall $action): JsonResponse
     {
         return $this->respond($request, fn (TenantUser $user): LeadCallActionResult => $action->handle($user, $leadCall));
     }

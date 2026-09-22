@@ -83,5 +83,6 @@ export function createApi({ urls, fetchImpl = (...args) => fetch(...args), csrfH
         answer: (id, sdp) => request('POST', forCall(urls.answer, id), { sdp_type: 'answer', sdp }),
         accept: (id) => request('POST', forCall(urls.accept, id)),
         reject: (id) => request('POST', forCall(urls.reject, id)),
+        hangup: (id) => request('POST', forCall(urls.hangup, id)),
     };
 }

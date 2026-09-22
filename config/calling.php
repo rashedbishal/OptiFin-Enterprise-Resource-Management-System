@@ -128,4 +128,23 @@ return [
 
     'reconcile_batch_limit' => (int) env('CALLING_RECONCILE_BATCH_LIMIT', 500),
 
+    /*
+    |--------------------------------------------------------------------------
+    | WhatsApp Inbound Calling — Softphone Realtime Fallback
+    |--------------------------------------------------------------------------
+    |
+    | softphone_poll_seconds: how often the browser re-fetches its active
+    | calls as a fallback when realtime (Reverb/websocket) doesn't deliver an
+    | event — a dropped connection, a missed broadcast, or a server restart
+    | the browser's socket didn't notice (it can report itself as still
+    | "connected" even after the underlying connection has died). Realtime is
+    | the primary, near-instant path; this only bounds the worst case. Kept
+    | short because a ring only lasts ring_ttl_seconds (60) — a slow fallback
+    | here is the difference between "the phone rang and nobody could answer
+    | in time" and "briefly late but still answerable."
+    |
+    */
+
+    'softphone_poll_seconds' => (int) env('CALLING_SOFTPHONE_POLL_SECONDS', 5),
+
 ];
