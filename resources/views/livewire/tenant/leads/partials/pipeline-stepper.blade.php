@@ -48,9 +48,9 @@ the hero above). Clicking a stage here does nothing on purpose. --}}
                     $isCurrent = $statusCase->id === $lead->status_id;
                     $isPassed = $currentIndex !== false && $index < $currentIndex;
                 @endphp
-                <div class="flex items-center gap-1.5 sm:gap-2.5 w-[calc(50%-0.25rem)] sm:w-auto sm:flex-1 sm:min-w-[130px] sm:max-w-[220px]">
+                <div class="flex w-full items-center gap-1.5 sm:w-auto sm:flex-1 sm:min-w-[130px] sm:max-w-[220px]">
                     <div @class([
-                        'flex w-full items-center justify-between gap-1.5 sm:gap-2 rounded-xl px-2.5 py-2 sm:py-2.5 border shadow-2xs transition-all duration-150',
+                        'flex min-w-0 flex-1 items-center justify-between gap-1.5 sm:gap-2 rounded-xl px-2.5 py-2 sm:py-2.5 border shadow-2xs transition-all duration-150',
                         'bg-zinc-100/90 border-zinc-200/90 dark:bg-zinc-900/80 dark:border-zinc-700/80' => ! $isCurrent && ! $isPassed,
                         'bg-indigo-50/90 border-indigo-300 dark:bg-indigo-950/60 dark:border-indigo-600 ring-2 ring-indigo-500/20 dark:ring-indigo-400/20 shadow-xs' => $isCurrent,
                         'bg-emerald-50/90 border-emerald-200/90 dark:bg-emerald-950/50 dark:border-emerald-800/60' => $isPassed,
@@ -92,13 +92,10 @@ the hero above). Clicking a stage here does nothing on purpose. --}}
                             </span>
                         </div>
 
-                        @unless ($loop->last)
-                            <flux:icon.chevron-right class="size-3.5 shrink-0 text-zinc-400 dark:text-zinc-500 sm:hidden" />
-                        @endunless
                     </div>
 
                     @unless ($loop->last)
-                        <flux:icon.chevron-right class="hidden sm:block mx-2 size-4 shrink-0 text-zinc-300 dark:text-zinc-600" />
+                        <flux:icon.chevron-right class="mx-2 size-4 shrink-0 text-zinc-300 dark:text-zinc-600" />
                     @endunless
                 </div>
             @endforeach
@@ -111,8 +108,8 @@ the hero above). Clicking a stage here does nothing on purpose. --}}
     <div class="{{ $showSkeletonByDefault ? '' : '!hidden' }} contents" wire:loading.remove.class="!hidden" wire:target="{{ $listLoadingTargets }}">
         <div class="flex flex-wrap items-center gap-2 gap-y-3 sm:gap-3">
             @for ($i = 0; $i < 5; $i++)
-                <div wire:key="pipeline-stepper-skeleton-{{ $i }}" class="flex items-center gap-1.5 sm:gap-2.5 w-[calc(50%-0.25rem)] sm:w-auto sm:flex-1 sm:min-w-[130px]">
-                    <div class="flex w-full items-center gap-2 rounded-xl bg-zinc-100/90 p-2.5 border border-zinc-200/80 dark:bg-zinc-900/80 dark:border-zinc-700/80">
+                <div wire:key="pipeline-stepper-skeleton-{{ $i }}" class="flex w-full items-center gap-1.5 sm:w-auto sm:flex-1 sm:min-w-[130px]">
+                    <div class="flex min-w-0 flex-1 items-center gap-2 rounded-xl bg-zinc-100/90 p-2.5 border border-zinc-200/80 dark:bg-zinc-900/80 dark:border-zinc-700/80">
                         <div class="size-6 shrink-0 skeleton-shimmer rounded-full"></div>
                         <div class="h-3.5 w-16 skeleton-shimmer rounded"></div>
                     </div>
