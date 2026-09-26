@@ -34,5 +34,5 @@ test('a 4xx status without its own page falls back to the generic designed page'
     $this->get('/__error-page-test')
         ->assertStatus(410)
         ->assertSee('Request could not be completed')
-        ->assertSee('410 · Gone');
+        ->assertSee('410');
 });

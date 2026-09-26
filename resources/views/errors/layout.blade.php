@@ -30,7 +30,6 @@ partials.head) — deliberately not forced to one mode.
 
     $homeUrl = $signedInHome ?? url('/');
     $homeLabel = $signedInHome ? __('Back to dashboard') : __('Back to home');
-    $statusText = \Symfony\Component\HttpFoundation\Response::$statusTexts[$code] ?? __('Error');
 @endphp
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
@@ -58,16 +57,11 @@ partials.head) — deliberately not forced to one mode.
                 <div class="absolute inset-0 bg-[radial-gradient(rgb(107_29_43/0.12)_1px,transparent_1px)] bg-size-[22px_22px] mask-[radial-gradient(ellipse_60%_55%_at_50%_45%,black,transparent)] dark:bg-[radial-gradient(rgb(143_163_184/0.14)_1px,transparent_1px)]"></div>
             </div>
 
-            <header class="flex items-center justify-between px-6 py-5 sm:px-10">
+            <header class="flex items-center px-6 py-5 sm:px-10">
                 <a href="{{ $homeUrl }}" class="flex items-center gap-2.5 rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-accent">
                     <x-app-logo-icon class="size-7" />
                     <span class="text-sm font-semibold tracking-tight text-zinc-900 dark:text-white">{{ config('app.name', 'Laravel') }}</span>
                 </a>
-
-                <span class="inline-flex items-center gap-2 rounded-full border border-zinc-200/80 bg-white/60 px-3 py-1 text-xs font-medium text-zinc-600 backdrop-blur-sm dark:border-white/10 dark:bg-white/5 dark:text-zinc-300">
-                    <span class="size-1.5 rounded-full bg-accent-content dark:bg-sky-400"></span>
-                    {{ $code }} · {{ $statusText }}
-                </span>
             </header>
 
             <main class="flex flex-1 items-center justify-center px-4 pb-16 pt-4 sm:px-6">
