@@ -1323,3 +1323,92 @@ to give the panel an elevated, floating 3D depth off the page surface.
 
 
 
+
+/*
+==========================================================================
+EXPERIMENT: neumorphism layer. Self-contained — delete this whole block to
+remove it; nothing else in the app references it.
+
+Only box-shadow changes. Colors, borders, backgrounds, radii and motion are
+untouched. Surfaces get the classic neumorphic pair: a light shadow
+cast up-left and a dark one down-right (raised), or the same pair inset
+(recessed/pressed). Three roles:
+
+- raised:    cards, tables, hand-built card panels, menus, modals, the
+             notification panel
+- raised-sm: buttons (not ghost/subtle), and bordered picker triggers;
+             they press in (inset) while held
+- inset:     text inputs/selects/textareas, .card-surface-nested chips,
+             the current sidebar item
+
+The shadow colors are warm in light mode (same brown family as
+.card-surface's existing shadows) and navy/black in dark mode. Each rule
+re-appends Tailwind's ring/inset-ring variables so focus rings and the
+inset-ring rim highlights used across the app keep rendering, since this
+unlayered box-shadow otherwise replaces them.
+
+Note: the light (up-left) shadow is near-white, so on the pure white light
+canvas it's barely visible — the dark side carries the effect there; on
+cream cards and in dark mode both sides read.
+==========================================================================
+*/
+:root {
+    --neo-hi: rgb(255 255 255 / 0.95);
+    --neo-lo: rgb(120 90 40 / 0.18);
+    --neo-rings: var(--tw-inset-shadow, 0 0 #0000), var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000);
+    --neo-raised: -8px -8px 18px var(--neo-hi), 8px 8px 20px var(--neo-lo);
+    --neo-raised-sm: -3px -3px 7px var(--neo-hi), 3px 3px 8px var(--neo-lo);
+    --neo-inset: inset 3px 3px 6px var(--neo-lo), inset -3px -3px 6px var(--neo-hi);
+}
+
+.dark {
+    --neo-hi: rgb(120 160 200 / 0.08);
+    --neo-lo: rgb(0 0 0 / 0.55);
+}
+
+/* Raised surfaces. The hand-built card selector matches the pattern the
+tenant pages use for their own cards (rounded + border + a shadow-*
+utility) inside page content, excluding form controls and buttons. */
+.card-surface,
+[data-flux-card],
+.notification-panel-elevation,
+ui-menu[data-flux-menu],
+[data-flux-modal] > dialog:not([data-flux-flyout]),
+[data-flux-main] :is(.rounded-lg, .rounded-xl, .rounded-2xl).border[class*="shadow"]:not(button, input, select, textarea, [data-flux-control], [data-flux-button], .shadow-none) {
+    box-shadow: var(--neo-raised), var(--neo-rings);
+}
+
+/* .card-surface keeps its glass bevel (bright top edge, faint bottom
+edge) in light mode, under the neumorphic pair. */
+:root:not(.dark) .card-surface {
+    box-shadow:
+        inset 0 1px 1px rgb(255 255 255 / 0.9),
+        inset 0 -1px 1px rgb(120 90 40 / 0.08),
+        var(--neo-raised),
+        var(--neo-rings);
+}
+
+/* Buttons and picker triggers: raised, pressed in while held. */
+[data-flux-button][data-flux-group-target],
+[data-flux-main] button.border[class*="shadow"]:not([data-flux-button], .shadow-none) {
+    box-shadow: var(--neo-raised-sm), var(--neo-rings);
+}
+
+[data-flux-button][data-flux-group-target]:active,
+[data-flux-main] button.border[class*="shadow"]:not([data-flux-button], .shadow-none):active {
+    box-shadow: var(--neo-inset), var(--neo-rings);
+}
+
+[data-flux-button][data-flux-group-target]:disabled {
+    box-shadow: none;
+}
+
+/* Recessed: fields, nested chips, the current sidebar item. */
+input[data-flux-control]:not([type="checkbox"], [type="radio"], [type="hidden"]),
+textarea[data-flux-control],
+select[data-flux-control],
+.card-surface-nested,
+[data-flux-sidebar] [data-current] {
+    box-shadow: var(--neo-inset), var(--neo-rings);
+}
+/* ======================== end neumorphism experiment ===================== */
