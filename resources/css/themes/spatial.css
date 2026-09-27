@@ -2,9 +2,11 @@
 ==========================================================================
 THEME STYLE: SPATIAL  (html[data-theme="spatial"], light + .dark)
 
-Spatial computing. The interface floats in real 3D space above a
-perspective grid floor that recedes to a softly glowing horizon and drifts
-slowly toward you. Surfaces are solid, precisely lit panels: a gradient
+Spatial computing. The interface floats in a quiet studio: a soft
+cyclorama backdrop with a pool of light on the floor and two very large,
+very soft ambient lights drifting slowly through the room, like the
+environment behind a visionOS window. No lines or patterns — depth comes
+from light alone. Surfaces are solid, precisely lit panels: a gradient
 rim light around every edge, physically layered shadows that grow with
 elevation, and a spotlight that follows the pointer across both the fill
 and the rim. Interactive cards tilt toward the pointer in true perspective
@@ -33,7 +35,8 @@ with a transparent border, so the border-box layers show only as the rim.
 The spot colors are registered properties, so they fade in and out.
 
 MOTION (all on the app's shared --motion-* tokens)
-- Floor drift: the grid glides toward the viewer (compositor-only).
+- Ambient drift: the room's two soft lights wander on long, out-of-phase
+  loops (compositor-only transforms).
 - Fly-in: cards and board columns arrive from depth on page load,
   tilted back and staggered.
 - Tilt + parallax: board cards and cards-as-links tilt toward the pointer;
@@ -62,13 +65,15 @@ MOTION (all on the app's shared --motion-* tokens)
 /* --------------------------------------------------------------------- */
 :root[data-theme="spatial"] {
     --sp-canvas: #eef1f7;
+    /* Cyclorama: bright at the top, settling into a slightly deeper floor
+    with a soft pool of light at its center. */
     --sp-canvas-image:
-        radial-gradient(ellipse 90% 55% at 50% 108%, rgb(14 165 233 / 0.2), transparent 70%),
-        radial-gradient(ellipse 60% 45% at 8% -8%, rgb(99 102 241 / 0.12), transparent 70%),
-        radial-gradient(ellipse 50% 40% at 100% 0%, rgb(20 184 166 / 0.1), transparent 70%),
-        linear-gradient(180deg, #f8f9fc 0%, #edf0f6 100%);
-    --sp-grid-line: rgb(30 64 175 / 0.14);
-    --sp-horizon: rgb(14 165 233 / 0.3);
+        radial-gradient(ellipse 70% 38% at 50% 100%, rgb(255 255 255 / 0.85), transparent 72%),
+        radial-gradient(ellipse 120% 60% at 50% -10%, rgb(255 255 255 / 0.9), transparent 70%),
+        linear-gradient(180deg, #f6f8fc 0%, #eef1f7 55%, #e6eaf2 100%);
+    --sp-light-1: rgb(56 189 248 / 0.16);
+    --sp-light-2: rgb(129 140 248 / 0.13);
+    --sp-floor: rgb(14 165 233 / 0.1);
 
     --sp-fill: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
     --sp-fill-flat: #ffffff;
@@ -121,14 +126,14 @@ MOTION (all on the app's shared --motion-* tokens)
 }
 
 :root[data-theme="spatial"].dark {
-    --sp-canvas: #04060b;
+    --sp-canvas: #060910;
     --sp-canvas-image:
-        radial-gradient(ellipse 90% 50% at 50% 108%, rgb(20 184 166 / 0.26), transparent 70%),
-        radial-gradient(ellipse 60% 45% at 6% -10%, rgb(79 70 229 / 0.2), transparent 70%),
-        radial-gradient(ellipse 50% 40% at 100% 0%, rgb(8 145 178 / 0.14), transparent 70%),
-        linear-gradient(180deg, #070a12 0%, #03050a 100%);
-    --sp-grid-line: rgb(56 189 248 / 0.2);
-    --sp-horizon: rgb(45 212 191 / 0.35);
+        radial-gradient(ellipse 70% 36% at 50% 100%, rgb(94 234 212 / 0.06), transparent 72%),
+        radial-gradient(ellipse 120% 60% at 50% -10%, rgb(148 163 184 / 0.07), transparent 70%),
+        linear-gradient(180deg, #0a0e17 0%, #070a11 55%, #05070c 100%);
+    --sp-light-1: rgb(45 212 191 / 0.1);
+    --sp-light-2: rgb(99 102 241 / 0.14);
+    --sp-floor: rgb(20 184 166 / 0.08);
 
     --sp-fill: linear-gradient(180deg, #141b29 0%, #0e1420 100%);
     --sp-fill-flat: #111726;
@@ -176,7 +181,7 @@ MOTION (all on the app's shared --motion-* tokens)
 }
 
 /* --------------------------------------------------------------------- */
-/* 2. Canvas — perspective grid floor + horizon                           */
+/* 2. Canvas — studio backdrop + ambient light                           */
 /* --------------------------------------------------------------------- */
 :root[data-theme="spatial"] {
     & body {
@@ -185,44 +190,38 @@ MOTION (all on the app's shared --motion-* tokens)
         background-attachment: fixed;
     }
 
-    /* The floor: a grid plane tipped back 58° in perspective, fading out
-    toward the horizon. z-index -1 in the root stacking context (body never
-    becomes a stacking context in these layouts). Its drift is a transform
-    along the plane by exactly one tile, so it loops seamlessly and never
-    repaints. */
+    /* Ambient light: two very large, very soft lights in the room. Soft
+    radial gradients rather than filter: blur(), so the moving layer is
+    cheap to composite. z-index -1 in the root stacking context (body never
+    becomes a stacking context in these layouts). */
     & body::before {
         content: '';
         position: fixed;
-        left: -60vw;
-        right: -60vw;
-        bottom: -2px;
-        height: 120vh;
+        inset: -20vmax;
         z-index: -1;
         pointer-events: none;
         background-image:
-            linear-gradient(to right, var(--sp-grid-line) 1px, transparent 1px),
-            linear-gradient(to bottom, var(--sp-grid-line) 1px, transparent 1px);
-        background-size: 72px 72px;
-        background-position: center top;
-        transform-origin: 50% 100%;
-        transform: perspective(600px) rotateX(58deg);
-        -webkit-mask-image: linear-gradient(to top, #000 0%, rgb(0 0 0 / 0.85) 40%, transparent 72%);
-        mask-image: linear-gradient(to top, #000 0%, rgb(0 0 0 / 0.85) 40%, transparent 72%);
+            radial-gradient(closest-side, var(--sp-light-1), transparent),
+            radial-gradient(closest-side, var(--sp-light-2), transparent);
+        background-size: 70vmax 60vmax, 64vmax 56vmax;
+        background-position: 18% 22%, 86% 64%;
+        background-repeat: no-repeat;
         will-change: transform;
     }
 
-    /* The horizon: a thin luminous band where the floor fades out. */
+    /* The floor: a soft pool of light under the content, grounding the
+    floating panels. */
     & body::after {
         content: '';
         position: fixed;
-        left: 0;
-        right: 0;
-        bottom: 14vh;
-        height: 20vh;
+        left: 10vw;
+        right: 10vw;
+        bottom: -12vh;
+        height: 42vh;
         z-index: -1;
         pointer-events: none;
-        background-image: radial-gradient(ellipse 58% 42% at 50% 55%, var(--sp-horizon), transparent 72%);
-        opacity: 0.7;
+        background-image: radial-gradient(closest-side, var(--sp-floor), transparent);
+        opacity: 0.85;
         will-change: opacity;
     }
 
@@ -758,7 +757,7 @@ compose with this transform. */
 }
 
 /* --------------------------------------------------------------------- */
-/* 9. Kanban — translucent lanes over the floor, lit cards                */
+/* 9. Kanban — translucent lanes, lit cards                               */
 /* --------------------------------------------------------------------- */
 :root[data-theme="spatial"] {
     & :is(.kanban-column, .kanban-card) {
@@ -777,7 +776,7 @@ compose with this transform. */
     }
 
     /* Lanes: glazed strips with a status-colored light along the top edge;
-    the floor grid shows faintly through them. */
+    the room's light shows faintly through them. */
     & .kanban-column {
         background-color: color-mix(in oklab, var(--sp-status, white) 9%, rgb(255 255 255 / 0.5));
         box-shadow: inset 0 2px 0 color-mix(in oklab, var(--sp-status, var(--color-accent)) 75%, transparent), inset 0 0 0 1px var(--sp-rim-soft), var(--sp-rings);
@@ -895,17 +894,20 @@ those at this theme's accent so the page doesn't carry the classic brand. */
 /* 12. Motion                                                             */
 /* --------------------------------------------------------------------- */
 
-/* Floor drift: slide the plane toward the viewer by exactly one tile. */
-@keyframes sp-floor-drift {
-    from {
-        transform: perspective(600px) rotateX(58deg) translateY(0);
+/* Ambient drift: the room's lights wander slowly; never a loop you notice. */
+@keyframes sp-ambient-drift {
+    0% {
+        transform: translate3d(0, 0, 0) scale(1);
     }
-    to {
-        transform: perspective(600px) rotateX(58deg) translateY(72px);
+    50% {
+        transform: translate3d(5vmax, 3vmax, 0) scale(1.06);
+    }
+    100% {
+        transform: translate3d(-4vmax, 5vmax, 0) scale(0.97);
     }
 }
 
-@keyframes sp-horizon-breathe {
+@keyframes sp-floor-breathe {
     50% {
         opacity: 1;
     }
@@ -931,11 +933,11 @@ panel's x-transition). */
 @media (prefers-reduced-motion: no-preference) {
     :root[data-theme="spatial"] {
         & body::before {
-            animation: sp-floor-drift 9s linear infinite;
+            animation: sp-ambient-drift 48s ease-in-out infinite alternate;
         }
 
         & body::after {
-            animation: sp-horizon-breathe 7s ease-in-out infinite;
+            animation: sp-floor-breathe 12s ease-in-out infinite;
         }
 
         & :is(.card-surface, [data-flux-card], .kanban-column) {
