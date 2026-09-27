@@ -1,0 +1,922 @@
+/*
+==========================================================================
+THEME STYLE: GLASSMORPHISM  (html[data-theme="glass"], light + .dark)
+
+Frosted glass floating over a slowly moving aurora. Glass only reads as
+glass when there is color behind it to refract, so this theme owns the
+canvas: a static gradient mesh on <body> plus two layers of soft color
+fields (body::before / body::after) drifting on long, out-of-phase loops.
+Every surface above it is translucent, blurred and saturated, with a
+bright specular top edge, a hairline white rim and a soft colored shadow.
+
+Self-contained: delete this file and its @import in app.css to remove the
+theme. Selected by resources/js/theme-style.js; nothing outside
+resources/css/themes/ depends on it.
+
+Every rule is unlayered, so it beats Tailwind utilities (which live in
+@layer utilities) without !important, and the [data-theme] prefix beats the
+classic unlayered rules in app.css on specificity.
+
+TWO KINDS OF GLASS
+- Panes (--gl-pane): top-level surfaces sitting on the canvas — sidebar,
+  top bars, cards, tables, menus, modals, toasts. These carry the
+  backdrop-filter.
+- Tints (--gl-tint): anything nested inside a pane — fields, chips, wells,
+  table headers. Translucent only, no blur of their own: the pane behind
+  them is already frosted, and stacking dozens of backdrop-filters costs
+  real GPU time without looking any different.
+
+In dark mode the zinc 600–950 tokens become translucent whites/inks, so the
+hundreds of dark:bg-zinc-* / dark:border-zinc-* utilities across the app
+all turn into glass tints automatically.
+
+MOTION (all on the app's shared --motion-* tokens)
+- Aurora drift: the canvas color fields move continuously (38s / 52s).
+- Materialize: cards and board columns fade and float up into place on
+  page load, staggered.
+- Sheen: a band of light sweeps across a card or board card on hover.
+- Liquid primary buttons: the gradient flows on hover; every button
+  compresses slightly on press.
+- Frost-in: menus and modals blur the page behind them as they open.
+- Focus: fields brighten and pick up a luminous accent halo.
+==========================================================================
+*/
+
+/* --------------------------------------------------------------------- */
+/* 1. Tokens                                                              */
+/* --------------------------------------------------------------------- */
+:root[data-theme="glass"] {
+    --gl-canvas: #eef0fb;
+    --gl-mesh:
+        radial-gradient(ellipse 80% 60% at 8% 4%, rgb(196 181 253 / 0.55), transparent 62%),
+        radial-gradient(ellipse 70% 60% at 96% 12%, rgb(125 211 252 / 0.5), transparent 60%),
+        radial-gradient(ellipse 80% 70% at 88% 100%, rgb(249 168 212 / 0.45), transparent 62%),
+        radial-gradient(ellipse 70% 60% at 0% 100%, rgb(153 246 228 / 0.42), transparent 60%),
+        linear-gradient(160deg, #f5f3ff 0%, #eef2ff 45%, #fdf2f8 100%);
+    --gl-blob-1: rgb(167 139 250 / 0.55);
+    --gl-blob-2: rgb(56 189 248 / 0.42);
+    --gl-blob-3: rgb(244 114 182 / 0.4);
+    --gl-blob-4: rgb(251 191 36 / 0.28);
+
+    --gl-pane: rgb(255 255 255 / 0.46);
+    --gl-pane-strong: rgb(255 255 255 / 0.72);
+    --gl-pane-chrome: rgb(255 255 255 / 0.4);
+    --gl-tint: rgb(255 255 255 / 0.42);
+    --gl-tint-soft: rgb(255 255 255 / 0.26);
+    --gl-tint-hover: rgb(255 255 255 / 0.62);
+    --gl-rim: rgb(255 255 255 / 0.72);
+    --gl-rim-soft: rgb(255 255 255 / 0.5);
+    --gl-divider: rgb(99 102 241 / 0.14);
+    --gl-edge: inset 0 1px 0 rgb(255 255 255 / 0.9), inset 0 -1px 0 rgb(255 255 255 / 0.25);
+    --gl-shadow: 0 1px 2px rgb(49 46 129 / 0.05), 0 10px 32px -8px rgb(49 46 129 / 0.16);
+    --gl-shadow-lift: 0 2px 4px rgb(49 46 129 / 0.06), 0 18px 44px -10px rgb(49 46 129 / 0.24);
+    --gl-shadow-float: 0 4px 8px rgb(49 46 129 / 0.06), 0 28px 64px -16px rgb(49 46 129 / 0.32);
+    --gl-sheen: linear-gradient(135deg, rgb(255 255 255 / 0.6) 0%, rgb(255 255 255 / 0.08) 38%, transparent 60%, rgb(255 255 255 / 0.18) 100%);
+    --gl-blur: blur(24px) saturate(185%);
+    --gl-blur-strong: blur(36px) saturate(200%);
+    --gl-blur-chrome: blur(28px) saturate(180%);
+    --gl-halo: color-mix(in oklab, var(--color-accent) 22%, transparent);
+    --gl-primary: linear-gradient(120deg, #8b5cf6 0%, #6366f1 35%, #0ea5e9 70%, #8b5cf6 100%);
+    --gl-primary-glow: 0 8px 24px -8px rgb(99 102 241 / 0.65);
+    --gl-rings: var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000);
+
+    --color-accent: #6d3fe0;
+    --color-accent-content: #6534d6;
+    --color-accent-foreground: #ffffff;
+
+    /* Faint indigo cast so neutral text and lines sit in the same color
+    world as the aurora instead of reading as flat gray. */
+    --color-zinc-50: #f7f7fd;
+    --color-zinc-100: #efeff9;
+    --color-zinc-200: #e1e1f0;
+    --color-zinc-300: #c9c9e0;
+    --color-zinc-400: #9c9cbd;
+    --color-zinc-500: #6b6b8f;
+    --color-zinc-600: #525274;
+    --color-zinc-700: #3e3e5c;
+    --color-zinc-800: #2a2a44;
+    --color-zinc-900: #1b1b30;
+    --color-zinc-950: #10101f;
+    --color-gray-200: rgb(99 102 241 / 0.16);
+
+    --radius-md: 0.5rem;
+    --radius-lg: 0.75rem;
+    --radius-xl: 1.05rem;
+    --radius-2xl: 1.4rem;
+    --radius-3xl: 1.85rem;
+}
+
+:root[data-theme="glass"].dark {
+    --gl-canvas: #070918;
+    --gl-mesh:
+        radial-gradient(ellipse 80% 60% at 6% 0%, rgb(91 33 182 / 0.55), transparent 62%),
+        radial-gradient(ellipse 70% 60% at 100% 10%, rgb(14 116 144 / 0.45), transparent 60%),
+        radial-gradient(ellipse 80% 70% at 90% 100%, rgb(157 23 77 / 0.38), transparent 62%),
+        radial-gradient(ellipse 70% 60% at 0% 100%, rgb(30 64 175 / 0.45), transparent 62%),
+        linear-gradient(160deg, #0b0a24 0%, #070918 50%, #0d0718 100%);
+    --gl-blob-1: rgb(124 58 237 / 0.5);
+    --gl-blob-2: rgb(6 182 212 / 0.32);
+    --gl-blob-3: rgb(219 39 119 / 0.3);
+    --gl-blob-4: rgb(37 99 235 / 0.4);
+
+    --gl-pane: rgb(255 255 255 / 0.055);
+    --gl-pane-strong: rgb(20 20 46 / 0.72);
+    --gl-pane-chrome: rgb(10 10 30 / 0.42);
+    --gl-tint: rgb(255 255 255 / 0.06);
+    --gl-tint-soft: rgb(255 255 255 / 0.035);
+    --gl-tint-hover: rgb(255 255 255 / 0.12);
+    --gl-rim: rgb(255 255 255 / 0.14);
+    --gl-rim-soft: rgb(255 255 255 / 0.09);
+    --gl-divider: rgb(255 255 255 / 0.09);
+    --gl-edge: inset 0 1px 0 rgb(255 255 255 / 0.12), inset 0 -1px 0 rgb(255 255 255 / 0.03);
+    --gl-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 36px -10px rgb(0 0 0 / 0.55);
+    --gl-shadow-lift: 0 2px 4px rgb(0 0 0 / 0.3), 0 20px 48px -12px rgb(0 0 0 / 0.65);
+    --gl-shadow-float: 0 4px 10px rgb(0 0 0 / 0.35), 0 30px 70px -16px rgb(0 0 0 / 0.75);
+    --gl-sheen: linear-gradient(135deg, rgb(255 255 255 / 0.12) 0%, rgb(255 255 255 / 0.02) 38%, transparent 60%, rgb(255 255 255 / 0.05) 100%);
+    --gl-primary: linear-gradient(120deg, #8b5cf6 0%, #6366f1 35%, #06b6d4 70%, #8b5cf6 100%);
+    --gl-primary-glow: 0 8px 28px -8px rgb(139 92 246 / 0.7);
+
+    --color-accent: #b9a4ff;
+    --color-accent-content: #c4b3ff;
+    --color-accent-foreground: #16102e;
+
+    /* 50–500 stay opaque (text); 600–950 become glass so every
+    dark:bg-zinc-* fill and dark:border-zinc-* line turns translucent. */
+    --color-zinc-50: #f4f4fc;
+    --color-zinc-100: #e6e6f5;
+    --color-zinc-200: #cfcfe6;
+    --color-zinc-300: #b8b8d6;
+    --color-zinc-400: #9d9dc2;
+    --color-zinc-500: #7c7ca3;
+    --color-zinc-600: rgb(255 255 255 / 0.2);
+    --color-zinc-700: rgb(255 255 255 / 0.12);
+    --color-zinc-800: rgb(255 255 255 / 0.075);
+    --color-zinc-900: rgb(255 255 255 / 0.045);
+    --color-zinc-950: rgb(6 6 22 / 0.6);
+    --color-gray-200: rgb(255 255 255 / 0.1);
+
+    --color-success: var(--color-emerald-400);
+    --color-warning: var(--color-amber-400);
+    --color-error: var(--color-rose-400);
+    --color-info: var(--color-sky-400);
+}
+
+/* --------------------------------------------------------------------- */
+/* 2. Canvas — gradient mesh + drifting aurora                            */
+/* --------------------------------------------------------------------- */
+:root[data-theme="glass"] {
+    & body {
+        background-color: var(--gl-canvas);
+        background-image: var(--gl-mesh);
+        background-attachment: fixed;
+    }
+
+    /* Two independent color-field layers behind everything (z-index -1 in
+    the root stacking context — body itself never becomes a stacking
+    context in these layouts). Soft radial gradients rather than
+    filter: blur(), so the moving layers are cheap to composite. */
+    & body::before,
+    & body::after {
+        content: '';
+        position: fixed;
+        inset: -25vmax;
+        z-index: -1;
+        pointer-events: none;
+        will-change: transform;
+    }
+
+    & body::before {
+        background-image:
+            radial-gradient(closest-side at 28% 30%, var(--gl-blob-1), transparent),
+            radial-gradient(closest-side at 72% 64%, var(--gl-blob-2), transparent);
+        background-size: 60% 60%, 55% 55%;
+        background-position: 18% 22%, 82% 70%;
+        background-repeat: no-repeat;
+    }
+
+    & body::after {
+        background-image:
+            radial-gradient(closest-side at 50% 50%, var(--gl-blob-3), transparent),
+            radial-gradient(closest-side at 50% 50%, var(--gl-blob-4), transparent);
+        background-size: 50% 50%, 45% 45%;
+        background-position: 78% 18%, 22% 82%;
+        background-repeat: no-repeat;
+    }
+
+    & ::selection {
+        background-color: color-mix(in oklab, var(--color-accent) 28%, transparent);
+    }
+
+    & [data-flux-heading] {
+        letter-spacing: -0.01em;
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 3. Chrome — sidebar, top bars, sticky bars                             */
+/* --------------------------------------------------------------------- */
+:root[data-theme="glass"] {
+    & [data-flux-sidebar] {
+        background-color: var(--gl-pane-chrome);
+        background-image: linear-gradient(180deg, rgb(255 255 255 / 0.1), transparent 40%);
+        -webkit-backdrop-filter: var(--gl-blur-chrome);
+        backdrop-filter: var(--gl-blur-chrome);
+        border-color: var(--gl-rim-soft);
+        box-shadow: inset -1px 0 0 rgb(255 255 255 / 0.25), 8px 0 32px -16px rgb(49 46 129 / 0.25);
+    }
+
+    & .app-topbar,
+    & [data-flux-header] {
+        background-color: var(--gl-pane-chrome);
+        -webkit-backdrop-filter: var(--gl-blur-chrome);
+        backdrop-filter: var(--gl-blur-chrome);
+        border-color: var(--gl-rim-soft);
+        box-shadow: inset 0 -1px 0 rgb(255 255 255 / 0.2);
+    }
+
+    /* Page-level bars that paint their own solid fill (e.g. the kanban
+    filter bar) and sticky strips become frosted chrome too. */
+    & [data-flux-main] :is(div, header).border-b:is(.bg-white, [class*="dark:bg-zinc-800"]),
+    & [data-flux-main] .sticky:is(.bg-white, [class*="bg-zinc-"]) {
+        background-color: var(--gl-pane-chrome);
+        -webkit-backdrop-filter: var(--gl-blur-chrome);
+        backdrop-filter: var(--gl-blur-chrome);
+        border-color: var(--gl-rim-soft);
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 4. Panes — cards, tables, hand-built panels                            */
+/* --------------------------------------------------------------------- */
+:root[data-theme="glass"] {
+    & .card-surface,
+    & [data-flux-card],
+    & :is(div, section, article, aside, form, ul, dl, fieldset):is(.rounded-md, .rounded-lg, .rounded-xl, .rounded-2xl, .rounded-3xl).border:is(.bg-white, [class^="bg-white/"], [class*=" bg-white/"], .bg-zinc-50, [class^="bg-zinc-50/"], [class*=" bg-zinc-50/"], .shadow-2xs, .shadow-xs, .shadow-sm, .shadow-md):not(.shadow-inner, .border-dashed, .card-surface-nested, [data-flux-sidebar] *, [data-flux-menu] *, .card-surface *, [data-flux-card] *, [data-flux-modal] *, .absolute) {
+        background-color: var(--gl-pane);
+        background-image: none;
+        -webkit-backdrop-filter: var(--gl-blur);
+        backdrop-filter: var(--gl-blur);
+        border-color: var(--gl-rim);
+        box-shadow: var(--gl-edge), var(--gl-shadow), var(--gl-rings);
+    }
+
+    /* Panels nested inside another pane stay translucent but skip their
+    own blur (see TWO KINDS OF GLASS). */
+    & :is(.card-surface, [data-flux-card], [data-flux-modal]) :is(div, section, article, aside, form, ul, dl, fieldset):is(.rounded-md, .rounded-lg, .rounded-xl, .rounded-2xl, .rounded-3xl).border:is(.bg-white, [class^="bg-white/"], [class*=" bg-white/"], .bg-zinc-50, [class^="bg-zinc-50/"], [class*=" bg-zinc-50/"], .shadow-2xs, .shadow-xs, .shadow-sm, .shadow-md):not(.shadow-inner, .border-dashed, .card-surface-nested, [data-flux-menu] *, .absolute) {
+        background-color: var(--gl-tint);
+        background-image: none;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        border-color: var(--gl-rim-soft);
+        box-shadow: var(--gl-edge), var(--gl-rings);
+    }
+
+    /* Specular highlight: a bright diagonal glint off the top-left edge. */
+    /* z-index -1 puts it under the card's content but above its own
+    background: backdrop-filter makes every pane a stacking context, so
+    the glint can't fall behind the pane or wash out its text. */
+    & .card-surface::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        border-radius: inherit;
+        pointer-events: none;
+        background-image: var(--gl-sheen);
+        mix-blend-mode: normal;
+    }
+
+    /* Hover sheen: a band of light parked off the left edge, swept across
+    on hover (section 9 animates it). */
+    & [data-flux-card]::after,
+    & .kanban-card::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        border-radius: inherit;
+        pointer-events: none;
+        background-image: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.38) 50%, transparent 65%);
+        background-size: 250% 100%;
+        background-position: 130% 0;
+        background-repeat: no-repeat;
+        opacity: 0;
+    }
+
+    &.dark [data-flux-card]::after,
+    &.dark .kanban-card::after {
+        background-image: linear-gradient(105deg, transparent 35%, rgb(255 255 255 / 0.09) 50%, transparent 65%);
+    }
+
+    /* Tables: container is a .card-surface pane (above). */
+    & [data-flux-columns] {
+        background-color: var(--gl-tint-soft);
+        background-image: none;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+    }
+
+    & [data-flux-columns][class*="sticky"] {
+        background-color: var(--gl-pane-strong);
+        -webkit-backdrop-filter: var(--gl-blur);
+        backdrop-filter: var(--gl-blur);
+    }
+
+    & [data-flux-column] {
+        border-bottom-color: var(--gl-divider);
+    }
+
+    & [data-flux-row] {
+        transition: background-color var(--motion-duration-standard) var(--motion-ease-premium);
+    }
+
+    & [data-flux-row]:hover {
+        background-color: var(--gl-tint-hover);
+    }
+
+    & [data-flux-menu-separator],
+    & [data-flux-separator] {
+        background-color: var(--gl-divider);
+    }
+}
+
+/* Light mode: white fills become frosted tints. Exact class tokens only —
+[class*="bg-white/"] would also catch dark:/hover: variants. :where() keeps
+this at the lowest specificity in the file, so any specific rule (button
+hovers, checked states) still wins over it. */
+:root[data-theme="glass"]:not(.dark) :where(.bg-white, [class^="bg-white/"], [class*=" bg-white/"], .bg-zinc-50, [class^="bg-zinc-50/"], [class*=" bg-zinc-50/"], .bg-zinc-100, [class^="bg-zinc-100/"], [class*=" bg-zinc-100/"]) {
+    background-color: var(--gl-tint);
+}
+
+/* --------------------------------------------------------------------- */
+/* 5. Floating glass — menus, popovers, modals, notification panel        */
+/* --------------------------------------------------------------------- */
+/* Only the card-shaped dialog variant (.rounded-xl) is a pane: with
+scroll="body" Flux makes the <dialog> a full-viewport scroller and the card
+is the inner [data-flux-modal-content] — frosting that dialog would blur
+the whole page away. */
+:root[data-theme="glass"] {
+    & ui-menu[data-flux-menu],
+    & [data-flux-menu],
+    & .notification-panel-elevation,
+    & [data-flux-modal] > dialog.rounded-xl:not([data-flux-flyout]),
+    & [data-flux-modal-content].rounded-xl,
+    & :is(div, ul).absolute.z-50:is(.rounded-lg, .rounded-xl).border,
+    & [data-flux-tooltip-content] {
+        background-color: var(--gl-pane-strong);
+        background-image: linear-gradient(160deg, rgb(255 255 255 / 0.22), transparent 45%);
+        -webkit-backdrop-filter: var(--gl-blur-strong);
+        backdrop-filter: var(--gl-blur-strong);
+        border: 1px solid var(--gl-rim);
+        box-shadow: var(--gl-edge), var(--gl-shadow-float), var(--gl-rings);
+    }
+
+    &.dark :is(ui-menu[data-flux-menu], [data-flux-menu], .notification-panel-elevation, [data-flux-modal] > dialog.rounded-xl:not([data-flux-flyout]), [data-flux-modal-content].rounded-xl, [data-flux-tooltip-content]) {
+        background-image: linear-gradient(160deg, rgb(255 255 255 / 0.06), transparent 45%);
+    }
+
+    & [data-flux-tooltip-content] {
+        color: var(--color-zinc-800);
+    }
+
+    &.dark [data-flux-tooltip-content] {
+        color: var(--color-zinc-50);
+    }
+
+    & [data-flux-modal] > dialog[data-flux-flyout] {
+        background-color: var(--gl-pane-strong);
+        background-image: linear-gradient(160deg, rgb(255 255 255 / 0.18), transparent 40%);
+        -webkit-backdrop-filter: var(--gl-blur-strong);
+        backdrop-filter: var(--gl-blur-strong);
+        border-color: var(--gl-rim);
+        box-shadow: var(--gl-edge), -24px 0 64px -24px rgb(49 46 129 / 0.35);
+    }
+
+    & [data-flux-modal] > dialog::backdrop {
+        background-color: rgb(30 27 75 / 0.18);
+        -webkit-backdrop-filter: blur(10px) saturate(140%);
+        backdrop-filter: blur(10px) saturate(140%);
+    }
+
+    &.dark [data-flux-modal] > dialog::backdrop {
+        background-color: rgb(3 3 12 / 0.45);
+    }
+
+    & :is([data-flux-menu-item], [data-flux-menu-radio], [data-flux-menu-checkbox]) {
+        transition: background-color var(--motion-duration-fast) var(--motion-ease-premium), color var(--motion-duration-fast) var(--motion-ease-premium);
+    }
+
+    & :is([data-flux-menu-item], [data-flux-menu-radio], [data-flux-menu-checkbox])[data-active] {
+        background-color: var(--gl-tint-hover);
+        box-shadow: inset 0 0 0 1px var(--gl-rim-soft);
+    }
+
+    /* Native <option> popups can't render translucency — keep them solid. */
+    &.dark option {
+        background-color: #1a1838;
+        color: #f4f4fc;
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 6. Tints — fields, nested chips, wells, controls                       */
+/* --------------------------------------------------------------------- */
+:root[data-theme="glass"] {
+    & .card-surface-nested,
+    & [class*="bg-[#fdf6de]"],
+    & :is(div, ul, section).shadow-inner {
+        background-color: var(--gl-tint-soft);
+        background-image: none;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        border-color: var(--gl-rim-soft);
+        box-shadow: inset 0 1px 2px rgb(49 46 129 / 0.06), inset 0 0 0 1px rgb(255 255 255 / 0.12), var(--gl-rings);
+    }
+
+    & input[data-flux-control]:not([type="checkbox"], [type="radio"], [type="hidden"], [type="range"], [type="color"]),
+    & textarea[data-flux-control],
+    & select[data-flux-control],
+    & [data-flux-sidebar-search] {
+        background-color: var(--gl-tint);
+        border-color: var(--gl-rim);
+        box-shadow: inset 0 1px 2px rgb(49 46 129 / 0.06), var(--gl-rings);
+        transition:
+            background-color var(--motion-duration-fast) var(--motion-ease-premium),
+            border-color var(--motion-duration-fast) var(--motion-ease-premium),
+            box-shadow var(--motion-duration-fast) var(--motion-ease-premium);
+    }
+
+    & input[data-flux-control]:not([type="checkbox"], [type="radio"], [type="hidden"], [type="range"], [type="color"]):hover,
+    & textarea[data-flux-control]:hover,
+    & select[data-flux-control]:hover {
+        background-color: var(--gl-tint-hover);
+    }
+
+    & input[data-flux-control]:not([type="checkbox"], [type="radio"], [type="hidden"], [type="range"], [type="color"]):focus,
+    & textarea[data-flux-control]:focus,
+    & select[data-flux-control]:focus {
+        outline: none;
+        background-color: var(--gl-tint-hover);
+        border-color: color-mix(in oklab, var(--color-accent) 55%, white);
+        box-shadow: 0 0 0 4px var(--gl-halo), 0 0 24px -4px var(--gl-halo);
+    }
+
+    & :is(input, textarea, select)[data-flux-control][data-invalid] {
+        border-color: color-mix(in oklab, var(--color-red-500) 70%, transparent);
+    }
+
+    & [data-flux-input-group-prefix],
+    & [data-flux-input-group-suffix] {
+        background-color: var(--gl-tint-soft);
+        border-color: var(--gl-rim);
+    }
+
+    & [data-flux-radio-group-segmented] {
+        background-color: var(--gl-tint-soft);
+        box-shadow: inset 0 0 0 1px var(--gl-rim-soft), inset 0 1px 2px rgb(49 46 129 / 0.06);
+    }
+
+    & [data-flux-radio-segmented] {
+        transition:
+            background-color var(--motion-duration-fast) var(--motion-ease-premium),
+            box-shadow var(--motion-duration-fast) var(--motion-ease-premium),
+            color var(--motion-duration-fast) var(--motion-ease-premium);
+    }
+
+    & [data-flux-radio-segmented][data-checked] {
+        background-color: var(--gl-pane-strong);
+        color: var(--color-accent-content);
+        box-shadow: var(--gl-edge), 0 0 0 1px var(--gl-rim), 0 4px 12px -4px rgb(49 46 129 / 0.25);
+    }
+
+    &.dark [data-flux-radio-segmented][data-checked] {
+        background-color: rgb(255 255 255 / 0.16);
+    }
+
+    & [data-flux-switch] {
+        background-color: rgb(79 70 229 / 0.16);
+        border: 1px solid rgb(79 70 229 / 0.2);
+        -webkit-backdrop-filter: blur(6px);
+        backdrop-filter: blur(6px);
+        transition: background-color var(--motion-duration-standard) var(--motion-ease-premium), box-shadow var(--motion-duration-standard) var(--motion-ease-premium);
+    }
+
+    &.dark [data-flux-switch] {
+        background-color: var(--gl-tint);
+        border-color: var(--gl-rim);
+    }
+
+    & [data-flux-switch][data-checked] {
+        background-image: var(--gl-primary);
+        background-size: 200% 100%;
+        border-color: transparent;
+        box-shadow: var(--gl-primary-glow);
+    }
+
+    & [data-flux-switch] > span {
+        background-color: #ffffff;
+        box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+        transition: translate var(--motion-duration-standard) var(--motion-ease-premium);
+    }
+
+    /* Unchecked controls need a tinted edge: a white rim on white frost
+    disappears in light mode. */
+    & [data-flux-checkbox-indicator],
+    & [data-flux-radio-indicator] {
+        background-color: var(--gl-tint-hover);
+        border-color: rgb(79 70 229 / 0.32);
+    }
+
+    &.dark [data-flux-checkbox-indicator],
+    &.dark [data-flux-radio-indicator] {
+        background-color: var(--gl-tint);
+        border-color: rgb(255 255 255 / 0.28);
+    }
+
+    & :is(ui-checkbox[data-checked], ui-checkbox[data-indeterminate]) [data-flux-checkbox-indicator],
+    & ui-radio[data-checked] [data-flux-radio-indicator] {
+        border-color: transparent;
+        background-image: var(--gl-primary);
+        background-size: 200% 100%;
+        box-shadow: var(--gl-primary-glow);
+    }
+
+    & [data-flux-badge] {
+        -webkit-backdrop-filter: blur(8px) saturate(160%);
+        backdrop-filter: blur(8px) saturate(160%);
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35);
+    }
+
+    & [data-flux-avatar] {
+        box-shadow: 0 0 0 1.5px var(--gl-rim), 0 4px 12px -4px rgb(49 46 129 / 0.3);
+    }
+
+    & .skeleton-shimmer {
+        background-image: linear-gradient(90deg, var(--gl-tint-soft) 25%, var(--gl-tint-hover) 50%, var(--gl-tint-soft) 75%);
+    }
+
+    /* Dark text on light chips (e.g. dark:bg-white dark:text-zinc-900 icon
+    tiles): zinc-900/950 are glass tints in this theme, so pin the text to
+    a real ink or it vanishes. */
+    &.dark :is(.dark\:text-zinc-900, .dark\:text-zinc-950) {
+        color: #15142b;
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 7. Buttons & pressables                                                */
+/* --------------------------------------------------------------------- */
+:root[data-theme="glass"] {
+    & [data-flux-button] {
+        transition:
+            background-color var(--motion-duration-fast) var(--motion-ease-premium),
+            background-position var(--motion-duration-slow) var(--motion-ease-premium),
+            border-color var(--motion-duration-fast) var(--motion-ease-premium),
+            box-shadow var(--motion-duration-fast) var(--motion-ease-premium),
+            color var(--motion-duration-fast) var(--motion-ease-premium),
+            transform var(--motion-duration-fast) var(--motion-ease-premium);
+    }
+
+    & [data-flux-button]:focus-visible {
+        outline: 2px solid color-mix(in oklab, var(--color-accent) 60%, white);
+        outline-offset: 2px;
+    }
+
+    & [data-flux-button]:is([data-flux-variant="outline"], [data-flux-variant="filled"]) {
+        background-color: var(--gl-tint);
+        background-image: linear-gradient(180deg, rgb(255 255 255 / 0.3), transparent);
+        -webkit-backdrop-filter: blur(12px) saturate(170%);
+        backdrop-filter: blur(12px) saturate(170%);
+        border-color: var(--gl-rim);
+        box-shadow: var(--gl-edge), 0 2px 8px -2px rgb(49 46 129 / 0.12), var(--gl-rings);
+    }
+
+    &.dark [data-flux-button]:is([data-flux-variant="outline"], [data-flux-variant="filled"]) {
+        background-image: linear-gradient(180deg, rgb(255 255 255 / 0.06), transparent);
+    }
+
+    & [data-flux-button]:is([data-flux-variant="outline"], [data-flux-variant="filled"]):hover {
+        background-color: var(--gl-tint-hover);
+        box-shadow: var(--gl-edge), 0 6px 18px -6px rgb(49 46 129 / 0.25), var(--gl-rings);
+        transform: translateY(-1px);
+    }
+
+    /* Liquid primary: a wide gradient that flows sideways on hover. */
+    & [data-flux-button][data-flux-variant="primary"] {
+        color: #ffffff;
+        background-color: #6d3fe0;
+        background-image: var(--gl-primary);
+        background-size: 220% 100%;
+        background-position: 0% 50%;
+        border-color: rgb(255 255 255 / 0.25);
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35), var(--gl-primary-glow), var(--gl-rings);
+    }
+
+    & [data-flux-button][data-flux-variant="primary"]:hover {
+        background-position: 100% 50%;
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.4), 0 12px 32px -8px rgb(99 102 241 / 0.75), var(--gl-rings);
+        transform: translateY(-1px);
+    }
+
+    & [data-flux-button][data-flux-variant="danger"] {
+        background-image: linear-gradient(135deg, rgb(251 113 133 / 0.95), rgb(225 29 72 / 0.95));
+        border: 1px solid rgb(255 255 255 / 0.25);
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.3), 0 8px 22px -8px rgb(225 29 72 / 0.6), var(--gl-rings);
+    }
+
+    & [data-flux-button][data-flux-variant="danger"]:hover {
+        transform: translateY(-1px);
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.3), 0 12px 30px -8px rgb(225 29 72 / 0.7), var(--gl-rings);
+    }
+
+    & [data-flux-button]:is([data-flux-variant="ghost"], [data-flux-variant="subtle"]):hover {
+        background-color: var(--gl-tint-hover);
+    }
+
+    & [data-flux-button]:active:not(:disabled) {
+        transform: translateY(0) scale(0.97);
+        transition-duration: 120ms;
+    }
+
+    & [data-flux-button]:disabled {
+        transform: none;
+        box-shadow: none;
+    }
+
+    /* Hand-built pressables: picker triggers, cards-as-links. */
+    & [data-flux-main] button.border[class*="shadow"]:not([data-flux-button], .shadow-none, .kanban-card) {
+        background-color: var(--gl-tint);
+        border-color: var(--gl-rim);
+        box-shadow: var(--gl-edge), var(--gl-rings);
+    }
+
+    & [data-flux-main] a:is(.rounded-lg, .rounded-xl, .rounded-2xl).border {
+        background-color: var(--gl-pane);
+        background-image: var(--gl-sheen);
+        -webkit-backdrop-filter: var(--gl-blur);
+        backdrop-filter: var(--gl-blur);
+        border-color: var(--gl-rim);
+        box-shadow: var(--gl-edge), var(--gl-shadow), var(--gl-rings);
+        transition: box-shadow var(--motion-duration-standard) var(--motion-ease-premium), transform var(--motion-duration-standard) var(--motion-ease-premium), background-color var(--motion-duration-standard) var(--motion-ease-premium);
+    }
+
+    & [data-flux-main] a:is(.rounded-lg, .rounded-xl, .rounded-2xl).border:hover {
+        background-color: var(--gl-tint-hover);
+        box-shadow: var(--gl-edge), var(--gl-shadow-lift), var(--gl-rings);
+        transform: translateY(-2px);
+    }
+
+    /* Kanban: frosted trays holding frosted cards. The status tint stays
+    (layered under a white glaze) so a status still reads at a glance. */
+    & .kanban-column {
+        -webkit-backdrop-filter: blur(18px) saturate(170%);
+        backdrop-filter: blur(18px) saturate(170%);
+        box-shadow: inset 0 0 0 1px var(--gl-rim-soft), var(--gl-rings);
+    }
+
+    & .kanban-card {
+        position: relative;
+        background-image: linear-gradient(160deg, rgb(255 255 255 / 0.55), rgb(255 255 255 / 0.12));
+        -webkit-backdrop-filter: blur(14px) saturate(170%);
+        backdrop-filter: blur(14px) saturate(170%);
+        border-color: var(--gl-rim);
+        box-shadow: var(--gl-edge), var(--gl-shadow), var(--gl-rings);
+    }
+
+    &.dark .kanban-card {
+        background-image: linear-gradient(160deg, rgb(255 255 255 / 0.08), rgb(255 255 255 / 0.01));
+    }
+
+    & .kanban-card:hover {
+        box-shadow: var(--gl-edge), var(--gl-shadow-lift), var(--gl-rings);
+    }
+
+    /* Status colors as glass: each column/card keeps its status hue, but
+    mixed into transparency instead of the opaque pastel fill. */
+    & :is(.kanban-column, .kanban-card) {
+        &[class*="bg-blue-"] { --gl-status: var(--color-blue-400); }
+        &[class*="bg-sky-"] { --gl-status: var(--color-sky-400); }
+        &[class*="bg-indigo-"] { --gl-status: var(--color-indigo-400); }
+        &[class*="bg-amber-"] { --gl-status: var(--color-amber-400); }
+        &[class*="bg-orange-"] { --gl-status: var(--color-orange-400); }
+        &[class*="bg-green-"] { --gl-status: var(--color-green-400); }
+        &[class*="bg-red-"] { --gl-status: var(--color-red-400); }
+        &[class*="bg-emerald-"] { --gl-status: var(--color-emerald-400); }
+        &[class*="bg-purple-"] { --gl-status: var(--color-purple-400); }
+        &[class*="bg-teal-"] { --gl-status: var(--color-teal-400); }
+        &[class*="bg-pink-"] { --gl-status: var(--color-pink-400); }
+        &[class*="bg-zinc-"] { --gl-status: #a5a5c8; }
+    }
+
+    & .kanban-column {
+        background-color: color-mix(in oklab, var(--gl-status, white) 16%, rgb(255 255 255 / 0.18));
+    }
+
+    /* Drop target (the drag-over classes carry a ring-2). */
+    & .kanban-column[class*="ring-2"] {
+        background-color: color-mix(in oklab, var(--gl-status, white) 34%, rgb(255 255 255 / 0.2));
+    }
+
+    & .kanban-card {
+        background-color: color-mix(in oklab, var(--gl-status, white) 28%, rgb(255 255 255 / 0.3));
+    }
+
+    &.dark .kanban-column {
+        background-color: color-mix(in oklab, var(--gl-status, white) 12%, rgb(255 255 255 / 0.02));
+    }
+
+    &.dark .kanban-column[class*="ring-2"] {
+        background-color: color-mix(in oklab, var(--gl-status, white) 26%, rgb(255 255 255 / 0.03));
+    }
+
+    &.dark .kanban-card {
+        background-color: color-mix(in oklab, var(--gl-status, white) 18%, rgb(255 255 255 / 0.04));
+    }
+
+    & .kanban-card > .rounded-md.border {
+        background-color: var(--gl-tint-soft);
+        border-color: var(--gl-rim-soft);
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 8. Navigation & toasts                                                 */
+/* --------------------------------------------------------------------- */
+:root[data-theme="glass"] {
+    & [data-flux-sidebar-item] {
+        transition:
+            background-color var(--motion-duration-standard) var(--motion-ease-premium),
+            box-shadow var(--motion-duration-standard) var(--motion-ease-premium),
+            color var(--motion-duration-standard) var(--motion-ease-premium);
+    }
+
+    & [data-flux-sidebar-item]:hover:not([data-current]) {
+        background-color: var(--gl-tint);
+    }
+
+    /* The current page is a small bright glass lozenge with an accent
+    glow on its icon. */
+    & [data-flux-sidebar-item][data-current] {
+        color: var(--color-accent-content);
+        background-color: var(--gl-pane-strong);
+        background-image: linear-gradient(120deg, color-mix(in oklab, var(--color-accent) 14%, transparent), transparent 70%);
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        border-color: var(--gl-rim);
+        box-shadow: var(--gl-edge), 0 6px 18px -8px rgb(79 70 229 / 0.4);
+    }
+
+    &.dark [data-flux-sidebar-item][data-current] {
+        background-color: rgb(255 255 255 / 0.1);
+    }
+
+    & [data-flux-sidebar-item][data-current] [data-flux-icon] {
+        color: var(--color-accent);
+        filter: drop-shadow(0 0 6px var(--gl-halo));
+    }
+
+    & :is([data-flux-sidebar-profile], [data-flux-profile]):hover {
+        background-color: var(--gl-tint);
+    }
+
+    & .flux-toast {
+        background: var(--gl-pane-strong);
+        -webkit-backdrop-filter: var(--gl-blur-strong);
+        backdrop-filter: var(--gl-blur-strong);
+        border-color: var(--gl-rim);
+        box-shadow: var(--gl-edge), var(--gl-shadow-float);
+    }
+
+    & .flux-toast::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        border-radius: inherit;
+        pointer-events: none;
+        background-image: var(--gl-sheen);
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 10. Classic-brand remap                                               */
+/* --------------------------------------------------------------------- */
+/* The error page hardcodes the classic oxblood as arbitrary gradient/
+shadow colors (light mode only; dark already uses neutrals). Re-point
+those at this theme's accent so the page doesn't carry the classic brand. */
+:root[data-theme="glass"]:not(.dark) {
+    & [class*="from-[#6b1d2b]"] {
+        --tw-gradient-from: var(--color-accent);
+    }
+
+    & [class*="to-[#8f2c3e]"] {
+        --tw-gradient-to: color-mix(in oklab, var(--color-accent), white 22%);
+    }
+
+    & [class*="to-[#6b1d2b]/35"] {
+        --tw-gradient-to: color-mix(in oklab, var(--color-accent) 35%, transparent);
+    }
+
+    & [class*="shadow-[#6b1d2b]"] {
+        --tw-shadow-color: color-mix(in oklab, var(--color-accent) 25%, transparent);
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 9. Motion                                                              */
+/* --------------------------------------------------------------------- */
+@keyframes gl-drift-a {
+    0% {
+        transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+    }
+    50% {
+        transform: translate3d(6vmax, 4vmax, 0) rotate(12deg) scale(1.08);
+    }
+    100% {
+        transform: translate3d(-4vmax, 7vmax, 0) rotate(-8deg) scale(0.96);
+    }
+}
+
+@keyframes gl-drift-b {
+    0% {
+        transform: translate3d(0, 0, 0) rotate(0deg) scale(1.05);
+    }
+    50% {
+        transform: translate3d(-7vmax, -3vmax, 0) rotate(-14deg) scale(0.95);
+    }
+    100% {
+        transform: translate3d(5vmax, -6vmax, 0) rotate(10deg) scale(1.1);
+    }
+}
+
+@keyframes gl-materialize {
+    from {
+        opacity: 0;
+        transform: translateY(14px) scale(0.985);
+    }
+}
+
+@keyframes gl-frost-in {
+    from {
+        -webkit-backdrop-filter: blur(0) saturate(100%);
+        backdrop-filter: blur(0) saturate(100%);
+        background-color: transparent;
+    }
+}
+
+@keyframes gl-sheen-sweep {
+    from {
+        opacity: 1;
+        background-position: 130% 0;
+    }
+    to {
+        opacity: 1;
+        background-position: -30% 0;
+    }
+}
+
+@keyframes gl-flow {
+    to {
+        background-position: 200% 50%;
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    :root[data-theme="glass"] {
+        & body::before {
+            animation: gl-drift-a 38s ease-in-out infinite alternate;
+        }
+
+        & body::after {
+            animation: gl-drift-b 52s ease-in-out infinite alternate;
+        }
+
+        & :is(.card-surface, [data-flux-card], .kanban-column) {
+            animation: gl-materialize var(--motion-duration-slow) var(--motion-ease-premium) backwards;
+        }
+
+        & :is(.card-surface, [data-flux-card], .kanban-column):nth-child(2) { animation-delay: 60ms; }
+        & :is(.card-surface, [data-flux-card], .kanban-column):nth-child(3) { animation-delay: 120ms; }
+        & :is(.card-surface, [data-flux-card], .kanban-column):nth-child(4) { animation-delay: 180ms; }
+        & :is(.card-surface, [data-flux-card], .kanban-column):nth-child(5) { animation-delay: 240ms; }
+        & :is(.card-surface, [data-flux-card], .kanban-column):nth-child(n + 6) { animation-delay: 300ms; }
+
+        & [data-flux-card]:hover::after,
+        & .kanban-card:hover::after {
+            animation: gl-sheen-sweep var(--motion-duration-slow) var(--motion-ease-gentle) both;
+        }
+
+        & ui-menu[data-flux-menu]:popover-open,
+        & [data-flux-modal] > dialog:is(.rounded-xl, [data-flux-flyout])[open],
+        & [data-flux-modal-content].rounded-xl {
+            animation: gl-frost-in var(--motion-duration-standard) var(--motion-ease-premium) backwards;
+        }
+
+        /* Checked switches/checkboxes and the primary gradient keep a slow
+        flow going — liquid rather than static paint. */
+        & [data-flux-switch][data-checked],
+        & :is(ui-checkbox[data-checked], ui-checkbox[data-indeterminate]) [data-flux-checkbox-indicator] {
+            animation: gl-flow 6s linear infinite;
+        }
+    }
+}

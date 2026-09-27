@@ -47,6 +47,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | resources/views/components/date-picker.blade.php,resources/views/livewire/tenant/leads.blade.php,resources/views/livewire/tenant/leads/source-leads.blade.php | .ai/rules/tenant-views-livewire-tenant-leads.md |
 | app/Livewire/Tenant/NotificationBell.php,resources/views/livewire/tenant/notification-bell.blade.php | .ai/rules/tenant-views-livewire-tenant.md |
 | app/Events/UserNotified.php,app/Listeners/BroadcastUserNotification.php,app/Livewire/Tenant/NotificationBell.php | .ai/rules/tenant.md |
+| resources/css/themes/** | .ai/rules/themes.md |
 | app/Livewire/Tenant/Leads/SourceLeads.php,resources/views/livewire/tenant/leads/source-leads.blade.php | .ai/rules/views-livewire-tenant-leads.md |
 | app/Livewire/Tenant/Leads/Index.php,resources/views/livewire/tenant/leads.blade.php | .ai/rules/views-livewire-tenant.md |
 | resources/views/livewire/** | .ai/rules/views-livewire.md |

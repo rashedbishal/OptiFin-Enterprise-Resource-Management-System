@@ -177,8 +177,11 @@ $classes = Flux::classes()
     ;
 
     // Exempt subtle and ghost buttons from receiving border roundness overrides from button.group...
+    // data-flux-variant is a styling hook for the neo/glass theme styles
+    // (resources/css/themes/*.css), which restyle each variant differently.
     $attributes = $attributes->merge([
         'data-flux-group-target' => ! in_array($variant, ['subtle', 'ghost']),
+        'data-flux-variant' => $variant,
     ]);
 @endphp
 

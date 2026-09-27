@@ -123,6 +123,7 @@
                             <flux:radio value="system" icon="computer-desktop" :aria-label="__('System')" />
                         </flux:radio.group>
                     </div>
+                    <x-theme-style-switcher />
 
                     <flux:menu.separator />
 

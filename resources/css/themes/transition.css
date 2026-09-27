@@ -1,0 +1,30 @@
+/*
+Theme-style switch reveal. resources/js/theme-style.js wraps the data-theme
+change in document.startViewTransition() and adds .theme-style-transition to
+<html> for its duration, so this only ever styles *that* transition — any
+other view transition in the app keeps the browser default.
+
+The new theme grows out as a circle from the point last clicked (the
+switcher itself), tracked in --theme-reveal-x/-y. 150vmax always covers the
+far corner of the viewport, whichever corner the click was nearest.
+Browsers without View Transitions (or with reduced motion requested) skip
+straight to the new theme in JS; nothing here is needed for correctness.
+*/
+html.theme-style-transition::view-transition-old(root),
+html.theme-style-transition::view-transition-new(root) {
+    animation: none;
+    mix-blend-mode: normal;
+}
+
+html.theme-style-transition::view-transition-new(root) {
+    animation: theme-style-reveal 900ms var(--motion-ease-premium) both;
+}
+
+@keyframes theme-style-reveal {
+    from {
+        clip-path: circle(0 at var(--theme-reveal-x, 50%) var(--theme-reveal-y, 50%));
+    }
+    to {
+        clip-path: circle(150vmax at var(--theme-reveal-x, 50%) var(--theme-reveal-y, 50%));
+    }
+}

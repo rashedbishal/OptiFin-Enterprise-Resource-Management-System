@@ -50,6 +50,7 @@
                 <flux:radio value="system" icon="computer-desktop" :aria-label="__('System')" />
             </flux:radio.group>
         </div>
+        <x-theme-style-switcher />
         <flux:menu.separator />
         <flux:menu.radio.group>
             <flux:menu.item :href="route('admin.settings.password')" icon="cog" wire:navigate>

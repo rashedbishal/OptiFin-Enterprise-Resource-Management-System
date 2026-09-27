@@ -6,4 +6,5 @@
 
 import './echo';
 import './flyout-close-animation';
+import './theme-style';
 import './softphone/index.js';

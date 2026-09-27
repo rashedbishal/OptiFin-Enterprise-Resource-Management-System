@@ -245,7 +245,7 @@
                             x-on:dragleave="dragDepth = Math.max(0, dragDepth - 1)"
                             x-on:drop="dragDepth = 0; $wire.moveLead($event.dataTransfer.getData('text/plain'), '{{ $statusCase->id }}')"
                             :class="dragDepth > 0 ? '{{ $statusCase->columnDropTargetClasses() }}' : '{{ $statusCase->columnBackgroundClasses() }}'"
-                            class="flex w-72 min-h-32 shrink-0 flex-col rounded-lg transition-[background-color,box-shadow,transform] duration-[var(--motion-duration-standard)] ease-[var(--motion-ease-premium)]"
+                            class="kanban-column flex w-72 min-h-32 shrink-0 flex-col rounded-lg transition-[background-color,box-shadow,transform] duration-[var(--motion-duration-standard)] ease-[var(--motion-ease-premium)]"
                         >
                             {{-- Real content: the status label itself is always
                             shown (it's from tenantLeadStatuses, cheap tenant

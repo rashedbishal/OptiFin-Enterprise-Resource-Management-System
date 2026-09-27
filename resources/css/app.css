@@ -1,6 +1,13 @@
 @import 'tailwindcss';
 @import '../../vendor/livewire/flux/dist/flux.css';
 
+/* Theme styles (Classic is everything else in this file). Switched via
+data-theme on <html> — see resources/js/theme-style.js. Each file is
+self-contained; delete it and its import to drop that style. */
+@import './themes/transition.css';
+@import './themes/neo.css';
+@import './themes/glass.css';
+
 @source '../views';
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../vendor/livewire/flux-pro/stubs/**/*.blade.php';
@@ -1366,49 +1373,54 @@ cream cards and in dark mode both sides read.
     --neo-lo: rgb(0 0 0 / 0.55);
 }
 
-/* Raised surfaces. The hand-built card selector matches the pattern the
-tenant pages use for their own cards (rounded + border + a shadow-*
-utility) inside page content, excluding form controls and buttons. */
-.card-surface,
-[data-flux-card],
-.notification-panel-elevation,
-ui-menu[data-flux-menu],
-[data-flux-modal] > dialog:not([data-flux-flyout]),
-[data-flux-main] :is(.rounded-lg, .rounded-xl, .rounded-2xl).border[class*="shadow"]:not(button, input, select, textarea, [data-flux-control], [data-flux-button], .shadow-none) {
-    box-shadow: var(--neo-raised), var(--neo-rings);
-}
+/* Classic style only — data-theme="neo"/"glass" (resources/css/themes/)
+ship their own complete shadow systems, and these unlayered rules would
+otherwise leak into them. Nesting keeps the classic output identical. */
+:root:not([data-theme="neo"], [data-theme="glass"]) {
+    /* Raised surfaces. The hand-built card selector matches the pattern the
+    tenant pages use for their own cards (rounded + border + a shadow-*
+    utility) inside page content, excluding form controls and buttons. */
+    .card-surface,
+    [data-flux-card],
+    .notification-panel-elevation,
+    ui-menu[data-flux-menu],
+    [data-flux-modal] > dialog:not([data-flux-flyout]),
+    [data-flux-main] :is(.rounded-lg, .rounded-xl, .rounded-2xl).border[class*="shadow"]:not(button, input, select, textarea, [data-flux-control], [data-flux-button], .shadow-none) {
+        box-shadow: var(--neo-raised), var(--neo-rings);
+    }
 
-/* .card-surface keeps its glass bevel (bright top edge, faint bottom
-edge) in light mode, under the neumorphic pair. */
-:root:not(.dark) .card-surface {
-    box-shadow:
-        inset 0 1px 1px rgb(255 255 255 / 0.9),
-        inset 0 -1px 1px rgb(120 90 40 / 0.08),
-        var(--neo-raised),
-        var(--neo-rings);
-}
+    /* .card-surface keeps its glass bevel (bright top edge, faint bottom
+    edge) in light mode, under the neumorphic pair. */
+    &:not(.dark) .card-surface {
+        box-shadow:
+            inset 0 1px 1px rgb(255 255 255 / 0.9),
+            inset 0 -1px 1px rgb(120 90 40 / 0.08),
+            var(--neo-raised),
+            var(--neo-rings);
+    }
 
-/* Buttons and picker triggers: raised, pressed in while held. */
-[data-flux-button][data-flux-group-target],
-[data-flux-main] button.border[class*="shadow"]:not([data-flux-button], .shadow-none) {
-    box-shadow: var(--neo-raised-sm), var(--neo-rings);
-}
+    /* Buttons and picker triggers: raised, pressed in while held. */
+    [data-flux-button][data-flux-group-target],
+    [data-flux-main] button.border[class*="shadow"]:not([data-flux-button], .shadow-none) {
+        box-shadow: var(--neo-raised-sm), var(--neo-rings);
+    }
 
-[data-flux-button][data-flux-group-target]:active,
-[data-flux-main] button.border[class*="shadow"]:not([data-flux-button], .shadow-none):active {
-    box-shadow: var(--neo-inset), var(--neo-rings);
-}
+    [data-flux-button][data-flux-group-target]:active,
+    [data-flux-main] button.border[class*="shadow"]:not([data-flux-button], .shadow-none):active {
+        box-shadow: var(--neo-inset), var(--neo-rings);
+    }
 
-[data-flux-button][data-flux-group-target]:disabled {
-    box-shadow: none;
-}
+    [data-flux-button][data-flux-group-target]:disabled {
+        box-shadow: none;
+    }
 
-/* Recessed: fields, nested chips, the current sidebar item. */
-input[data-flux-control]:not([type="checkbox"], [type="radio"], [type="hidden"]),
-textarea[data-flux-control],
-select[data-flux-control],
-.card-surface-nested,
-[data-flux-sidebar] [data-current] {
-    box-shadow: var(--neo-inset), var(--neo-rings);
+    /* Recessed: fields, nested chips, the current sidebar item. */
+    input[data-flux-control]:not([type="checkbox"], [type="radio"], [type="hidden"]),
+    textarea[data-flux-control],
+    select[data-flux-control],
+    .card-surface-nested,
+    [data-flux-sidebar] [data-current] {
+        box-shadow: var(--neo-inset), var(--neo-rings);
+    }
 }
 /* ======================== end neumorphism experiment ===================== */

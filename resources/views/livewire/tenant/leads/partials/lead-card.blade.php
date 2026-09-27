@@ -62,7 +62,7 @@
         to its content's width instead of filling the column like it does
         unwrapped. Harmless no-op when not wrapped.
     --}}
-    class="flex w-full cursor-pointer flex-col gap-2 rounded-lg border p-3 text-left shadow-sm inset-ring-1 inset-ring-white/60 transition-all duration-700 ease-[var(--motion-ease-premium)] hover:-translate-y-0.5 hover:shadow-md dark:inset-ring-white/10 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent {{ $lead->status->cardBackgroundClasses() }}"
+    class="kanban-card flex w-full cursor-pointer flex-col gap-2 rounded-lg border p-3 text-left shadow-sm inset-ring-1 inset-ring-white/60 transition-all duration-700 ease-[var(--motion-ease-premium)] hover:-translate-y-0.5 hover:shadow-md dark:inset-ring-white/10 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent {{ $lead->status->cardBackgroundClasses() }}"
 >
     <div class="flex items-start justify-between gap-2">
         <div class="flex min-w-0 flex-nowrap items-center gap-1.5">

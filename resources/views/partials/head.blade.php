@@ -11,5 +11,16 @@
 
 @fonts
 
+{{-- Theme style (classic / neo / glass) must be on <html> before the
+stylesheet paints, or every load flashes the classic theme first. Mirrors
+readThemeStyle() in resources/js/theme-style.js, which takes over after load. --}}
+<script>
+    (function () {
+        var style = 'classic';
+        try { style = window.localStorage.getItem('optifin.theme-style') || style; } catch (e) {}
+        document.documentElement.dataset.theme = ['classic', 'neo', 'glass'].indexOf(style) > -1 ? style : 'classic';
+    })();
+</script>
+
 @vite(['resources/css/app.css', 'resources/js/app.js'])
 @fluxAppearance
