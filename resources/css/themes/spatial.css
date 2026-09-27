@@ -1,0 +1,965 @@
+/*
+==========================================================================
+THEME STYLE: SPATIAL  (html[data-theme="spatial"], light + .dark)
+
+Spatial computing. The interface floats in real 3D space above a
+perspective grid floor that recedes to a softly glowing horizon and drifts
+slowly toward you. Surfaces are solid, precisely lit panels: a gradient
+rim light around every edge, physically layered shadows that grow with
+elevation, and a spotlight that follows the pointer across both the fill
+and the rim. Interactive cards tilt toward the pointer in true perspective
+while their content lifts off the card (parallax); panels fly in from
+depth; menus hinge open; modals swing forward out of the scene while the
+page behind drops out of focus.
+
+Self-contained: delete this file and its @import in app.css to remove the
+theme. Selected by resources/js/theme-style.js; the pointer spotlight and
+tilt are fed by resources/js/theme-pointer.js (which writes --ptr-x/--ptr-y
+and --tilt-x/--tilt-y on the hovered surface — without it the effects just
+rest in their neutral position).
+
+Every rule is unlayered, so it beats Tailwind utilities (which live in
+@layer utilities) without !important, and the [data-theme] prefix beats the
+classic unlayered rules in app.css on specificity.
+
+THE PANEL STACK
+A panel is painted in four background layers, so no pseudo-elements (and
+no stacking contexts) are needed:
+  spotlight  — pointer-following light on the fill   (padding-box)
+  fill       — the panel's own gradient               (padding-box)
+  rim spot   — pointer-following light on the edge    (border-box)
+  rim        — the static gradient rim light          (border-box)
+with a transparent border, so the border-box layers show only as the rim.
+The spot colors are registered properties, so they fade in and out.
+
+MOTION (all on the app's shared --motion-* tokens)
+- Floor drift: the grid glides toward the viewer (compositor-only).
+- Fly-in: cards and board columns arrive from depth on page load,
+  tilted back and staggered.
+- Tilt + parallax: board cards and cards-as-links tilt toward the pointer;
+  their content rises off the card while hovered.
+- Spotlight: fill and rim light follow the pointer on every panel/button.
+- Hinge: menus swing open in 3D from their top edge.
+- Swing-in: modals come forward out of the scene; the backdrop pulls
+  focus off the page behind.
+==========================================================================
+*/
+
+@property --sp-spot {
+    syntax: '<color>';
+    inherits: false;
+    initial-value: transparent;
+}
+
+@property --sp-rim-spot {
+    syntax: '<color>';
+    inherits: false;
+    initial-value: transparent;
+}
+
+/* --------------------------------------------------------------------- */
+/* 1. Tokens                                                              */
+/* --------------------------------------------------------------------- */
+:root[data-theme="spatial"] {
+    --sp-canvas: #eef1f7;
+    --sp-canvas-image:
+        radial-gradient(ellipse 90% 55% at 50% 108%, rgb(14 165 233 / 0.2), transparent 70%),
+        radial-gradient(ellipse 60% 45% at 8% -8%, rgb(99 102 241 / 0.12), transparent 70%),
+        radial-gradient(ellipse 50% 40% at 100% 0%, rgb(20 184 166 / 0.1), transparent 70%),
+        linear-gradient(180deg, #f8f9fc 0%, #edf0f6 100%);
+    --sp-grid-line: rgb(30 64 175 / 0.14);
+    --sp-horizon: rgb(14 165 233 / 0.3);
+
+    --sp-fill: linear-gradient(180deg, #ffffff 0%, #fbfcfe 100%);
+    --sp-fill-flat: #ffffff;
+    --sp-fill-raised: linear-gradient(180deg, #ffffff 0%, #f6f8fc 100%);
+    --sp-well-flat: #f3f5fa;
+    --sp-rim: linear-gradient(160deg, rgb(255 255 255) 0%, rgb(214 222 234) 30%, rgb(186 198 216) 65%, rgb(125 211 252 / 0.9) 100%);
+    --sp-rim-soft: rgb(148 163 184 / 0.35);
+    --sp-divider: rgb(100 116 139 / 0.16);
+    --sp-top-light: inset 0 1px 0 rgb(255 255 255 / 0.95);
+    --sp-spot-on: rgb(14 165 233 / 0.075);
+    --sp-rim-spot-on: rgb(6 182 212 / 0.95);
+
+    --sp-shadow: 0 1px 2px rgb(15 23 42 / 0.05), 0 6px 14px -6px rgb(15 23 42 / 0.08), 0 22px 44px -18px rgb(30 58 138 / 0.18);
+    --sp-shadow-lift: 0 2px 4px rgb(15 23 42 / 0.05), 0 14px 28px -10px rgb(15 23 42 / 0.14), 0 44px 80px -28px rgb(30 58 138 / 0.3);
+    --sp-shadow-float: 0 2px 6px rgb(15 23 42 / 0.06), 0 24px 48px -12px rgb(15 23 42 / 0.2), 0 64px 120px -40px rgb(30 58 138 / 0.34);
+    --sp-well: inset 0 1px 2px rgb(15 23 42 / 0.07), inset 0 0 0 1px rgb(100 116 139 / 0.18);
+
+    --sp-primary: linear-gradient(135deg, #0e7490 0%, #0369a1 50%, #1e40af 100%);
+    --sp-primary-hover: linear-gradient(135deg, #0891b2 0%, #0284c7 50%, #1d4ed8 100%);
+    --sp-primary-ink: #ffffff;
+    --sp-primary-glow: 0 10px 24px -10px rgb(3 105 161 / 0.75);
+    --sp-primary-glow-lift: 0 18px 36px -12px rgb(3 105 161 / 0.8);
+    --sp-halo: color-mix(in oklab, var(--color-accent) 20%, transparent);
+    --sp-rings: var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000);
+
+    --color-accent: #0e7490;
+    --color-accent-content: #0c6a84;
+    --color-accent-foreground: #ffffff;
+
+    /* Cool slate neutrals — a clean studio white with a blue cast. */
+    --color-zinc-50: #f8fafc;
+    --color-zinc-100: #f1f4f9;
+    --color-zinc-200: #e3e8f0;
+    --color-zinc-300: #cbd3df;
+    --color-zinc-400: #94a0b4;
+    --color-zinc-500: #64708a;
+    --color-zinc-600: #4a556c;
+    --color-zinc-700: #364055;
+    --color-zinc-800: #222a3b;
+    --color-zinc-900: #151b28;
+    --color-zinc-950: #0b0f19;
+    --color-gray-200: #dfe5ee;
+
+    /* Generous, continuous corners — floating panels, not boxes. */
+    --radius-md: 0.55rem;
+    --radius-lg: 0.8rem;
+    --radius-xl: 1.1rem;
+    --radius-2xl: 1.5rem;
+    --radius-3xl: 2rem;
+}
+
+:root[data-theme="spatial"].dark {
+    --sp-canvas: #04060b;
+    --sp-canvas-image:
+        radial-gradient(ellipse 90% 50% at 50% 108%, rgb(20 184 166 / 0.26), transparent 70%),
+        radial-gradient(ellipse 60% 45% at 6% -10%, rgb(79 70 229 / 0.2), transparent 70%),
+        radial-gradient(ellipse 50% 40% at 100% 0%, rgb(8 145 178 / 0.14), transparent 70%),
+        linear-gradient(180deg, #070a12 0%, #03050a 100%);
+    --sp-grid-line: rgb(56 189 248 / 0.2);
+    --sp-horizon: rgb(45 212 191 / 0.35);
+
+    --sp-fill: linear-gradient(180deg, #141b29 0%, #0e1420 100%);
+    --sp-fill-flat: #111726;
+    --sp-fill-raised: linear-gradient(180deg, #1a2233 0%, #121928 100%);
+    --sp-well-flat: #0a0f19;
+    --sp-rim: linear-gradient(160deg, rgb(255 255 255 / 0.2) 0%, rgb(255 255 255 / 0.07) 30%, rgb(255 255 255 / 0.04) 65%, rgb(45 212 191 / 0.4) 100%);
+    --sp-rim-soft: rgb(255 255 255 / 0.08);
+    --sp-divider: rgb(255 255 255 / 0.07);
+    --sp-top-light: inset 0 1px 0 rgb(255 255 255 / 0.07);
+    --sp-spot-on: rgb(94 234 212 / 0.065);
+    --sp-rim-spot-on: rgb(94 234 212 / 0.95);
+
+    --sp-shadow: 0 0 0 1px rgb(0 0 0 / 0.35), 0 2px 4px rgb(0 0 0 / 0.4), 0 18px 36px -14px rgb(0 0 0 / 0.75), 0 40px 80px -30px rgb(8 145 178 / 0.16);
+    --sp-shadow-lift: 0 0 0 1px rgb(0 0 0 / 0.35), 0 4px 8px rgb(0 0 0 / 0.4), 0 26px 50px -16px rgb(0 0 0 / 0.85), 0 50px 100px -30px rgb(20 184 166 / 0.24);
+    --sp-shadow-float: 0 0 0 1px rgb(0 0 0 / 0.4), 0 24px 56px -12px rgb(0 0 0 / 0.85), 0 70px 130px -40px rgb(20 184 166 / 0.22);
+    --sp-well: inset 0 1px 2px rgb(0 0 0 / 0.55), inset 0 0 0 1px rgb(255 255 255 / 0.07);
+
+    --sp-primary: linear-gradient(135deg, #2dd4bf 0%, #22d3ee 50%, #60a5fa 100%);
+    --sp-primary-hover: linear-gradient(135deg, #5eead4 0%, #67e8f9 50%, #93c5fd 100%);
+    --sp-primary-ink: #03201d;
+    --sp-primary-glow: 0 10px 28px -10px rgb(45 212 191 / 0.6);
+    --sp-primary-glow-lift: 0 18px 40px -12px rgb(45 212 191 / 0.7);
+
+    --color-accent: #5eead4;
+    --color-accent-content: #7af0dd;
+    --color-accent-foreground: #03201d;
+
+    --color-zinc-50: #f1f5fb;
+    --color-zinc-100: #e2e8f2;
+    --color-zinc-200: #c8d1df;
+    --color-zinc-300: #a9b4c6;
+    --color-zinc-400: #8391a8;
+    --color-zinc-500: #637189;
+    --color-zinc-600: #2c3649;
+    --color-zinc-700: #1f2838;
+    --color-zinc-800: #161d2b;
+    --color-zinc-900: #0e1420;
+    --color-zinc-950: #080c14;
+    --color-gray-200: #1c2433;
+
+    --color-success: var(--color-emerald-400);
+    --color-warning: var(--color-amber-400);
+    --color-error: var(--color-rose-400);
+    --color-info: var(--color-sky-400);
+}
+
+/* --------------------------------------------------------------------- */
+/* 2. Canvas — perspective grid floor + horizon                           */
+/* --------------------------------------------------------------------- */
+:root[data-theme="spatial"] {
+    & body {
+        background-color: var(--sp-canvas);
+        background-image: var(--sp-canvas-image);
+        background-attachment: fixed;
+    }
+
+    /* The floor: a grid plane tipped back 58° in perspective, fading out
+    toward the horizon. z-index -1 in the root stacking context (body never
+    becomes a stacking context in these layouts). Its drift is a transform
+    along the plane by exactly one tile, so it loops seamlessly and never
+    repaints. */
+    & body::before {
+        content: '';
+        position: fixed;
+        left: -60vw;
+        right: -60vw;
+        bottom: -2px;
+        height: 120vh;
+        z-index: -1;
+        pointer-events: none;
+        background-image:
+            linear-gradient(to right, var(--sp-grid-line) 1px, transparent 1px),
+            linear-gradient(to bottom, var(--sp-grid-line) 1px, transparent 1px);
+        background-size: 72px 72px;
+        background-position: center top;
+        transform-origin: 50% 100%;
+        transform: perspective(600px) rotateX(58deg);
+        -webkit-mask-image: linear-gradient(to top, #000 0%, rgb(0 0 0 / 0.85) 40%, transparent 72%);
+        mask-image: linear-gradient(to top, #000 0%, rgb(0 0 0 / 0.85) 40%, transparent 72%);
+        will-change: transform;
+    }
+
+    /* The horizon: a thin luminous band where the floor fades out. */
+    & body::after {
+        content: '';
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 14vh;
+        height: 20vh;
+        z-index: -1;
+        pointer-events: none;
+        background-image: radial-gradient(ellipse 58% 42% at 50% 55%, var(--sp-horizon), transparent 72%);
+        opacity: 0.7;
+        will-change: opacity;
+    }
+
+    & ::selection {
+        background-color: color-mix(in oklab, var(--color-accent) 24%, transparent);
+    }
+
+    & [data-flux-heading] {
+        letter-spacing: -0.018em;
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 3. Chrome — sidebar, top bars, sticky bars                             */
+/* --------------------------------------------------------------------- */
+:root[data-theme="spatial"] {
+    & [data-flux-sidebar] {
+        background-color: var(--sp-fill-flat);
+        background-image: var(--sp-fill);
+        border-color: var(--sp-rim-soft);
+        box-shadow: inset -1px 0 0 rgb(255 255 255 / 0.5), 12px 0 40px -20px rgb(30 58 138 / 0.25);
+    }
+
+    &.dark [data-flux-sidebar] {
+        box-shadow: inset -1px 0 0 rgb(255 255 255 / 0.04), 12px 0 40px -18px rgb(0 0 0 / 0.8);
+    }
+
+    & .app-topbar,
+    & [data-flux-header] {
+        background-color: color-mix(in oklab, var(--sp-fill-flat) 84%, transparent);
+        background-image: none;
+        -webkit-backdrop-filter: blur(14px) saturate(160%);
+        backdrop-filter: blur(14px) saturate(160%);
+        border-color: var(--sp-rim-soft);
+        box-shadow: var(--sp-top-light), 0 10px 30px -18px rgb(15 23 42 / 0.3);
+    }
+
+    & [data-flux-main] :is(div, header).border-b:is(.bg-white, [class*="dark:bg-zinc-800"]),
+    & [data-flux-main] .sticky:is(.bg-white, [class*="bg-zinc-"]) {
+        background-color: color-mix(in oklab, var(--sp-fill-flat) 84%, transparent);
+        -webkit-backdrop-filter: blur(14px) saturate(160%);
+        backdrop-filter: blur(14px) saturate(160%);
+        border-color: var(--sp-rim-soft);
+    }
+}
+
+/* Plain white fills become the panel fill. Exact class tokens only —
+[class*="bg-white/"] would also catch dark:/hover: variants. :where() keeps
+this at the lowest specificity in the file so specific rules still win. */
+:root[data-theme="spatial"]:not(.dark) :where(.bg-white, [class^="bg-white/"], [class*=" bg-white/"]) {
+    background-color: var(--sp-fill-flat);
+}
+
+/* --------------------------------------------------------------------- */
+/* 4. Panels — cards, tables, hand-built panels                           */
+/* --------------------------------------------------------------------- */
+:root[data-theme="spatial"] {
+    & .card-surface,
+    & [data-flux-card],
+    & :is(div, section, article, aside, form, ul, dl, fieldset):is(.rounded-md, .rounded-lg, .rounded-xl, .rounded-2xl, .rounded-3xl).border:is(.bg-white, [class^="bg-white/"], [class*=" bg-white/"], .bg-zinc-50, [class^="bg-zinc-50/"], [class*=" bg-zinc-50/"], .shadow-2xs, .shadow-xs, .shadow-sm, .shadow-md):not(.shadow-inner, .border-dashed, .card-surface-nested, [data-flux-sidebar] *, [data-flux-menu] *, .absolute) {
+        background:
+            radial-gradient(560px circle at var(--ptr-x, 50%) var(--ptr-y, -30%), var(--sp-spot), transparent 60%) padding-box,
+            var(--sp-fill) padding-box,
+            radial-gradient(260px circle at var(--ptr-x, 50%) var(--ptr-y, -30%), var(--sp-rim-spot), transparent 70%) border-box,
+            var(--sp-rim) border-box;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        border-color: transparent;
+        box-shadow: var(--sp-top-light), var(--sp-shadow), var(--sp-rings);
+        transition:
+            --sp-spot var(--motion-duration-standard) var(--motion-ease-premium),
+            --sp-rim-spot var(--motion-duration-standard) var(--motion-ease-premium),
+            box-shadow var(--motion-duration-standard) var(--motion-ease-premium);
+    }
+
+    & :is(.card-surface, [data-flux-card]):hover {
+        --sp-spot: var(--sp-spot-on);
+        --sp-rim-spot: var(--sp-rim-spot-on);
+    }
+
+    & .card-surface::before {
+        content: none;
+    }
+
+    /* Panels inside a panel sit at the same depth: a soft inner surface,
+    hairline rim, no cast shadow. */
+    & :is(.card-surface, [data-flux-card], [data-flux-modal]) :is(div, section, article, aside, form, ul, dl, fieldset):is(.rounded-md, .rounded-lg, .rounded-xl, .rounded-2xl, .rounded-3xl).border:is(.bg-white, [class^="bg-white/"], [class*=" bg-white/"], .bg-zinc-50, [class^="bg-zinc-50/"], [class*=" bg-zinc-50/"], .shadow-2xs, .shadow-xs, .shadow-sm, .shadow-md):not(.shadow-inner, .border-dashed, .card-surface-nested, [data-flux-menu] *, .absolute) {
+        background: var(--sp-well-flat);
+        border-color: var(--sp-rim-soft);
+        box-shadow: var(--sp-rings);
+    }
+
+    & [data-flux-columns] {
+        background-color: color-mix(in oklab, var(--sp-well-flat) 70%, transparent);
+        background-image: none;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+    }
+
+    & [data-flux-columns][class*="sticky"] {
+        background-color: var(--sp-fill-flat);
+    }
+
+    & [data-flux-column] {
+        border-bottom-color: var(--sp-divider);
+    }
+
+    & [data-flux-row] {
+        transition: background-color var(--motion-duration-standard) var(--motion-ease-premium);
+    }
+
+    & [data-flux-row]:hover {
+        background-color: color-mix(in oklab, var(--color-accent) 6%, transparent);
+    }
+
+    & [data-flux-menu-separator],
+    & [data-flux-separator] {
+        background-color: var(--sp-divider);
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 5. Floating panels — menus, popovers, modals, notification panel      */
+/* --------------------------------------------------------------------- */
+/* Only the card-shaped dialog variant (.rounded-xl) is a panel: with
+scroll="body" Flux makes the <dialog> a full-viewport scroller and the card
+is the inner [data-flux-modal-content] — painting that dialog would hide
+the whole page. */
+:root[data-theme="spatial"] {
+    & ui-menu[data-flux-menu],
+    & [data-flux-menu],
+    & .notification-panel-elevation,
+    & [data-flux-modal] > dialog.rounded-xl:not([data-flux-flyout]),
+    & [data-flux-modal-content].rounded-xl,
+    & :is(div, ul).absolute.z-50:is(.rounded-lg, .rounded-xl).border {
+        background:
+            var(--sp-fill-raised) padding-box,
+            var(--sp-rim) border-box;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        border: 1px solid transparent;
+        box-shadow: var(--sp-top-light), var(--sp-shadow-float), var(--sp-rings);
+    }
+
+    & [data-flux-modal] > dialog[data-flux-flyout] {
+        background: var(--sp-fill) padding-box, var(--sp-rim) border-box;
+        border-color: transparent;
+        box-shadow: var(--sp-top-light), -30px 0 80px -30px rgb(15 23 42 / 0.45);
+    }
+
+    /* Depth of field: the page behind a modal drops out of focus. */
+    & [data-flux-modal] > dialog::backdrop {
+        background-color: rgb(15 23 42 / 0.28);
+        -webkit-backdrop-filter: blur(8px) saturate(120%);
+        backdrop-filter: blur(8px) saturate(120%);
+    }
+
+    &.dark [data-flux-modal] > dialog::backdrop {
+        background-color: rgb(2 4 10 / 0.6);
+    }
+
+    & :is([data-flux-menu-item], [data-flux-menu-radio], [data-flux-menu-checkbox]) {
+        transition:
+            background-color var(--motion-duration-fast) var(--motion-ease-premium),
+            box-shadow var(--motion-duration-fast) var(--motion-ease-premium),
+            transform var(--motion-duration-fast) var(--motion-ease-premium);
+    }
+
+    & :is([data-flux-menu-item], [data-flux-menu-radio], [data-flux-menu-checkbox])[data-active] {
+        background-color: color-mix(in oklab, var(--color-accent) 9%, var(--sp-well-flat));
+        box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-accent) 22%, transparent);
+    }
+
+    /* 3D hinge: menus swing open from their top edge. Replaces the classic
+    closed/opening transform in app.css (same transition, new geometry). */
+    & ui-menu[data-flux-menu] {
+        transform: perspective(900px) rotateX(-22deg) translateY(-0.35rem) scale(0.97);
+        transform-origin: top center;
+    }
+
+    & ui-menu[data-flux-menu]:popover-open {
+        transform: perspective(900px) rotateX(0deg) translateY(0) scale(1);
+    }
+
+    /* Swing-in: modals come forward out of the scene, tipped back. */
+    & [data-flux-modal] > dialog:not([data-flux-flyout]) {
+        transform: perspective(1400px) translate3d(0, 28px, -140px) rotateX(12deg);
+    }
+
+    & [data-flux-modal] > dialog:not([data-flux-flyout])[open] {
+        transform: perspective(1400px) translate3d(0, 0, 0) rotateX(0deg);
+    }
+
+    & [data-flux-modal] > dialog:not([data-flux-flyout])[open].flux-flyout-closing {
+        transform: perspective(1400px) translate3d(0, 28px, -140px) rotateX(12deg) !important;
+    }
+
+    &.dark option {
+        background-color: #111726;
+        color: #f1f5fb;
+    }
+}
+
+@starting-style {
+    :root[data-theme="spatial"] ui-menu[data-flux-menu]:popover-open {
+        opacity: 0;
+        transform: perspective(900px) rotateX(-22deg) translateY(-0.35rem) scale(0.97);
+    }
+
+    :root[data-theme="spatial"] [data-flux-modal] > dialog:not([data-flux-flyout])[open] {
+        opacity: 0;
+        transform: perspective(1400px) translate3d(0, 28px, -140px) rotateX(12deg);
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 6. Wells — fields, nested chips, controls                              */
+/* --------------------------------------------------------------------- */
+:root[data-theme="spatial"] {
+    & .card-surface-nested,
+    & [class*="bg-[#fdf6de]"],
+    & :is(div, ul, section).shadow-inner {
+        background-color: var(--sp-well-flat);
+        background-image: none;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        border-color: var(--sp-rim-soft);
+        box-shadow: var(--sp-rings);
+    }
+
+    & input[data-flux-control]:not([type="checkbox"], [type="radio"], [type="hidden"], [type="range"], [type="color"]),
+    & textarea[data-flux-control],
+    & select[data-flux-control],
+    & [data-flux-sidebar-search] {
+        background-color: var(--sp-well-flat);
+        border-color: var(--sp-rim-soft);
+        box-shadow: var(--sp-well), var(--sp-rings);
+        transition:
+            border-color var(--motion-duration-fast) var(--motion-ease-premium),
+            box-shadow var(--motion-duration-fast) var(--motion-ease-premium),
+            background-color var(--motion-duration-fast) var(--motion-ease-premium);
+    }
+
+    /* Focus lifts the field toward you: it turns into a lit panel with an
+    accent halo. */
+    & input[data-flux-control]:not([type="checkbox"], [type="radio"], [type="hidden"], [type="range"], [type="color"]):focus,
+    & textarea[data-flux-control]:focus,
+    & select[data-flux-control]:focus {
+        outline: none;
+        background-color: var(--sp-fill-flat);
+        border-color: color-mix(in oklab, var(--color-accent) 70%, transparent);
+        box-shadow: inset 0 0 0 0 transparent, 0 0 0 4px var(--sp-halo), 0 10px 24px -12px color-mix(in oklab, var(--color-accent) 60%, transparent);
+    }
+
+    & :is(input, textarea, select)[data-flux-control][data-invalid] {
+        border-color: color-mix(in oklab, var(--color-red-500) 70%, transparent);
+    }
+
+    & [data-flux-input-group-prefix],
+    & [data-flux-input-group-suffix] {
+        background-color: var(--sp-well-flat);
+        border-color: var(--sp-rim-soft);
+    }
+
+    /* Segmented control: a well the selected option floats out of. */
+    & [data-flux-radio-group-segmented] {
+        background-color: var(--sp-well-flat);
+        box-shadow: var(--sp-well);
+    }
+
+    & [data-flux-radio-segmented] {
+        transition:
+            background-color var(--motion-duration-fast) var(--motion-ease-premium),
+            box-shadow var(--motion-duration-fast) var(--motion-ease-premium),
+            color var(--motion-duration-fast) var(--motion-ease-premium);
+    }
+
+    & [data-flux-radio-segmented][data-checked] {
+        background: var(--sp-fill-raised) padding-box, var(--sp-rim) border-box;
+        color: var(--color-accent-content);
+        box-shadow: var(--sp-top-light), 0 2px 6px -1px rgb(15 23 42 / 0.18), 0 6px 14px -8px rgb(30 58 138 / 0.3);
+    }
+
+    &.dark [data-flux-radio-segmented][data-checked] {
+        box-shadow: var(--sp-top-light), 0 2px 6px -1px rgb(0 0 0 / 0.6), 0 6px 16px -8px rgb(20 184 166 / 0.35);
+    }
+
+    /* Switch: a well with a glossy sphere for a thumb. */
+    & [data-flux-switch] {
+        border-color: transparent;
+        background-color: var(--sp-well-flat);
+        box-shadow: var(--sp-well);
+        transition:
+            background-color var(--motion-duration-standard) var(--motion-ease-premium),
+            box-shadow var(--motion-duration-standard) var(--motion-ease-premium);
+    }
+
+    & [data-flux-switch][data-checked] {
+        background-color: var(--color-accent);
+        background-image: var(--sp-primary);
+        box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.2), var(--sp-primary-glow);
+    }
+
+    & [data-flux-switch] > span {
+        background-color: #ffffff;
+        background-image: radial-gradient(circle at 35% 28%, #ffffff 0%, #f1f5f9 45%, #cbd5e1 100%);
+        box-shadow: 0 2px 5px rgb(15 23 42 / 0.3), 0 0 0 0.5px rgb(15 23 42 / 0.12);
+        transition: translate var(--motion-duration-standard) var(--motion-ease-premium), transform var(--motion-duration-standard) var(--motion-ease-premium);
+    }
+
+    & [data-flux-checkbox-indicator],
+    & [data-flux-radio-indicator] {
+        background-color: var(--sp-well-flat);
+        border-color: color-mix(in oklab, var(--color-zinc-400) 70%, transparent);
+        box-shadow: inset 0 1px 1px rgb(15 23 42 / 0.06);
+        transition:
+            background-color var(--motion-duration-fast) var(--motion-ease-premium),
+            box-shadow var(--motion-duration-fast) var(--motion-ease-premium);
+    }
+
+    & :is(ui-checkbox[data-checked], ui-checkbox[data-indeterminate]) [data-flux-checkbox-indicator],
+    & ui-radio[data-checked] [data-flux-radio-indicator] {
+        background-color: var(--color-accent);
+        background-image: var(--sp-primary);
+        border-color: transparent;
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.3), var(--sp-primary-glow);
+    }
+
+    & [data-flux-progress] {
+        background-color: var(--sp-well-flat);
+        box-shadow: var(--sp-well);
+    }
+
+    & .skeleton-shimmer {
+        background-image: linear-gradient(90deg, var(--sp-well-flat) 25%, color-mix(in oklab, var(--color-accent) 10%, var(--sp-well-flat)) 50%, var(--sp-well-flat) 75%);
+    }
+
+    & [data-flux-badge] {
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35), 0 1px 2px rgb(15 23 42 / 0.08);
+    }
+
+    &.dark [data-flux-badge] {
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08), 0 1px 2px rgb(0 0 0 / 0.4);
+    }
+
+    & [data-flux-avatar] {
+        box-shadow: 0 0 0 2px var(--sp-fill-flat), 0 0 0 3px color-mix(in oklab, var(--color-accent) 45%, transparent), 0 6px 14px -6px rgb(15 23 42 / 0.4);
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 7. Buttons & pressables                                                */
+/* --------------------------------------------------------------------- */
+:root[data-theme="spatial"] {
+    & [data-flux-button] {
+        transition:
+            background-color var(--motion-duration-fast) var(--motion-ease-premium),
+            border-color var(--motion-duration-fast) var(--motion-ease-premium),
+            box-shadow var(--motion-duration-fast) var(--motion-ease-premium),
+            color var(--motion-duration-fast) var(--motion-ease-premium),
+            transform var(--motion-duration-fast) var(--motion-ease-premium),
+            --sp-spot var(--motion-duration-fast) var(--motion-ease-premium),
+            --sp-rim-spot var(--motion-duration-fast) var(--motion-ease-premium);
+    }
+
+    & [data-flux-button]:focus-visible {
+        outline: 2px solid color-mix(in oklab, var(--color-accent) 70%, transparent);
+        outline-offset: 3px;
+    }
+
+    /* Outline / filled: small floating panels with a pointer-lit rim. */
+    & [data-flux-button]:is([data-flux-variant="outline"], [data-flux-variant="filled"]) {
+        background:
+            radial-gradient(90px circle at var(--ptr-x, 50%) var(--ptr-y, -30%), var(--sp-spot), transparent 70%) padding-box,
+            var(--sp-fill-raised) padding-box,
+            radial-gradient(70px circle at var(--ptr-x, 50%) var(--ptr-y, -30%), var(--sp-rim-spot), transparent 75%) border-box,
+            var(--sp-rim) border-box;
+        border-color: transparent;
+        box-shadow: var(--sp-top-light), 0 1px 2px rgb(15 23 42 / 0.08), 0 4px 10px -4px rgb(15 23 42 / 0.14), var(--sp-rings);
+    }
+
+    & [data-flux-button]:is([data-flux-variant="outline"], [data-flux-variant="filled"]):hover {
+        --sp-spot: var(--sp-spot-on);
+        --sp-rim-spot: var(--sp-rim-spot-on);
+        box-shadow: var(--sp-top-light), 0 2px 4px rgb(15 23 42 / 0.08), 0 12px 22px -10px rgb(15 23 42 / 0.26), var(--sp-rings);
+        transform: translateY(-2px);
+    }
+
+    /* Primary: a lit, glossy lozenge floating on its own glow. */
+    & [data-flux-button][data-flux-variant="primary"] {
+        color: var(--sp-primary-ink);
+        background-color: var(--color-accent);
+        background-image: linear-gradient(180deg, rgb(255 255 255 / 0.22), rgb(255 255 255 / 0) 55%), var(--sp-primary);
+        border-color: transparent;
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.35), inset 0 -2px 0 rgb(0 0 0 / 0.14), var(--sp-primary-glow), var(--sp-rings);
+    }
+
+    & [data-flux-button][data-flux-variant="primary"] :is([data-flux-icon], svg) {
+        color: var(--sp-primary-ink);
+    }
+
+    & [data-flux-button][data-flux-variant="primary"]:hover {
+        background-image: linear-gradient(180deg, rgb(255 255 255 / 0.26), rgb(255 255 255 / 0) 55%), var(--sp-primary-hover);
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.4), inset 0 -2px 0 rgb(0 0 0 / 0.14), var(--sp-primary-glow-lift), var(--sp-rings);
+        transform: translateY(-2px);
+    }
+
+    & [data-flux-button][data-flux-variant="danger"] {
+        background-image: linear-gradient(180deg, rgb(255 255 255 / 0.2), rgb(255 255 255 / 0) 55%), linear-gradient(135deg, #f43f5e, #dc2626);
+        border-color: transparent;
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.3), inset 0 -2px 0 rgb(0 0 0 / 0.14), 0 10px 24px -10px rgb(225 29 72 / 0.7), var(--sp-rings);
+    }
+
+    & [data-flux-button][data-flux-variant="danger"]:hover {
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.3), inset 0 -2px 0 rgb(0 0 0 / 0.14), 0 18px 36px -12px rgb(225 29 72 / 0.75), var(--sp-rings);
+        transform: translateY(-2px);
+    }
+
+    /* Press pushes the button back into the scene. */
+    & [data-flux-button]:active:not(:disabled) {
+        transform: translateY(0) scale(0.975);
+        transition-duration: 110ms;
+    }
+
+    & [data-flux-button]:is([data-flux-variant="ghost"], [data-flux-variant="subtle"]):not([data-flux-input] *):hover {
+        background-color: color-mix(in oklab, var(--color-accent) 8%, transparent);
+    }
+
+    & [data-flux-button]:disabled,
+    & [data-flux-button][disabled] {
+        transform: none;
+    }
+
+    & [data-flux-main] button.border[class*="shadow"]:not([data-flux-button], .shadow-none, .kanban-card) {
+        background-color: var(--sp-fill-flat);
+        background-image: var(--sp-fill-raised);
+        border-color: var(--sp-rim-soft);
+        box-shadow: var(--sp-top-light), 0 1px 2px rgb(15 23 42 / 0.08), 0 4px 10px -4px rgb(15 23 42 / 0.14), var(--sp-rings);
+        transition:
+            box-shadow var(--motion-duration-fast) var(--motion-ease-premium),
+            transform var(--motion-duration-fast) var(--motion-ease-premium);
+    }
+
+    & [data-flux-main] button.border[class*="shadow"]:not([data-flux-button], .shadow-none, .kanban-card):active {
+        transform: scale(0.98);
+    }
+
+    & :is([data-flux-sidebar-profile], [data-flux-profile]):hover {
+        background-color: color-mix(in oklab, var(--color-accent) 7%, transparent);
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 8. Tilt cards — cards-as-links and board cards                         */
+/* --------------------------------------------------------------------- */
+/* Both tilt toward the pointer (theme-pointer.js writes --tilt-x/-y only
+for cards small enough that tilting reads as an object, not a wall) and
+lift their content off the card while hovered. Tailwind's hover:
+-translate-y utilities use the separate `translate` property, so they
+compose with this transform. */
+:root[data-theme="spatial"] {
+    & [data-flux-main] a:is(.rounded-lg, .rounded-xl, .rounded-2xl).border,
+    & .kanban-card {
+        transform: perspective(900px) rotateX(var(--tilt-x, 0deg)) rotateY(var(--tilt-y, 0deg));
+        transform-style: preserve-3d;
+        border-color: transparent;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        transition:
+            transform var(--motion-duration-standard) var(--motion-ease-premium),
+            translate var(--motion-duration-standard) var(--motion-ease-premium),
+            scale var(--motion-duration-standard) var(--motion-ease-premium),
+            opacity var(--motion-duration-standard) var(--motion-ease-premium),
+            box-shadow var(--motion-duration-standard) var(--motion-ease-premium),
+            --sp-spot var(--motion-duration-standard) var(--motion-ease-premium),
+            --sp-rim-spot var(--motion-duration-standard) var(--motion-ease-premium);
+    }
+
+    /* While hovered, the tilt tracks the pointer closely; on leave the
+    base transition above springs it back slowly. */
+    & [data-flux-main] a:is(.rounded-lg, .rounded-xl, .rounded-2xl).border:hover,
+    & .kanban-card:hover {
+        --sp-spot: var(--sp-spot-on);
+        --sp-rim-spot: var(--sp-rim-spot-on);
+        transition:
+            transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
+            translate var(--motion-duration-standard) var(--motion-ease-premium),
+            scale var(--motion-duration-standard) var(--motion-ease-premium),
+            opacity var(--motion-duration-standard) var(--motion-ease-premium),
+            box-shadow var(--motion-duration-standard) var(--motion-ease-premium),
+            --sp-spot var(--motion-duration-standard) var(--motion-ease-premium),
+            --sp-rim-spot var(--motion-duration-standard) var(--motion-ease-premium);
+    }
+
+    & [data-flux-main] a:is(.rounded-lg, .rounded-xl, .rounded-2xl).border {
+        background:
+            radial-gradient(420px circle at var(--ptr-x, 50%) var(--ptr-y, -30%), var(--sp-spot), transparent 60%) padding-box,
+            var(--sp-fill) padding-box,
+            radial-gradient(220px circle at var(--ptr-x, 50%) var(--ptr-y, -30%), var(--sp-rim-spot), transparent 70%) border-box,
+            var(--sp-rim) border-box;
+        box-shadow: var(--sp-top-light), var(--sp-shadow), var(--sp-rings);
+    }
+
+    & [data-flux-main] a:is(.rounded-lg, .rounded-xl, .rounded-2xl).border:hover {
+        box-shadow: var(--sp-top-light), var(--sp-shadow-lift), var(--sp-rings);
+        translate: 0 -3px;
+    }
+
+    & [data-flux-main] a:is(.rounded-lg, .rounded-xl, .rounded-2xl).border:active {
+        scale: 0.99;
+    }
+
+    & [data-flux-main] a:is(.rounded-lg, .rounded-xl, .rounded-2xl).border:focus-visible {
+        outline: 2px solid color-mix(in oklab, var(--color-accent) 70%, transparent);
+        outline-offset: 3px;
+    }
+
+    /* Parallax: content floats a little above the card while hovered. Only
+    while hovered, so text at rest is never rendered through a 3D layer. */
+    & :is([data-flux-main] a:is(.rounded-lg, .rounded-xl, .rounded-2xl).border, .kanban-card) > * {
+        transition: transform var(--motion-duration-standard) var(--motion-ease-premium);
+    }
+
+    & :is([data-flux-main] a:is(.rounded-lg, .rounded-xl, .rounded-2xl).border, .kanban-card):hover > * {
+        transform: translateZ(18px);
+    }
+
+    /* Never tilt what's being dragged. */
+    & .kanban-card[draggable="true"]:active,
+    & .kanban-card.opacity-40 {
+        transform: none;
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 9. Kanban — translucent lanes over the floor, lit cards                */
+/* --------------------------------------------------------------------- */
+:root[data-theme="spatial"] {
+    & :is(.kanban-column, .kanban-card) {
+        &[class*="bg-blue-"] { --sp-status: var(--color-blue-500); }
+        &[class*="bg-sky-"] { --sp-status: var(--color-sky-500); }
+        &[class*="bg-indigo-"] { --sp-status: var(--color-indigo-500); }
+        &[class*="bg-amber-"] { --sp-status: var(--color-amber-500); }
+        &[class*="bg-orange-"] { --sp-status: var(--color-orange-500); }
+        &[class*="bg-green-"] { --sp-status: var(--color-green-500); }
+        &[class*="bg-red-"] { --sp-status: var(--color-red-500); }
+        &[class*="bg-emerald-"] { --sp-status: var(--color-emerald-500); }
+        &[class*="bg-purple-"] { --sp-status: var(--color-purple-500); }
+        &[class*="bg-teal-"] { --sp-status: var(--color-teal-500); }
+        &[class*="bg-pink-"] { --sp-status: var(--color-pink-500); }
+        &[class*="bg-zinc-"] { --sp-status: #94a0b4; }
+    }
+
+    /* Lanes: glazed strips with a status-colored light along the top edge;
+    the floor grid shows faintly through them. */
+    & .kanban-column {
+        background-color: color-mix(in oklab, var(--sp-status, white) 9%, rgb(255 255 255 / 0.5));
+        box-shadow: inset 0 2px 0 color-mix(in oklab, var(--sp-status, var(--color-accent)) 75%, transparent), inset 0 0 0 1px var(--sp-rim-soft), var(--sp-rings);
+    }
+
+    &.dark .kanban-column {
+        background-color: color-mix(in oklab, var(--sp-status, white) 9%, rgb(255 255 255 / 0.02));
+    }
+
+    & .kanban-column[class*="ring-2"] {
+        background-color: color-mix(in oklab, var(--sp-status, var(--color-accent)) 20%, rgb(255 255 255 / 0.5));
+    }
+
+    &.dark .kanban-column[class*="ring-2"] {
+        background-color: color-mix(in oklab, var(--sp-status, var(--color-accent)) 20%, rgb(255 255 255 / 0.03));
+    }
+
+    /* Cards: lit panels whose rim is washed with their status color. */
+    & .kanban-card {
+        background:
+            radial-gradient(260px circle at var(--ptr-x, 50%) var(--ptr-y, -30%), var(--sp-spot), transparent 60%) padding-box,
+            linear-gradient(180deg, color-mix(in oklab, var(--sp-status, transparent) 9%, transparent), transparent 55%) padding-box,
+            var(--sp-fill) padding-box,
+            radial-gradient(160px circle at var(--ptr-x, 50%) var(--ptr-y, -30%), var(--sp-rim-spot), transparent 70%) border-box,
+            linear-gradient(160deg, color-mix(in oklab, var(--sp-status, white) 55%, white) 0%, var(--sp-rim-soft) 45%, color-mix(in oklab, var(--sp-status, var(--color-accent)) 60%, transparent) 100%) border-box;
+        box-shadow: var(--sp-top-light), var(--sp-shadow), var(--sp-rings);
+    }
+
+    &.dark .kanban-card {
+        background:
+            radial-gradient(260px circle at var(--ptr-x, 50%) var(--ptr-y, -30%), var(--sp-spot), transparent 60%) padding-box,
+            linear-gradient(180deg, color-mix(in oklab, var(--sp-status, transparent) 12%, transparent), transparent 55%) padding-box,
+            var(--sp-fill) padding-box,
+            radial-gradient(160px circle at var(--ptr-x, 50%) var(--ptr-y, -30%), var(--sp-rim-spot), transparent 70%) border-box,
+            linear-gradient(160deg, color-mix(in oklab, var(--sp-status, white) 40%, rgb(255 255 255 / 0.2)) 0%, rgb(255 255 255 / 0.05) 45%, color-mix(in oklab, var(--sp-status, var(--color-accent)) 50%, transparent) 100%) border-box;
+    }
+
+    & .kanban-card:hover {
+        box-shadow: var(--sp-top-light), var(--sp-shadow-lift), var(--sp-rings);
+    }
+
+    & .kanban-card > .rounded-md.border {
+        background-color: var(--sp-well-flat);
+        border-color: var(--sp-rim-soft);
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 10. Navigation & toasts                                                */
+/* --------------------------------------------------------------------- */
+:root[data-theme="spatial"] {
+    & [data-flux-sidebar-item] {
+        transition:
+            background-color var(--motion-duration-standard) var(--motion-ease-premium),
+            box-shadow var(--motion-duration-standard) var(--motion-ease-premium),
+            color var(--motion-duration-standard) var(--motion-ease-premium),
+            transform var(--motion-duration-standard) var(--motion-ease-premium);
+    }
+
+    & [data-flux-sidebar-item]:hover:not([data-current]) {
+        background-color: color-mix(in oklab, var(--color-accent) 7%, transparent);
+        transform: translateX(2px);
+    }
+
+    /* The page you're on floats: a raised, rim-lit pill casting a soft
+    accent glow on the rail below it. */
+    & [data-flux-sidebar-item][data-current] {
+        color: var(--color-accent-content);
+        background: var(--sp-fill-raised) padding-box, var(--sp-rim) border-box;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        border-color: transparent;
+        box-shadow: var(--sp-top-light), 0 2px 4px rgb(15 23 42 / 0.08), 0 10px 22px -10px color-mix(in oklab, var(--color-accent) 55%, transparent);
+    }
+
+    & [data-flux-sidebar-item][data-current] [data-flux-icon] {
+        color: var(--color-accent);
+        filter: drop-shadow(0 0 6px color-mix(in oklab, var(--color-accent) 50%, transparent));
+    }
+
+    & .flux-toast {
+        background: var(--sp-fill-raised) padding-box, var(--sp-rim) border-box;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        border-color: transparent;
+        box-shadow: var(--sp-top-light), var(--sp-shadow-float);
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 11. Classic-brand remap                                                */
+/* --------------------------------------------------------------------- */
+/* The error page hardcodes the classic oxblood as arbitrary gradient/
+shadow colors (light mode only; dark already uses neutrals). Re-point
+those at this theme's accent so the page doesn't carry the classic brand. */
+:root[data-theme="spatial"]:not(.dark) {
+    & [class*="from-[#6b1d2b]"] {
+        --tw-gradient-from: var(--color-accent);
+    }
+
+    & [class*="to-[#8f2c3e]"] {
+        --tw-gradient-to: color-mix(in oklab, var(--color-accent), white 22%);
+    }
+
+    & [class*="to-[#6b1d2b]/35"] {
+        --tw-gradient-to: color-mix(in oklab, var(--color-accent) 35%, transparent);
+    }
+
+    & [class*="shadow-[#6b1d2b]"] {
+        --tw-shadow-color: color-mix(in oklab, var(--color-accent) 25%, transparent);
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 12. Motion                                                             */
+/* --------------------------------------------------------------------- */
+
+/* Floor drift: slide the plane toward the viewer by exactly one tile. */
+@keyframes sp-floor-drift {
+    from {
+        transform: perspective(600px) rotateX(58deg) translateY(0);
+    }
+    to {
+        transform: perspective(600px) rotateX(58deg) translateY(72px);
+    }
+}
+
+@keyframes sp-horizon-breathe {
+    50% {
+        opacity: 1;
+    }
+}
+
+/* Fly-in: from behind the screen plane, tipped back. No `to` keyframe, so
+each element lands on its own resting transform (tilt cards included). */
+@keyframes sp-fly-in {
+    from {
+        opacity: 0;
+        transform: perspective(1400px) translate3d(0, 22px, -110px) rotateX(10deg);
+    }
+}
+
+/* Focus pull for surfaces whose transform is owned elsewhere (the bell
+panel's x-transition). */
+@keyframes sp-focus-in {
+    from {
+        filter: blur(6px);
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    :root[data-theme="spatial"] {
+        & body::before {
+            animation: sp-floor-drift 9s linear infinite;
+        }
+
+        & body::after {
+            animation: sp-horizon-breathe 7s ease-in-out infinite;
+        }
+
+        & :is(.card-surface, [data-flux-card], .kanban-column) {
+            animation: sp-fly-in var(--motion-duration-slow) var(--motion-ease-premium) backwards;
+        }
+
+        & :is(.card-surface, [data-flux-card], .kanban-column):nth-child(2) { animation-delay: 70ms; }
+        & :is(.card-surface, [data-flux-card], .kanban-column):nth-child(3) { animation-delay: 140ms; }
+        & :is(.card-surface, [data-flux-card], .kanban-column):nth-child(4) { animation-delay: 210ms; }
+        & :is(.card-surface, [data-flux-card], .kanban-column):nth-child(5) { animation-delay: 280ms; }
+        & :is(.card-surface, [data-flux-card], .kanban-column):nth-child(n + 6) { animation-delay: 350ms; }
+
+        & .notification-panel-elevation {
+            animation: sp-focus-in var(--motion-duration-standard) var(--motion-ease-premium) backwards;
+        }
+    }
+}
+
+/* Reduced motion: keep the scene, drop the tilt and parallax. */
+@media (prefers-reduced-motion: reduce) {
+    :root[data-theme="spatial"] {
+        & :is([data-flux-main] a:is(.rounded-lg, .rounded-xl, .rounded-2xl).border, .kanban-card),
+        & :is([data-flux-main] a:is(.rounded-lg, .rounded-xl, .rounded-2xl).border, .kanban-card):hover > * {
+            transform: none;
+        }
+    }
+}

@@ -7,4 +7,5 @@
 import './echo';
 import './flyout-close-animation';
 import './theme-style';
+import './theme-pointer';
 import './softphone/index.js';

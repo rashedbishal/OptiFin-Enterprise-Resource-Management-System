@@ -1,5 +1,5 @@
 /**
- * Theme style switcher — Classic / Neumorphic / Glass.
+ * Theme style switcher — Classic / Neumorphic / Glass / Titanium / Spatial.
  *
  * Orthogonal to Flux's light/dark appearance (the `.dark` class on <html>):
  * the style lives in `data-theme` on <html>, so every style has both a light
@@ -17,7 +17,7 @@
  *    (the `storage` event).
  */
 export const STORAGE_KEY = 'optifin.theme-style';
-export const THEME_STYLES = ['classic', 'neo', 'glass'];
+export const THEME_STYLES = ['classic', 'neo', 'glass', 'titanium', 'spatial'];
 export const DEFAULT_THEME_STYLE = 'classic';
 
 /** Time the circular reveal runs; keep in sync with `theme-style-reveal` in app.css. */

@@ -26,6 +26,13 @@ describe('theme style', () => {
         expect(readThemeStyle()).toBe('glass');
     });
 
+    it('accepts every shipped style', () => {
+        for (const style of ['classic', 'neo', 'glass', 'titanium', 'spatial']) {
+            window.localStorage.setItem(STORAGE_KEY, style);
+            expect(readThemeStyle()).toBe(style);
+        }
+    });
+
     it('never applies an unknown style', () => {
         applyThemeStyle('retro');
 
