@@ -1,10 +1,12 @@
 /**
- * Pointer light + tilt for the Titanium and Spatial theme styles.
+ * Pointer-driven effects for the Titanium, Spatial, Lumen and Fjord theme
+ * styles.
  *
  * Writes the pointer position onto whichever themed surface is under a
  * mouse pointer, as CSS custom properties the theme stylesheets read:
  * - --ptr-x / --ptr-y (px, relative to the surface): the specular glint
- *   (Titanium) and the fill/rim spotlight (Spatial).
+ *   (Titanium), the fill/rim spotlight (Spatial), the soft sunset light
+ *   (Lumen) and the lamplight (Fjord).
  * - --tilt-x / --tilt-y (deg): the 3D tilt of Spatial's cards. Only for
  *   small cards — a whole table tilting reads as the page wobbling.
  *
@@ -13,7 +15,7 @@
  * Touch and pen are ignored; a press or drag resets the tilt so nothing is
  * dragged at an angle.
  */
-export const POINTER_THEMES = ['titanium', 'spatial'];
+export const POINTER_THEMES = ['titanium', 'spatial', 'lumen', 'fjord'];
 export const TILT_THEMES = ['spatial'];
 
 export const SURFACE_SELECTOR = [

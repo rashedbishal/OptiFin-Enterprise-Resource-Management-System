@@ -1,0 +1,733 @@
+/*
+==========================================================================
+THEME STYLE: LUMEN  (html[data-theme="lumen"], light + .dark)
+
+Bright, luminous and confident. Crisp surfaces under a soft sunset glow,
+with one signature gradient — coral → rose → violet — used sparingly, only
+where attention belongs: primary actions, the current page, focus, and the
+edge of whatever you're pointing at. Everything else stays quiet: cool
+neutral grays, hairline borders, soft layered shadows, generous radii.
+
+Self-contained: delete this file and its @import in app.css to remove the
+theme. Selected by resources/js/theme-style.js; the soft pointer light is
+fed by resources/js/theme-pointer.js (--ptr-x/--ptr-y on the hovered
+surface — without it the light rests at the top).
+
+Every rule is unlayered, so it beats Tailwind utilities (which live in
+@layer utilities) without !important, and the [data-theme] prefix beats the
+classic unlayered rules in app.css on specificity.
+
+THE BLOOMING EDGE
+Interactive surfaces paint their border as a border-box gradient behind a
+transparent border. Each gradient stop is color-mix(sunset color
+<glow × 100%>, hairline), where --lm-glow is a registered <number> — so at
+0 the edge is an ordinary hairline, at 1 it's the full sunset, and every
+value between is a smooth bloom. --lm-edge is declared on the element
+itself (not :root) so it resolves against that element's animated glow.
+No pseudo-elements, so no stacking contexts that could trap dropdowns.
+
+MOTION (all on the app's shared --motion-* tokens)
+- Rise: cards and board columns fade up into place on load, staggered.
+- Bloom: card, field and board-card edges bloom into the sunset on hover
+  or focus, and the card lifts on a faint colored shadow.
+- Flow: primary buttons, checked switches and checkboxes carry the
+  gradient; on hover it flows sideways.
+- Light: a soft rose-tinted light follows the pointer inside cards.
+==========================================================================
+*/
+
+@property --lm-glow {
+    syntax: '<number>';
+    inherits: false;
+    initial-value: 0;
+}
+
+@property --lm-spot {
+    syntax: '<color>';
+    inherits: false;
+    initial-value: transparent;
+}
+
+/* --------------------------------------------------------------------- */
+/* 1. Tokens                                                              */
+/* --------------------------------------------------------------------- */
+:root[data-theme="lumen"] {
+    --lm-canvas: #f7f8fb;
+    --lm-canvas-image:
+        radial-gradient(ellipse 60% 44% at 12% -8%, rgb(251 146 110 / 0.26), transparent 70%),
+        radial-gradient(ellipse 55% 40% at 52% -12%, rgb(244 114 182 / 0.2), transparent 70%),
+        radial-gradient(ellipse 55% 46% at 96% -8%, rgb(167 139 250 / 0.26), transparent 70%),
+        linear-gradient(180deg, #fbfbfd 0%, #f5f6fa 100%);
+    --lm-surface: #ffffff;
+    --lm-surface-soft: #fafbfd;
+    --lm-well: #f4f5f9;
+    --lm-line: rgb(16 24 40 / 0.09);
+    --lm-line-strong: rgb(16 24 40 / 0.15);
+    --lm-tint: rgb(214 36 110 / 0.055);
+
+    --lm-c1: #f97352;
+    --lm-c2: #ec4899;
+    --lm-c3: #8b5cf6;
+    --lm-sunset: linear-gradient(110deg, var(--lm-c1) 0%, var(--lm-c2) 50%, var(--lm-c3) 100%);
+    /* 200% wide and mirrored, so sliding it reads as a flow, not a jump.
+    Stops are deepened for white text. */
+    --lm-sunset-button: linear-gradient(110deg, #e5452f 0%, #d42367 25%, #9333ea 50%, #d42367 75%, #e5452f 100%);
+
+    --lm-shadow: 0 1px 2px rgb(16 24 40 / 0.04), 0 4px 10px -4px rgb(16 24 40 / 0.05), 0 16px 36px -20px rgb(16 24 40 / 0.12);
+    --lm-shadow-lift: 0 1px 2px rgb(16 24 40 / 0.04), 0 10px 20px -8px rgb(16 24 40 / 0.08), 0 26px 48px -22px rgb(214 36 110 / 0.24);
+    --lm-shadow-float: 0 2px 4px rgb(16 24 40 / 0.04), 0 14px 28px -8px rgb(16 24 40 / 0.12), 0 36px 72px -28px rgb(16 24 40 / 0.22);
+    --lm-button-glow: 0 6px 16px -6px rgb(214 36 110 / 0.5);
+    --lm-button-glow-lift: 0 12px 26px -10px rgb(214 36 110 / 0.6);
+    --lm-spot-on: rgb(244 114 182 / 0.06);
+    --lm-halo: color-mix(in oklab, var(--color-accent) 14%, transparent);
+    --lm-rings: var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000);
+
+    --color-accent: #cf1f68;
+    --color-accent-content: #bd1a5e;
+    --color-accent-foreground: #ffffff;
+
+    /* Cool, quiet neutrals — the color is reserved for the gradient. */
+    --color-zinc-50: #f9fafb;
+    --color-zinc-100: #f2f4f7;
+    --color-zinc-200: #e4e7ec;
+    --color-zinc-300: #d0d5dd;
+    --color-zinc-400: #98a2b3;
+    --color-zinc-500: #667085;
+    --color-zinc-600: #475467;
+    --color-zinc-700: #344054;
+    --color-zinc-800: #1d2939;
+    --color-zinc-900: #101828;
+    --color-zinc-950: #0a0f1c;
+    --color-gray-200: #e8eaf0;
+
+    --radius-md: 0.55rem;
+    --radius-lg: 0.75rem;
+    --radius-xl: 0.95rem;
+    --radius-2xl: 1.25rem;
+    --radius-3xl: 1.6rem;
+}
+
+:root[data-theme="lumen"].dark {
+    --lm-canvas: #0a0b12;
+    --lm-canvas-image:
+        radial-gradient(ellipse 55% 36% at 12% -8%, rgb(249 115 82 / 0.16), transparent 70%),
+        radial-gradient(ellipse 50% 34% at 52% -12%, rgb(236 72 153 / 0.14), transparent 70%),
+        radial-gradient(ellipse 50% 40% at 96% -8%, rgb(139 92 246 / 0.2), transparent 70%),
+        linear-gradient(180deg, #0c0d15 0%, #08090f 100%);
+    --lm-surface: #12131d;
+    --lm-surface-soft: #151723;
+    --lm-well: #0e0f18;
+    --lm-line: rgb(255 255 255 / 0.08);
+    --lm-line-strong: rgb(255 255 255 / 0.14);
+    --lm-tint: rgb(255 122 170 / 0.07);
+
+    --lm-c1: #ff8a6b;
+    --lm-c2: #ff5fa8;
+    --lm-c3: #a78bfa;
+    --lm-sunset-button: linear-gradient(110deg, #ea5638 0%, #e0357d 25%, #9d4cf0 50%, #e0357d 75%, #ea5638 100%);
+
+    --lm-shadow: 0 0 0 1px rgb(0 0 0 / 0.2), 0 2px 4px rgb(0 0 0 / 0.3), 0 18px 36px -18px rgb(0 0 0 / 0.7);
+    --lm-shadow-lift: 0 0 0 1px rgb(0 0 0 / 0.2), 0 10px 22px -8px rgb(0 0 0 / 0.5), 0 30px 60px -24px rgb(236 72 153 / 0.3);
+    --lm-shadow-float: 0 0 0 1px rgb(0 0 0 / 0.25), 0 20px 44px -12px rgb(0 0 0 / 0.75), 0 40px 90px -30px rgb(139 92 246 / 0.22);
+    --lm-button-glow: 0 6px 18px -6px rgb(236 72 153 / 0.55);
+    --lm-button-glow-lift: 0 12px 30px -10px rgb(236 72 153 / 0.65);
+    --lm-spot-on: rgb(255 122 170 / 0.06);
+
+    --color-accent: #ff7aac;
+    --color-accent-content: #ff8fba;
+    --color-accent-foreground: #1c0610;
+
+    --color-zinc-50: #f5f6fa;
+    --color-zinc-100: #e7e9f1;
+    --color-zinc-200: #cfd2df;
+    --color-zinc-300: #b0b4c6;
+    --color-zinc-400: #8d92a8;
+    --color-zinc-500: #6e738b;
+    --color-zinc-600: #30334a;
+    --color-zinc-700: #25283a;
+    --color-zinc-800: #1a1c2b;
+    --color-zinc-900: #12131d;
+    --color-zinc-950: #0a0b12;
+    --color-gray-200: #20222f;
+
+    --color-success: var(--color-emerald-400);
+    --color-warning: var(--color-amber-400);
+    --color-error: var(--color-rose-400);
+    --color-info: var(--color-sky-400);
+}
+
+/* --------------------------------------------------------------------- */
+/* 2. Canvas & chrome                                                     */
+/* --------------------------------------------------------------------- */
+:root[data-theme="lumen"] {
+    & body {
+        background-color: var(--lm-canvas);
+        background-image: var(--lm-canvas-image);
+        background-attachment: fixed;
+    }
+
+    & ::selection {
+        background-color: color-mix(in oklab, var(--lm-c2) 22%, transparent);
+    }
+
+    & [data-flux-heading] {
+        letter-spacing: -0.022em;
+    }
+
+    & [data-flux-sidebar] {
+        background-color: color-mix(in oklab, var(--lm-surface) 82%, transparent);
+        background-image: none;
+        -webkit-backdrop-filter: blur(18px) saturate(160%);
+        backdrop-filter: blur(18px) saturate(160%);
+        border-color: var(--lm-line);
+        box-shadow: none;
+    }
+
+    & .app-topbar,
+    & [data-flux-header] {
+        background-color: color-mix(in oklab, var(--lm-surface) 72%, transparent);
+        -webkit-backdrop-filter: blur(18px) saturate(160%);
+        backdrop-filter: blur(18px) saturate(160%);
+        border-color: var(--lm-line);
+        box-shadow: none;
+    }
+
+    & [data-flux-main] :is(div, header).border-b:is(.bg-white, [class*="dark:bg-zinc-800"]),
+    & [data-flux-main] .sticky:is(.bg-white, [class*="bg-zinc-"]) {
+        background-color: color-mix(in oklab, var(--lm-surface) 78%, transparent);
+        -webkit-backdrop-filter: blur(18px) saturate(160%);
+        backdrop-filter: blur(18px) saturate(160%);
+        border-color: var(--lm-line);
+    }
+}
+
+:root[data-theme="lumen"]:not(.dark) :where(.bg-white, [class^="bg-white/"], [class*=" bg-white/"]):not(body) {
+    background-color: var(--lm-surface);
+}
+
+/* --------------------------------------------------------------------- */
+/* 3. Surfaces — cards, tables, hand-built panels, floating panels        */
+/* --------------------------------------------------------------------- */
+:root[data-theme="lumen"] {
+    & .card-surface,
+    & [data-flux-card],
+    & :is(div, section, article, aside, form, ul, dl, fieldset):is(.rounded-md, .rounded-lg, .rounded-xl, .rounded-2xl, .rounded-3xl).border:is(.bg-white, [class^="bg-white/"], [class*=" bg-white/"], .bg-zinc-50, [class^="bg-zinc-50/"], [class*=" bg-zinc-50/"], .shadow-2xs, .shadow-xs, .shadow-sm, .shadow-md):not(.shadow-inner, .border-dashed, .card-surface-nested, [data-flux-sidebar] *, [data-flux-menu] *, .absolute),
+    & [data-flux-main] a:is(.rounded-lg, .rounded-xl, .rounded-2xl).border:not([data-flux-button]) {
+        --lm-edge: linear-gradient(110deg,
+            color-mix(in oklab, var(--lm-c1) calc(var(--lm-glow) * 100%), var(--lm-line)) 0%,
+            color-mix(in oklab, var(--lm-c2) calc(var(--lm-glow) * 100%), var(--lm-line)) 50%,
+            color-mix(in oklab, var(--lm-c3) calc(var(--lm-glow) * 100%), var(--lm-line)) 100%);
+        background:
+            radial-gradient(480px circle at var(--ptr-x, 50%) var(--ptr-y, -20%), var(--lm-spot), transparent 60%) padding-box,
+            linear-gradient(var(--lm-surface), var(--lm-surface)) padding-box,
+            var(--lm-edge) border-box;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        border-color: transparent;
+        box-shadow: var(--lm-shadow), var(--lm-rings);
+        transition:
+            --lm-glow var(--motion-duration-standard) var(--motion-ease-premium),
+            --lm-spot var(--motion-duration-standard) var(--motion-ease-premium),
+            box-shadow var(--motion-duration-standard) var(--motion-ease-premium),
+            translate var(--motion-duration-standard) var(--motion-ease-premium);
+    }
+
+    & :is(.card-surface, [data-flux-card]):hover {
+        --lm-spot: var(--lm-spot-on);
+    }
+
+    /* Cards-as-links: the edge blooms into the sunset and the card lifts
+    on a faint rose shadow. */
+    & [data-flux-main] a:is(.rounded-lg, .rounded-xl, .rounded-2xl).border:not([data-flux-button]):hover {
+        --lm-glow: 1;
+        --lm-spot: var(--lm-spot-on);
+        box-shadow: var(--lm-shadow-lift), var(--lm-rings);
+        translate: 0 -2px;
+    }
+
+    & [data-flux-main] a:is(.rounded-lg, .rounded-xl, .rounded-2xl).border:not([data-flux-button]):focus-visible {
+        --lm-glow: 1;
+        outline: none;
+        box-shadow: 0 0 0 4px var(--lm-halo), var(--lm-shadow-lift);
+    }
+
+    & .card-surface::before {
+        content: none;
+    }
+
+    /* Panels inside a panel: a quiet inset surface. */
+    & :is(.card-surface, [data-flux-card], [data-flux-modal]) :is(div, section, article, aside, form, ul, dl, fieldset):is(.rounded-md, .rounded-lg, .rounded-xl, .rounded-2xl, .rounded-3xl).border:is(.bg-white, [class^="bg-white/"], [class*=" bg-white/"], .bg-zinc-50, [class^="bg-zinc-50/"], [class*=" bg-zinc-50/"], .shadow-2xs, .shadow-xs, .shadow-sm, .shadow-md):not(.shadow-inner, .border-dashed, .card-surface-nested, [data-flux-menu] *, .absolute) {
+        background: var(--lm-surface-soft);
+        border: 1px solid var(--lm-line);
+        box-shadow: var(--lm-rings);
+    }
+
+    & ui-menu[data-flux-menu],
+    & [data-flux-menu],
+    & .notification-panel-elevation,
+    & [data-flux-modal] > dialog.rounded-xl:not([data-flux-flyout]),
+    & [data-flux-modal-content].rounded-xl,
+    & :is(div, ul).absolute.z-50:is(.rounded-lg, .rounded-xl).border,
+    & .flux-toast {
+        background: var(--lm-surface);
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        border: 1px solid var(--lm-line);
+        box-shadow: var(--lm-shadow-float), var(--lm-rings);
+    }
+
+    /* A thin sunset rule across the top of modals — the one flourish. */
+    & [data-flux-modal] > dialog.rounded-xl:not([data-flux-flyout]),
+    & [data-flux-modal-content].rounded-xl {
+        background:
+            var(--lm-sunset) top / 100% 3px no-repeat border-box,
+            linear-gradient(var(--lm-surface), var(--lm-surface)) padding-box;
+        border-top-color: transparent;
+    }
+
+    & [data-flux-modal] > dialog[data-flux-flyout] {
+        background-color: var(--lm-surface);
+        background-image: none;
+        border-color: var(--lm-line);
+        box-shadow: -30px 0 80px -30px rgb(16 24 40 / 0.35);
+    }
+
+    & [data-flux-modal] > dialog::backdrop {
+        background-color: rgb(16 24 40 / 0.28);
+        -webkit-backdrop-filter: blur(6px);
+        backdrop-filter: blur(6px);
+    }
+
+    &.dark [data-flux-modal] > dialog::backdrop {
+        background-color: rgb(4 4 10 / 0.6);
+    }
+
+    /* Tables */
+    & [data-flux-columns] {
+        background-color: var(--lm-surface-soft);
+        background-image: none;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+    }
+
+    & [data-flux-column] {
+        border-bottom-color: var(--lm-line);
+        color: var(--color-zinc-500);
+    }
+
+    & [data-flux-cell] {
+        font-variant-numeric: tabular-nums;
+    }
+
+    & [data-flux-row] {
+        transition: background-color var(--motion-duration-fast) var(--motion-ease-premium);
+    }
+
+    & [data-flux-row]:hover {
+        background-color: var(--lm-tint);
+    }
+
+    & [data-flux-menu-separator],
+    & [data-flux-separator] {
+        background-color: var(--lm-line);
+    }
+
+    & :is([data-flux-menu-item], [data-flux-menu-radio], [data-flux-menu-checkbox]) {
+        transition: background-color var(--motion-duration-fast) var(--motion-ease-premium), color var(--motion-duration-fast) var(--motion-ease-premium);
+    }
+
+    & :is([data-flux-menu-item], [data-flux-menu-radio], [data-flux-menu-checkbox])[data-active] {
+        background-color: var(--lm-tint);
+        color: var(--color-accent-content);
+    }
+
+    &.dark option {
+        background-color: #12131d;
+        color: #f5f6fa;
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 4. Fields & controls                                                   */
+/* --------------------------------------------------------------------- */
+:root[data-theme="lumen"] {
+    & .card-surface-nested,
+    & [class*="bg-[#fdf6de]"],
+    & :is(div, ul, section).shadow-inner {
+        background-color: var(--lm-well);
+        background-image: none;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        border-color: var(--lm-line);
+        box-shadow: var(--lm-rings);
+    }
+
+    /* Fields bloom too: hairline at rest, sunset edge + soft halo on focus. */
+    & input[data-flux-control]:not([type="checkbox"], [type="radio"], [type="hidden"], [type="range"], [type="color"]),
+    & textarea[data-flux-control],
+    & [data-flux-sidebar-search] {
+        --lm-edge: linear-gradient(110deg,
+            color-mix(in oklab, var(--lm-c1) calc(var(--lm-glow) * 100%), var(--lm-line-strong)) 0%,
+            color-mix(in oklab, var(--lm-c2) calc(var(--lm-glow) * 100%), var(--lm-line-strong)) 50%,
+            color-mix(in oklab, var(--lm-c3) calc(var(--lm-glow) * 100%), var(--lm-line-strong)) 100%);
+        background: linear-gradient(var(--lm-surface), var(--lm-surface)) padding-box, var(--lm-edge) border-box;
+        border-color: transparent;
+        box-shadow: 0 1px 2px rgb(16 24 40 / 0.04), var(--lm-rings);
+        transition:
+            --lm-glow var(--motion-duration-standard) var(--motion-ease-premium),
+            box-shadow var(--motion-duration-standard) var(--motion-ease-premium);
+    }
+
+    & select[data-flux-control] {
+        background-color: var(--lm-surface);
+        border-color: var(--lm-line-strong);
+        box-shadow: 0 1px 2px rgb(16 24 40 / 0.04), var(--lm-rings);
+        transition: border-color var(--motion-duration-fast) var(--motion-ease-premium), box-shadow var(--motion-duration-fast) var(--motion-ease-premium);
+    }
+
+    & input[data-flux-control]:not([type="checkbox"], [type="radio"], [type="hidden"], [type="range"], [type="color"]):hover,
+    & textarea[data-flux-control]:hover {
+        --lm-glow: 0.35;
+    }
+
+    & input[data-flux-control]:not([type="checkbox"], [type="radio"], [type="hidden"], [type="range"], [type="color"]):focus,
+    & textarea[data-flux-control]:focus {
+        --lm-glow: 1;
+        outline: none;
+        box-shadow: 0 0 0 4px var(--lm-halo);
+    }
+
+    & select[data-flux-control]:focus {
+        outline: none;
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 4px var(--lm-halo);
+    }
+
+    & :is(input, textarea, select)[data-flux-control][data-invalid] {
+        --lm-line-strong: color-mix(in oklab, var(--color-red-500) 70%, transparent);
+    }
+
+    & [data-flux-input-group-prefix],
+    & [data-flux-input-group-suffix] {
+        background-color: var(--lm-well);
+        border-color: var(--lm-line-strong);
+    }
+
+    & [data-flux-radio-group-segmented] {
+        background-color: var(--lm-well);
+        box-shadow: inset 0 0 0 1px var(--lm-line);
+    }
+
+    & [data-flux-radio-segmented] {
+        transition:
+            background-color var(--motion-duration-fast) var(--motion-ease-premium),
+            box-shadow var(--motion-duration-fast) var(--motion-ease-premium),
+            color var(--motion-duration-fast) var(--motion-ease-premium);
+    }
+
+    & [data-flux-radio-segmented][data-checked] {
+        background-color: var(--lm-surface);
+        color: var(--color-accent-content);
+        box-shadow: 0 0 0 1px var(--lm-line), 0 2px 6px -2px rgb(16 24 40 / 0.14);
+    }
+
+    &.dark [data-flux-radio-segmented][data-checked] {
+        background-color: var(--color-zinc-700);
+    }
+
+    & [data-flux-switch] {
+        border-color: transparent;
+        background-color: var(--color-zinc-200);
+        background-image: var(--lm-sunset-button);
+        background-size: 200% 100%;
+        background-position: 0 0;
+        background-blend-mode: normal;
+        transition:
+            background-color var(--motion-duration-standard) var(--motion-ease-premium),
+            box-shadow var(--motion-duration-standard) var(--motion-ease-premium);
+    }
+
+    /* The gradient only shows once checked. */
+    & [data-flux-switch]:not([data-checked]) {
+        background-image: none;
+    }
+
+    &.dark [data-flux-switch]:not([data-checked]) {
+        background-color: var(--color-zinc-600);
+    }
+
+    & [data-flux-switch][data-checked] {
+        box-shadow: var(--lm-button-glow);
+    }
+
+    & [data-flux-switch] > span {
+        background-color: #ffffff;
+        box-shadow: 0 1px 3px rgb(16 24 40 / 0.25);
+        transition: translate var(--motion-duration-standard) var(--motion-ease-premium), transform var(--motion-duration-standard) var(--motion-ease-premium);
+    }
+
+    & [data-flux-checkbox-indicator],
+    & [data-flux-radio-indicator] {
+        background-color: var(--lm-surface);
+        border-color: var(--lm-line-strong);
+        transition: background-color var(--motion-duration-fast) var(--motion-ease-premium), box-shadow var(--motion-duration-fast) var(--motion-ease-premium);
+    }
+
+    & :is(ui-checkbox[data-checked], ui-checkbox[data-indeterminate]) [data-flux-checkbox-indicator],
+    & ui-radio[data-checked] [data-flux-radio-indicator] {
+        background-color: var(--color-accent);
+        background-image: var(--lm-sunset-button);
+        background-size: 200% 100%;
+        border-color: transparent;
+        box-shadow: var(--lm-button-glow);
+    }
+
+    & [data-flux-progress] {
+        background-color: var(--lm-well);
+    }
+
+    & .skeleton-shimmer {
+        background-image: linear-gradient(90deg, var(--lm-well) 25%, color-mix(in oklab, var(--lm-c2) 6%, var(--lm-surface)) 50%, var(--lm-well) 75%);
+    }
+
+    & [data-flux-badge] {
+        border-radius: 9999px;
+    }
+
+    & [data-flux-avatar] {
+        box-shadow: 0 0 0 2px var(--lm-surface), 0 0 0 3px color-mix(in oklab, var(--lm-c2) 35%, transparent);
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 5. Buttons                                                             */
+/* --------------------------------------------------------------------- */
+:root[data-theme="lumen"] {
+    & [data-flux-button] {
+        transition:
+            background-color var(--motion-duration-fast) var(--motion-ease-premium),
+            background-position var(--motion-duration-slow) var(--motion-ease-premium),
+            border-color var(--motion-duration-fast) var(--motion-ease-premium),
+            box-shadow var(--motion-duration-fast) var(--motion-ease-premium),
+            color var(--motion-duration-fast) var(--motion-ease-premium),
+            translate var(--motion-duration-fast) var(--motion-ease-premium),
+            scale var(--motion-duration-fast) var(--motion-ease-premium);
+    }
+
+    & [data-flux-button]:focus-visible {
+        outline: 2px solid color-mix(in oklab, var(--color-accent) 60%, transparent);
+        outline-offset: 2px;
+    }
+
+    & [data-flux-button]:is([data-flux-variant="outline"], [data-flux-variant="filled"]) {
+        background-color: var(--lm-surface);
+        background-image: none;
+        border-color: var(--lm-line-strong);
+        box-shadow: 0 1px 2px rgb(16 24 40 / 0.05), var(--lm-rings);
+    }
+
+    & [data-flux-button]:is([data-flux-variant="outline"], [data-flux-variant="filled"]):hover {
+        background-color: var(--lm-surface-soft);
+        border-color: color-mix(in oklab, var(--color-accent) 35%, var(--lm-line-strong));
+        box-shadow: 0 4px 12px -6px rgb(16 24 40 / 0.18), var(--lm-rings);
+        translate: 0 -1px;
+    }
+
+    /* Primary: the sunset, flowing sideways on hover. */
+    & [data-flux-button][data-flux-variant="primary"] {
+        color: #ffffff;
+        background-color: #d42367;
+        background-image: var(--lm-sunset-button);
+        background-size: 200% 100%;
+        background-position: 0% 50%;
+        border-color: transparent;
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22), var(--lm-button-glow), var(--lm-rings);
+    }
+
+    & [data-flux-button][data-flux-variant="primary"] :is([data-flux-icon], svg) {
+        color: #ffffff;
+    }
+
+    & [data-flux-button][data-flux-variant="primary"]:hover {
+        background-position: 100% 50%;
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.26), var(--lm-button-glow-lift), var(--lm-rings);
+        translate: 0 -1px;
+    }
+
+    & [data-flux-button][data-flux-variant="danger"] {
+        background-image: linear-gradient(180deg, #f04438, #d92d20);
+        border-color: transparent;
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.2), 0 6px 14px -6px rgb(217 45 32 / 0.5), var(--lm-rings);
+    }
+
+    & [data-flux-button][data-flux-variant="danger"]:hover {
+        translate: 0 -1px;
+    }
+
+    & [data-flux-button]:is([data-flux-variant="ghost"], [data-flux-variant="subtle"]):not([data-flux-input] *):hover {
+        background-color: var(--lm-tint);
+    }
+
+    & [data-flux-button]:active:not(:disabled) {
+        translate: 0 0;
+        scale: 0.97;
+        transition-duration: 100ms;
+    }
+
+    & [data-flux-button]:disabled,
+    & [data-flux-button][disabled] {
+        translate: none;
+        box-shadow: none;
+    }
+
+    & [data-flux-main] button.border[class*="shadow"]:not([data-flux-button], .shadow-none, .kanban-card) {
+        background-color: var(--lm-surface);
+        background-image: none;
+        border-color: var(--lm-line-strong);
+        box-shadow: 0 1px 2px rgb(16 24 40 / 0.05), var(--lm-rings);
+    }
+
+    & :is([data-flux-sidebar-profile], [data-flux-profile]):hover {
+        background-color: var(--lm-tint);
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 6. Kanban — soft lanes, cards that bloom in their status color         */
+/* --------------------------------------------------------------------- */
+:root[data-theme="lumen"] {
+    & :is(.kanban-column, .kanban-card) {
+        &[class*="bg-blue-"] { --lm-status: var(--color-blue-500); }
+        &[class*="bg-sky-"] { --lm-status: var(--color-sky-500); }
+        &[class*="bg-indigo-"] { --lm-status: var(--color-indigo-500); }
+        &[class*="bg-amber-"] { --lm-status: var(--color-amber-500); }
+        &[class*="bg-orange-"] { --lm-status: var(--color-orange-500); }
+        &[class*="bg-green-"] { --lm-status: var(--color-green-500); }
+        &[class*="bg-red-"] { --lm-status: var(--color-red-500); }
+        &[class*="bg-emerald-"] { --lm-status: var(--color-emerald-500); }
+        &[class*="bg-purple-"] { --lm-status: var(--color-purple-500); }
+        &[class*="bg-teal-"] { --lm-status: var(--color-teal-500); }
+        &[class*="bg-pink-"] { --lm-status: var(--color-pink-500); }
+        &[class*="bg-zinc-"] { --lm-status: var(--color-zinc-400); }
+    }
+
+    & .kanban-column {
+        background-color: color-mix(in oklab, var(--lm-status, var(--lm-well)) 7%, var(--lm-well));
+        box-shadow: inset 0 0 0 1px var(--lm-line), var(--lm-rings);
+    }
+
+    & .kanban-column[class*="ring-2"] {
+        background-color: color-mix(in oklab, var(--lm-status, var(--color-accent)) 15%, var(--lm-well));
+    }
+
+    & .kanban-card {
+        --lm-edge: color-mix(in oklab, var(--lm-status, var(--lm-c2)) calc(var(--lm-glow) * 70%), var(--lm-line));
+        background:
+            radial-gradient(260px circle at var(--ptr-x, 50%) var(--ptr-y, -20%), var(--lm-spot), transparent 60%) padding-box,
+            linear-gradient(180deg, color-mix(in oklab, var(--lm-status, transparent) 8%, var(--lm-surface)), var(--lm-surface) 55%) padding-box,
+            linear-gradient(var(--lm-edge), var(--lm-edge)) border-box;
+        border-color: transparent;
+        box-shadow: var(--lm-shadow), var(--lm-rings);
+        transition:
+            --lm-glow var(--motion-duration-standard) var(--motion-ease-premium),
+            --lm-spot var(--motion-duration-standard) var(--motion-ease-premium),
+            box-shadow var(--motion-duration-standard) var(--motion-ease-premium),
+            translate var(--motion-duration-standard) var(--motion-ease-premium),
+            scale var(--motion-duration-standard) var(--motion-ease-premium),
+            opacity var(--motion-duration-standard) var(--motion-ease-premium);
+    }
+
+    & .kanban-card:hover {
+        --lm-glow: 1;
+        --lm-spot: var(--lm-spot-on);
+        box-shadow: 0 1px 2px rgb(16 24 40 / 0.04), 0 16px 30px -18px color-mix(in oklab, var(--lm-status, var(--lm-c2)) 60%, transparent), var(--lm-rings);
+    }
+
+    & .kanban-card > .rounded-md.border {
+        background-color: var(--lm-well);
+        border-color: var(--lm-line);
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 7. Navigation                                                          */
+/* --------------------------------------------------------------------- */
+:root[data-theme="lumen"] {
+    & [data-flux-sidebar-item] {
+        transition:
+            background-color var(--motion-duration-fast) var(--motion-ease-premium),
+            color var(--motion-duration-fast) var(--motion-ease-premium);
+    }
+
+    & [data-flux-sidebar-item]:hover:not([data-current]) {
+        background-color: color-mix(in oklab, var(--color-zinc-500) 8%, transparent);
+    }
+
+    /* The page you're on: a soft rose pill with a sunset edge. */
+    & [data-flux-sidebar-item][data-current] {
+        color: var(--color-accent-content);
+        background:
+            linear-gradient(color-mix(in oklab, var(--lm-c2) 7%, var(--lm-surface)), color-mix(in oklab, var(--lm-c2) 7%, var(--lm-surface))) padding-box,
+            linear-gradient(110deg, color-mix(in oklab, var(--lm-c1) 55%, transparent), color-mix(in oklab, var(--lm-c2) 55%, transparent), color-mix(in oklab, var(--lm-c3) 55%, transparent)) border-box;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        border-color: transparent;
+        box-shadow: 0 4px 12px -6px rgb(214 36 110 / 0.35);
+    }
+
+    & [data-flux-sidebar-item][data-current] [data-flux-icon] {
+        color: var(--color-accent);
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 8. Classic-brand remap                                                 */
+/* --------------------------------------------------------------------- */
+/* The error page hardcodes the classic oxblood as arbitrary gradient/
+shadow colors (light mode only; dark already uses neutrals). Re-point
+those at this theme's accent so the page doesn't carry the classic brand. */
+:root[data-theme="lumen"]:not(.dark) {
+    & [class*="from-[#6b1d2b]"] {
+        --tw-gradient-from: var(--color-accent);
+    }
+
+    & [class*="to-[#8f2c3e]"] {
+        --tw-gradient-to: var(--lm-c3);
+    }
+
+    & [class*="to-[#6b1d2b]/35"] {
+        --tw-gradient-to: color-mix(in oklab, var(--color-accent) 35%, transparent);
+    }
+
+    & [class*="shadow-[#6b1d2b]"] {
+        --tw-shadow-color: color-mix(in oklab, var(--color-accent) 25%, transparent);
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 9. Motion                                                              */
+/* --------------------------------------------------------------------- */
+@keyframes lm-rise {
+    from {
+        opacity: 0;
+        translate: 0 10px;
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    :root[data-theme="lumen"] {
+        & :is(.card-surface, [data-flux-card], .kanban-column) {
+            animation: lm-rise var(--motion-duration-slow) var(--motion-ease-premium) backwards;
+        }
+
+        & :is(.card-surface, [data-flux-card], .kanban-column):nth-child(2) { animation-delay: 60ms; }
+        & :is(.card-surface, [data-flux-card], .kanban-column):nth-child(3) { animation-delay: 120ms; }
+        & :is(.card-surface, [data-flux-card], .kanban-column):nth-child(4) { animation-delay: 180ms; }
+        & :is(.card-surface, [data-flux-card], .kanban-column):nth-child(5) { animation-delay: 240ms; }
+        & :is(.card-surface, [data-flux-card], .kanban-column):nth-child(n + 6) { animation-delay: 300ms; }
+
+        & [data-flux-main] a:is(.rounded-lg, .rounded-xl, .rounded-2xl).border:not([data-flux-button]) {
+            animation: lm-rise var(--motion-duration-slow) var(--motion-ease-premium) 120ms backwards;
+        }
+    }
+}

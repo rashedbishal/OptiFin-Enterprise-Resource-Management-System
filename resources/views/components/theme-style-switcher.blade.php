@@ -3,7 +3,7 @@ every user menu. The two are independent: appearance toggles the .dark
 class, this sets data-theme on <html>, so each style has its own light and
 dark variant. State lives in the `themeStyle` Alpine store
 (resources/js/theme-style.js); styles live in resources/css/themes/*.css.
-Five text labels don't fit a user menu's width, so each style is a small
+Seven text labels don't fit a user menu's width, so each style is a small
 swatch of its material (themes/switcher.css) with the active name below. --}}
 @php
     $styles = [
@@ -12,6 +12,8 @@ swatch of its material (themes/switcher.css) with the active name below. --}}
         'glass' => __('Glass'),
         'titanium' => __('Titanium'),
         'spatial' => __('Spatial'),
+        'lumen' => __('Lumen'),
+        'fjord' => __('Fjord'),
     ];
 @endphp
 

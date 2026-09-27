@@ -91,3 +91,4 @@ describe('theme pointer', () => {
         expect(card.style.getPropertyValue('--ptr-x')).toBe('');
     });
 });
+

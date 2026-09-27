@@ -1,0 +1,663 @@
+/*
+==========================================================================
+THEME STYLE: FJORD  (html[data-theme="fjord"], light + .dark)
+
+Calm Nordic. Warm oat and stone neutrals, one deep pine-sage accent, soft
+long shadows and generous, rounded space — the unhurried clarity of good
+Scandinavian design, for people who live in the app all day. Surfaces are
+warm white paper on an oat canvas; the sidebar is a quiet rail where the
+current page sits as a raised white pill. Light mode is a bright morning;
+dark mode is a deep pine evening.
+
+Self-contained: delete this file and its @import in app.css to remove the
+theme. Selected by resources/js/theme-style.js; the lamplight is fed by
+resources/js/theme-pointer.js (--ptr-x/--ptr-y on the hovered surface —
+without it the light rests at the top).
+
+Every rule is unlayered, so it beats Tailwind utilities (which live in
+@layer utilities) without !important, and the [data-theme] prefix beats the
+classic unlayered rules in app.css on specificity.
+
+MOTION (all on the app's shared --motion-* tokens, deliberately gentle)
+- Settle: content fades up into place on load, staggered.
+- Lamplight: a soft warm light follows the pointer inside cards.
+- Lift: cards-as-links and board cards rise on a deeper, softer shadow and
+  their edge warms to sage.
+- The current nav item is a raised pill; others fade a soft tint on hover.
+- Buttons ease up on hover and settle down on press.
+==========================================================================
+*/
+
+@property --fj-lamp {
+    syntax: '<color>';
+    inherits: false;
+    initial-value: transparent;
+}
+
+/* --------------------------------------------------------------------- */
+/* 1. Tokens                                                              */
+/* --------------------------------------------------------------------- */
+:root[data-theme="fjord"] {
+    --fj-canvas: #f3f1ec;
+    --fj-canvas-image:
+        radial-gradient(ellipse 70% 50% at 0% 0%, rgb(255 255 255 / 0.7), transparent 70%),
+        radial-gradient(ellipse 60% 50% at 100% 100%, rgb(214 226 216 / 0.45), transparent 70%);
+    --fj-rail: #eeebe4;
+    --fj-surface: #fffdf9;
+    --fj-surface-soft: #faf8f4;
+    --fj-well: #f5f2ec;
+    --fj-line: rgb(70 60 40 / 0.1);
+    --fj-line-strong: rgb(70 60 40 / 0.17);
+    --fj-tint: rgb(47 107 87 / 0.07);
+    --fj-lamp-on: rgb(255 236 200 / 0.55);
+
+    --fj-shadow: 0 1px 2px rgb(60 50 30 / 0.05), 0 6px 16px -8px rgb(60 50 30 / 0.08), 0 22px 44px -26px rgb(60 50 30 / 0.16);
+    --fj-shadow-lift: 0 1px 2px rgb(60 50 30 / 0.05), 0 12px 24px -10px rgb(60 50 30 / 0.12), 0 34px 60px -28px rgb(60 50 30 / 0.24);
+    --fj-shadow-float: 0 2px 6px rgb(60 50 30 / 0.06), 0 18px 40px -12px rgb(60 50 30 / 0.16), 0 44px 80px -36px rgb(60 50 30 / 0.24);
+    --fj-pill: 0 1px 2px rgb(60 50 30 / 0.08), 0 4px 12px -4px rgb(60 50 30 / 0.12);
+    --fj-pine: linear-gradient(180deg, #3a7a64 0%, #2c6552 100%);
+    --fj-pine-hover: linear-gradient(180deg, #40846c 0%, #316e59 100%);
+    --fj-halo: color-mix(in oklab, var(--color-accent) 16%, transparent);
+    --fj-rings: var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000);
+
+    --color-accent: #2c6552;
+    --color-accent-content: #285c4a;
+    --color-accent-foreground: #ffffff;
+
+    /* Warm stone neutrals. */
+    --color-zinc-50: #faf9f6;
+    --color-zinc-100: #f3f1ec;
+    --color-zinc-200: #e8e4dc;
+    --color-zinc-300: #d4cec3;
+    --color-zinc-400: #a39d91;
+    --color-zinc-500: #746f65;
+    --color-zinc-600: #58544c;
+    --color-zinc-700: #44413a;
+    --color-zinc-800: #2d2b27;
+    --color-zinc-900: #1d1c19;
+    --color-zinc-950: #121110;
+    --color-gray-200: #e6e1d8;
+
+    --radius-md: 0.55rem;
+    --radius-lg: 0.8rem;
+    --radius-xl: 1rem;
+    --radius-2xl: 1.3rem;
+    --radius-3xl: 1.6rem;
+}
+
+:root[data-theme="fjord"].dark {
+    --fj-canvas: #111513;
+    --fj-canvas-image:
+        radial-gradient(ellipse 70% 50% at 0% 0%, rgb(147 201 176 / 0.06), transparent 70%),
+        radial-gradient(ellipse 60% 50% at 100% 100%, rgb(60 90 78 / 0.18), transparent 70%);
+    --fj-rail: #141917;
+    --fj-surface: #1a1f1d;
+    --fj-surface-soft: #1d2320;
+    --fj-well: #151a18;
+    --fj-line: rgb(220 235 225 / 0.08);
+    --fj-line-strong: rgb(220 235 225 / 0.14);
+    --fj-tint: rgb(147 201 176 / 0.08);
+    --fj-lamp-on: rgb(200 230 212 / 0.05);
+
+    --fj-shadow: 0 0 0 1px rgb(0 0 0 / 0.18), 0 2px 4px rgb(0 0 0 / 0.25), 0 20px 40px -22px rgb(0 0 0 / 0.7);
+    --fj-shadow-lift: 0 0 0 1px rgb(0 0 0 / 0.2), 0 12px 24px -10px rgb(0 0 0 / 0.45), 0 34px 64px -28px rgb(0 0 0 / 0.8);
+    --fj-shadow-float: 0 0 0 1px rgb(0 0 0 / 0.25), 0 20px 44px -12px rgb(0 0 0 / 0.7), 0 44px 90px -36px rgb(0 0 0 / 0.8);
+    --fj-pill: 0 1px 2px rgb(0 0 0 / 0.35), 0 4px 12px -4px rgb(0 0 0 / 0.45);
+    --fj-pine: linear-gradient(180deg, #a3d4bd 0%, #86c1a6 100%);
+    --fj-pine-hover: linear-gradient(180deg, #b2dcc8 0%, #93c9b0 100%);
+
+    --color-accent: #93c9b0;
+    --color-accent-content: #a6d6bf;
+    --color-accent-foreground: #0d1a14;
+
+    --color-zinc-50: #f2f5f3;
+    --color-zinc-100: #e2e8e4;
+    --color-zinc-200: #c7d0ca;
+    --color-zinc-300: #aab5ae;
+    --color-zinc-400: #8b978f;
+    --color-zinc-500: #6c7871;
+    --color-zinc-600: #353e39;
+    --color-zinc-700: #2a322e;
+    --color-zinc-800: #202724;
+    --color-zinc-900: #1a1f1d;
+    --color-zinc-950: #111513;
+    --color-gray-200: #252c29;
+
+    --color-success: var(--color-emerald-400);
+    --color-warning: var(--color-amber-400);
+    --color-error: var(--color-rose-400);
+    --color-info: var(--color-sky-400);
+}
+
+/* --------------------------------------------------------------------- */
+/* 2. Canvas & chrome                                                     */
+/* --------------------------------------------------------------------- */
+:root[data-theme="fjord"] {
+    & body {
+        background-color: var(--fj-canvas);
+        background-image: var(--fj-canvas-image);
+        background-attachment: fixed;
+    }
+
+    & ::selection {
+        background-color: color-mix(in oklab, var(--color-accent) 20%, transparent);
+    }
+
+    & [data-flux-heading] {
+        letter-spacing: -0.015em;
+    }
+
+    & [aria-hidden="true"].blur-3xl {
+        opacity: 0.35;
+    }
+
+    /* The rail: a quiet band a shade deeper than the canvas. */
+    & [data-flux-sidebar] {
+        background-color: var(--fj-rail);
+        background-image: none;
+        border-color: var(--fj-line);
+        box-shadow: none;
+    }
+
+    & .app-topbar,
+    & [data-flux-header] {
+        background-color: color-mix(in oklab, var(--fj-canvas) 82%, transparent);
+        -webkit-backdrop-filter: blur(14px) saturate(140%);
+        backdrop-filter: blur(14px) saturate(140%);
+        border-color: var(--fj-line);
+        box-shadow: none;
+    }
+
+    & [data-flux-main] :is(div, header).border-b:is(.bg-white, [class*="dark:bg-zinc-800"]),
+    & [data-flux-main] .sticky:is(.bg-white, [class*="bg-zinc-"]) {
+        background-color: color-mix(in oklab, var(--fj-canvas) 84%, transparent);
+        -webkit-backdrop-filter: blur(14px) saturate(140%);
+        backdrop-filter: blur(14px) saturate(140%);
+        border-color: var(--fj-line);
+    }
+}
+
+:root[data-theme="fjord"]:not(.dark) :where(.bg-white, [class^="bg-white/"], [class*=" bg-white/"]):not(body) {
+    background-color: var(--fj-surface);
+}
+
+/* --------------------------------------------------------------------- */
+/* 3. Surfaces                                                            */
+/* --------------------------------------------------------------------- */
+:root[data-theme="fjord"] {
+    & .card-surface,
+    & [data-flux-card],
+    & :is(div, section, article, aside, form, ul, dl, fieldset):is(.rounded-md, .rounded-lg, .rounded-xl, .rounded-2xl, .rounded-3xl).border:is(.bg-white, [class^="bg-white/"], [class*=" bg-white/"], .bg-zinc-50, [class^="bg-zinc-50/"], [class*=" bg-zinc-50/"], .shadow-2xs, .shadow-xs, .shadow-sm, .shadow-md):not(.shadow-inner, .border-dashed, .card-surface-nested, [data-flux-sidebar] *, [data-flux-menu] *, .absolute),
+    & [data-flux-main] a:is(.rounded-lg, .rounded-xl, .rounded-2xl).border:not([data-flux-button]) {
+        background-color: var(--fj-surface);
+        background-image: radial-gradient(520px circle at var(--ptr-x, 50%) var(--ptr-y, -30%), var(--fj-lamp), transparent 60%);
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        border-color: var(--fj-line);
+        box-shadow: var(--fj-shadow), var(--fj-rings);
+        transition:
+            --fj-lamp var(--motion-duration-slow) var(--motion-ease-gentle),
+            border-color var(--motion-duration-standard) var(--motion-ease-gentle),
+            box-shadow var(--motion-duration-standard) var(--motion-ease-gentle),
+            translate var(--motion-duration-standard) var(--motion-ease-gentle);
+    }
+
+    & :is(.card-surface, [data-flux-card]):hover {
+        --fj-lamp: var(--fj-lamp-on);
+    }
+
+    & [data-flux-main] a:is(.rounded-lg, .rounded-xl, .rounded-2xl).border:not([data-flux-button]):hover {
+        --fj-lamp: var(--fj-lamp-on);
+        border-color: color-mix(in oklab, var(--color-accent) 32%, var(--fj-line));
+        box-shadow: var(--fj-shadow-lift), var(--fj-rings);
+        translate: 0 -3px;
+    }
+
+    & [data-flux-main] a:is(.rounded-lg, .rounded-xl, .rounded-2xl).border:not([data-flux-button]):focus-visible {
+        outline: none;
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 4px var(--fj-halo), var(--fj-shadow-lift);
+    }
+
+    & .card-surface::before {
+        content: none;
+    }
+
+    & :is(.card-surface, [data-flux-card], [data-flux-modal]) :is(div, section, article, aside, form, ul, dl, fieldset):is(.rounded-md, .rounded-lg, .rounded-xl, .rounded-2xl, .rounded-3xl).border:is(.bg-white, [class^="bg-white/"], [class*=" bg-white/"], .bg-zinc-50, [class^="bg-zinc-50/"], [class*=" bg-zinc-50/"], .shadow-2xs, .shadow-xs, .shadow-sm, .shadow-md):not(.shadow-inner, .border-dashed, .card-surface-nested, [data-flux-menu] *, .absolute) {
+        background-color: var(--fj-surface-soft);
+        background-image: none;
+        border-color: var(--fj-line);
+        box-shadow: var(--fj-rings);
+    }
+
+    & ui-menu[data-flux-menu],
+    & [data-flux-menu],
+    & .notification-panel-elevation,
+    & [data-flux-modal] > dialog.rounded-xl:not([data-flux-flyout]),
+    & [data-flux-modal-content].rounded-xl,
+    & :is(div, ul).absolute.z-50:is(.rounded-lg, .rounded-xl).border,
+    & .flux-toast {
+        background: var(--fj-surface);
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        border: 1px solid var(--fj-line);
+        box-shadow: var(--fj-shadow-float), var(--fj-rings);
+    }
+
+    & [data-flux-modal] > dialog[data-flux-flyout] {
+        background-color: var(--fj-surface);
+        background-image: none;
+        border-color: var(--fj-line);
+        box-shadow: -30px 0 80px -30px rgb(40 32 16 / 0.3);
+    }
+
+    & [data-flux-modal] > dialog::backdrop {
+        background-color: rgb(40 34 24 / 0.22);
+        -webkit-backdrop-filter: blur(5px);
+        backdrop-filter: blur(5px);
+    }
+
+    &.dark [data-flux-modal] > dialog::backdrop {
+        background-color: rgb(4 8 6 / 0.6);
+    }
+
+    & [data-flux-columns] {
+        background-color: var(--fj-surface-soft);
+        background-image: none;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+    }
+
+    & [data-flux-column] {
+        border-bottom-color: var(--fj-line);
+        color: var(--color-zinc-500);
+    }
+
+    & [data-flux-cell] {
+        font-variant-numeric: tabular-nums;
+    }
+
+    & [data-flux-row] {
+        transition: background-color var(--motion-duration-standard) var(--motion-ease-gentle);
+    }
+
+    & [data-flux-row]:hover {
+        background-color: var(--fj-tint);
+    }
+
+    & [data-flux-menu-separator],
+    & [data-flux-separator] {
+        background-color: var(--fj-line);
+    }
+
+    & :is([data-flux-menu-item], [data-flux-menu-radio], [data-flux-menu-checkbox]) {
+        transition: background-color var(--motion-duration-fast) var(--motion-ease-gentle);
+    }
+
+    & :is([data-flux-menu-item], [data-flux-menu-radio], [data-flux-menu-checkbox])[data-active] {
+        background-color: var(--fj-tint);
+    }
+
+    &.dark option {
+        background-color: #1a1f1d;
+        color: #f2f5f3;
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 4. Fields & controls                                                   */
+/* --------------------------------------------------------------------- */
+:root[data-theme="fjord"] {
+    & .card-surface-nested,
+    & [class*="bg-[#fdf6de]"],
+    & :is(div, ul, section).shadow-inner {
+        background-color: var(--fj-well);
+        background-image: none;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        border-color: var(--fj-line);
+        box-shadow: var(--fj-rings);
+    }
+
+    & input[data-flux-control]:not([type="checkbox"], [type="radio"], [type="hidden"], [type="range"], [type="color"]),
+    & textarea[data-flux-control],
+    & select[data-flux-control],
+    & [data-flux-sidebar-search] {
+        background-color: var(--fj-surface);
+        border-color: var(--fj-line-strong);
+        box-shadow: 0 1px 2px rgb(60 50 30 / 0.04), var(--fj-rings);
+        transition:
+            border-color var(--motion-duration-standard) var(--motion-ease-gentle),
+            box-shadow var(--motion-duration-standard) var(--motion-ease-gentle);
+    }
+
+    &.dark :is(input[data-flux-control]:not([type="checkbox"], [type="radio"], [type="hidden"], [type="range"], [type="color"]), textarea[data-flux-control], select[data-flux-control], [data-flux-sidebar-search]) {
+        background-color: var(--fj-well);
+    }
+
+    & input[data-flux-control]:not([type="checkbox"], [type="radio"], [type="hidden"], [type="range"], [type="color"]):hover,
+    & textarea[data-flux-control]:hover,
+    & select[data-flux-control]:hover {
+        border-color: color-mix(in oklab, var(--color-accent) 30%, var(--fj-line-strong));
+    }
+
+    & input[data-flux-control]:not([type="checkbox"], [type="radio"], [type="hidden"], [type="range"], [type="color"]):focus,
+    & textarea[data-flux-control]:focus,
+    & select[data-flux-control]:focus {
+        outline: none;
+        border-color: var(--color-accent);
+        box-shadow: 0 0 0 4px var(--fj-halo);
+    }
+
+    & :is(input, textarea, select)[data-flux-control][data-invalid] {
+        border-color: color-mix(in oklab, var(--color-red-500) 70%, transparent);
+    }
+
+    & [data-flux-input-group-prefix],
+    & [data-flux-input-group-suffix] {
+        background-color: var(--fj-well);
+        border-color: var(--fj-line-strong);
+    }
+
+    & [data-flux-radio-group-segmented] {
+        background-color: var(--fj-well);
+        box-shadow: inset 0 0 0 1px var(--fj-line);
+    }
+
+    & [data-flux-radio-segmented] {
+        transition:
+            background-color var(--motion-duration-standard) var(--motion-ease-gentle),
+            box-shadow var(--motion-duration-standard) var(--motion-ease-gentle),
+            color var(--motion-duration-standard) var(--motion-ease-gentle);
+    }
+
+    & [data-flux-radio-segmented][data-checked] {
+        background-color: var(--fj-surface);
+        color: var(--color-accent-content);
+        box-shadow: var(--fj-pill);
+    }
+
+    &.dark [data-flux-radio-segmented][data-checked] {
+        background-color: var(--color-zinc-700);
+    }
+
+    & [data-flux-switch] {
+        border-color: transparent;
+        background-color: var(--color-zinc-300);
+        transition: background-color var(--motion-duration-standard) var(--motion-ease-gentle);
+    }
+
+    &.dark [data-flux-switch] {
+        background-color: var(--color-zinc-600);
+    }
+
+    & [data-flux-switch][data-checked] {
+        background-color: var(--color-accent);
+        background-image: var(--fj-pine);
+    }
+
+    & [data-flux-switch] > span {
+        background-color: #ffffff;
+        box-shadow: 0 1px 3px rgb(40 32 16 / 0.25);
+        transition: translate var(--motion-duration-standard) var(--motion-ease-premium), transform var(--motion-duration-standard) var(--motion-ease-premium);
+    }
+
+    & [data-flux-checkbox-indicator],
+    & [data-flux-radio-indicator] {
+        background-color: var(--fj-surface);
+        border-color: var(--fj-line-strong);
+        transition: background-color var(--motion-duration-fast) var(--motion-ease-gentle), border-color var(--motion-duration-fast) var(--motion-ease-gentle);
+    }
+
+    & :is(ui-checkbox[data-checked], ui-checkbox[data-indeterminate]) [data-flux-checkbox-indicator],
+    & ui-radio[data-checked] [data-flux-radio-indicator] {
+        background-color: var(--color-accent);
+        background-image: var(--fj-pine);
+        border-color: transparent;
+    }
+
+    & [data-flux-progress] {
+        background-color: var(--fj-well);
+    }
+
+    & .skeleton-shimmer {
+        background-image: linear-gradient(90deg, var(--fj-well) 25%, var(--fj-surface) 50%, var(--fj-well) 75%);
+    }
+
+    & [data-flux-badge] {
+        border-radius: 9999px;
+    }
+
+    & [data-flux-avatar] {
+        box-shadow: 0 0 0 2px var(--fj-surface), 0 0 0 3px var(--fj-line-strong);
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 5. Buttons                                                             */
+/* --------------------------------------------------------------------- */
+:root[data-theme="fjord"] {
+    & [data-flux-button] {
+        transition:
+            background-color var(--motion-duration-standard) var(--motion-ease-gentle),
+            border-color var(--motion-duration-standard) var(--motion-ease-gentle),
+            box-shadow var(--motion-duration-standard) var(--motion-ease-gentle),
+            color var(--motion-duration-standard) var(--motion-ease-gentle),
+            translate var(--motion-duration-standard) var(--motion-ease-gentle),
+            scale var(--motion-duration-fast) var(--motion-ease-gentle);
+    }
+
+    & [data-flux-button]:focus-visible {
+        outline: 2px solid color-mix(in oklab, var(--color-accent) 60%, transparent);
+        outline-offset: 2px;
+    }
+
+    & [data-flux-button]:is([data-flux-variant="outline"], [data-flux-variant="filled"]) {
+        background-color: var(--fj-surface);
+        background-image: none;
+        border-color: var(--fj-line-strong);
+        box-shadow: 0 1px 2px rgb(60 50 30 / 0.06), var(--fj-rings);
+    }
+
+    & [data-flux-button]:is([data-flux-variant="outline"], [data-flux-variant="filled"]):hover {
+        border-color: color-mix(in oklab, var(--color-accent) 30%, var(--fj-line-strong));
+        box-shadow: var(--fj-pill), var(--fj-rings);
+        translate: 0 -1px;
+    }
+
+    & [data-flux-button][data-flux-variant="primary"] {
+        color: var(--color-accent-foreground);
+        background-color: var(--color-accent);
+        background-image: var(--fj-pine);
+        border-color: transparent;
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18), 0 6px 14px -8px rgb(44 101 82 / 0.7), var(--fj-rings);
+    }
+
+    & [data-flux-button][data-flux-variant="primary"] :is([data-flux-icon], svg) {
+        color: var(--color-accent-foreground);
+    }
+
+    & [data-flux-button][data-flux-variant="primary"]:hover {
+        background-image: var(--fj-pine-hover);
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.2), 0 12px 22px -10px rgb(44 101 82 / 0.75), var(--fj-rings);
+        translate: 0 -1px;
+    }
+
+    & [data-flux-button][data-flux-variant="danger"] {
+        background-image: linear-gradient(180deg, #c8553d, #b0432d);
+        border-color: transparent;
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.16), 0 6px 14px -8px rgb(176 67 45 / 0.6), var(--fj-rings);
+    }
+
+    & [data-flux-button][data-flux-variant="danger"]:hover {
+        translate: 0 -1px;
+    }
+
+    & [data-flux-button]:is([data-flux-variant="ghost"], [data-flux-variant="subtle"]):not([data-flux-input] *):hover {
+        background-color: var(--fj-tint);
+    }
+
+    & [data-flux-button]:active:not(:disabled) {
+        translate: 0 0;
+        scale: 0.98;
+        transition-duration: 120ms;
+    }
+
+    & [data-flux-button]:disabled,
+    & [data-flux-button][disabled] {
+        translate: none;
+        box-shadow: none;
+    }
+
+    & [data-flux-main] button.border[class*="shadow"]:not([data-flux-button], .shadow-none, .kanban-card) {
+        background-color: var(--fj-surface);
+        background-image: none;
+        border-color: var(--fj-line-strong);
+        box-shadow: 0 1px 2px rgb(60 50 30 / 0.06), var(--fj-rings);
+    }
+
+    & :is([data-flux-sidebar-profile], [data-flux-profile]):hover {
+        background-color: var(--fj-tint);
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 6. Kanban — soft lanes, paper cards                                    */
+/* --------------------------------------------------------------------- */
+:root[data-theme="fjord"] {
+    & :is(.kanban-column, .kanban-card) {
+        &[class*="bg-blue-"] { --fj-status: #5b7fa6; }
+        &[class*="bg-sky-"] { --fj-status: #5b97b3; }
+        &[class*="bg-indigo-"] { --fj-status: #6f74b0; }
+        &[class*="bg-amber-"] { --fj-status: #c6974a; }
+        &[class*="bg-orange-"] { --fj-status: #c67a4a; }
+        &[class*="bg-green-"] { --fj-status: #5f9a6e; }
+        &[class*="bg-red-"] { --fj-status: #c2604f; }
+        &[class*="bg-emerald-"] { --fj-status: #4f9a80; }
+        &[class*="bg-purple-"] { --fj-status: #8f71ad; }
+        &[class*="bg-teal-"] { --fj-status: #4b9a98; }
+        &[class*="bg-pink-"] { --fj-status: #c0718f; }
+        &[class*="bg-zinc-"] { --fj-status: #9a948a; }
+    }
+
+    & .kanban-column {
+        background-color: color-mix(in oklab, var(--fj-status, var(--fj-well)) 9%, var(--fj-well));
+        box-shadow: inset 0 0 0 1px var(--fj-line), var(--fj-rings);
+    }
+
+    & .kanban-column[class*="ring-2"] {
+        background-color: color-mix(in oklab, var(--fj-status, var(--color-accent)) 18%, var(--fj-well));
+    }
+
+    /* Paper cards with a soft status wash along the left. */
+    & .kanban-card {
+        background-color: var(--fj-surface);
+        background-image:
+            radial-gradient(260px circle at var(--ptr-x, 50%) var(--ptr-y, -30%), var(--fj-lamp), transparent 60%),
+            linear-gradient(90deg, color-mix(in oklab, var(--fj-status, transparent) 14%, transparent), transparent 42%);
+        border-color: var(--fj-line);
+        box-shadow: inset 3px 0 0 color-mix(in oklab, var(--fj-status, var(--color-accent)) 70%, transparent), var(--fj-shadow), var(--fj-rings);
+        transition:
+            --fj-lamp var(--motion-duration-slow) var(--motion-ease-gentle),
+            border-color var(--motion-duration-standard) var(--motion-ease-gentle),
+            box-shadow var(--motion-duration-standard) var(--motion-ease-gentle),
+            translate var(--motion-duration-standard) var(--motion-ease-gentle),
+            scale var(--motion-duration-standard) var(--motion-ease-gentle),
+            opacity var(--motion-duration-standard) var(--motion-ease-gentle);
+    }
+
+    & .kanban-card:hover {
+        --fj-lamp: var(--fj-lamp-on);
+        border-color: color-mix(in oklab, var(--fj-status, var(--color-accent)) 35%, var(--fj-line));
+        box-shadow: inset 3px 0 0 var(--fj-status, var(--color-accent)), var(--fj-shadow-lift), var(--fj-rings);
+    }
+
+    & .kanban-card > .rounded-md.border {
+        background-color: var(--fj-well);
+        border-color: var(--fj-line);
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 7. Navigation                                                          */
+/* --------------------------------------------------------------------- */
+:root[data-theme="fjord"] {
+    & [data-flux-sidebar-item] {
+        transition:
+            background-color var(--motion-duration-standard) var(--motion-ease-gentle),
+            box-shadow var(--motion-duration-standard) var(--motion-ease-gentle),
+            color var(--motion-duration-standard) var(--motion-ease-gentle);
+    }
+
+    & [data-flux-sidebar-item]:hover:not([data-current]) {
+        background-color: color-mix(in oklab, var(--color-zinc-500) 9%, transparent);
+    }
+
+    /* The page you're on is a raised white pill on the rail. */
+    & [data-flux-sidebar-item][data-current] {
+        color: var(--color-accent-content);
+        background-color: var(--fj-surface);
+        background-image: none;
+        -webkit-backdrop-filter: none;
+        backdrop-filter: none;
+        border-color: var(--fj-line);
+        box-shadow: var(--fj-pill);
+    }
+
+    &.dark [data-flux-sidebar-item][data-current] {
+        background-color: var(--color-zinc-800);
+    }
+
+    & [data-flux-sidebar-item][data-current] [data-flux-icon] {
+        color: var(--color-accent);
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 8. Classic-brand remap                                                 */
+/* --------------------------------------------------------------------- */
+:root[data-theme="fjord"]:not(.dark) {
+    & [class*="from-[#6b1d2b]"] {
+        --tw-gradient-from: var(--color-accent);
+    }
+
+    & [class*="to-[#8f2c3e]"] {
+        --tw-gradient-to: color-mix(in oklab, var(--color-accent), white 22%);
+    }
+
+    & [class*="to-[#6b1d2b]/35"] {
+        --tw-gradient-to: color-mix(in oklab, var(--color-accent) 35%, transparent);
+    }
+
+    & [class*="shadow-[#6b1d2b]"] {
+        --tw-shadow-color: color-mix(in oklab, var(--color-accent) 25%, transparent);
+    }
+}
+
+/* --------------------------------------------------------------------- */
+/* 9. Motion                                                              */
+/* --------------------------------------------------------------------- */
+@keyframes fj-settle {
+    from {
+        opacity: 0;
+        translate: 0 8px;
+    }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    :root[data-theme="fjord"] {
+        & :is(.card-surface, [data-flux-card], .kanban-column) {
+            animation: fj-settle var(--motion-duration-slow) var(--motion-ease-gentle) backwards;
+        }
+
+        & :is(.card-surface, [data-flux-card], .kanban-column):nth-child(2) { animation-delay: 70ms; }
+        & :is(.card-surface, [data-flux-card], .kanban-column):nth-child(3) { animation-delay: 140ms; }
+        & :is(.card-surface, [data-flux-card], .kanban-column):nth-child(4) { animation-delay: 210ms; }
+        & :is(.card-surface, [data-flux-card], .kanban-column):nth-child(5) { animation-delay: 280ms; }
+        & :is(.card-surface, [data-flux-card], .kanban-column):nth-child(n + 6) { animation-delay: 350ms; }
+
+        & [data-flux-main] a:is(.rounded-lg, .rounded-xl, .rounded-2xl).border:not([data-flux-button]) {
+            animation: fj-settle var(--motion-duration-slow) var(--motion-ease-gentle) 140ms backwards;
+        }
+    }
+}

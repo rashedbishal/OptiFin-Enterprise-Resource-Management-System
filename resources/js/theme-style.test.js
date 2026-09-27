@@ -27,7 +27,7 @@ describe('theme style', () => {
     });
 
     it('accepts every shipped style', () => {
-        for (const style of ['classic', 'neo', 'glass', 'titanium', 'spatial']) {
+        for (const style of ['classic', 'neo', 'glass', 'titanium', 'spatial', 'lumen', 'fjord']) {
             window.localStorage.setItem(STORAGE_KEY, style);
             expect(readThemeStyle()).toBe(style);
         }

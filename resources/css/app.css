@@ -9,6 +9,8 @@ self-contained; delete it and its import to drop that style. */
 @import './themes/glass.css';
 @import './themes/titanium.css';
 @import './themes/spatial.css';
+@import './themes/lumen.css';
+@import './themes/fjord.css';
 @import './themes/switcher.css';
 
 @source '../views';
@@ -1376,10 +1378,10 @@ cream cards and in dark mode both sides read.
     --neo-lo: rgb(0 0 0 / 0.55);
 }
 
-/* Classic style only — data-theme="neo"/"glass"/"titanium"/"spatial" (resources/css/themes/)
+/* Classic style only — every other data-theme (resources/css/themes/)
 ship their own complete shadow systems, and these unlayered rules would
 otherwise leak into them. Nesting keeps the classic output identical. */
-:root:not([data-theme="neo"], [data-theme="glass"], [data-theme="titanium"], [data-theme="spatial"]) {
+:root:not([data-theme="neo"], [data-theme="glass"], [data-theme="titanium"], [data-theme="spatial"], [data-theme="lumen"], [data-theme="fjord"]) {
     /* Raised surfaces. The hand-built card selector matches the pattern the
     tenant pages use for their own cards (rounded + border + a shadow-*
     utility) inside page content, excluding form controls and buttons. */
