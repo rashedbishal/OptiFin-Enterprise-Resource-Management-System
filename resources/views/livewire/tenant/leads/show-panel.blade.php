@@ -6,9 +6,9 @@
     {{-- Compact cards flow into as many ≥20rem columns as the panel's
     own width allows (1 on phones, 2–3 on desktop) instead of each
     stretching full-width. auto-fit sizes off the container, not the
-    viewport, and items-start keeps every card at its natural height
-    (see .ai/rules/tenant-leads.md for why stretched rows backfire). --}}
-    <div class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] items-start gap-5">
+    viewport. Fixed row tracks keep each visible card boundary aligned;
+    unbounded card content scrolls inside its own card. --}}
+    <div class="grid auto-rows-[30rem] grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] items-stretch gap-5">
         @include('livewire.tenant.leads.partials.score-breakdown', ['lead' => $lead, 'compact' => true])
 
         @include('livewire.tenant.leads.partials.deals-card', ['lead' => $lead])

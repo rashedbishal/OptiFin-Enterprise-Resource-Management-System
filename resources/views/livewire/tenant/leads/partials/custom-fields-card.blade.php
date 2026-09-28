@@ -7,7 +7,7 @@
     $canUpdate = $this->canUpdate;
 @endphp
 
-<flux:card class="flex flex-col gap-4">
+<flux:card class="h-full flex flex-col gap-4">
     <div class="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 pb-3 dark:border-zinc-800">
         <div class="flex items-center gap-2">
             <div class="flex size-7 items-center justify-center rounded-lg bg-teal-50 text-teal-600 dark:bg-teal-950/60 dark:text-teal-400">
@@ -102,4 +102,3 @@
         </div>
     @endif
 </flux:card>
-

@@ -152,9 +152,9 @@
             @endif
 
             {{-- Compact cards flow into as many ≥20rem columns as the page
-            width allows instead of each stretching full-width — same grid as
-            show-panel.blade.php's. items-start keeps natural card heights. --}}
-            <div class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] items-start gap-6">
+            width allows instead of each stretching full-width — same fixed-row
+            grid as show-panel.blade.php's, keeping card boundaries aligned. --}}
+            <div class="grid auto-rows-[30rem] grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] items-stretch gap-6">
                 @include('livewire.tenant.leads.partials.score-breakdown', ['lead' => $lead])
 
                 @include('livewire.tenant.leads.partials.deals-card', ['lead' => $lead])

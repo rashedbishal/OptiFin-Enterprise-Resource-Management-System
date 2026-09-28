@@ -3,6 +3,8 @@ paths:
   - resources/views/livewire/tenant/leads/partials/pipeline-stepper.blade.php
   - resources/views/livewire/tenant/leads/partials/lead-hero.blade.php
   - 'resources/views/livewire/tenant/leads/partials/{deals-card,tasks-card,notes-card}.blade.php'
+  - resources/views/livewire/tenant/leads/partials/notes-card.blade.php
+  - resources/views/livewire/tenant/leads/partials/calls-card.blade.php
 ---
 
 # Leads Partials
@@ -29,3 +31,12 @@ Two regressions to keep fixed together. (1) Chevron overlap (fixed in 10bc8ed): 
 
 ## Cap unbounded compact-card lists
 Deals, Tasks, and Notes are unbounded lists shared by the client-user flyout and client-admin detail page. Keep each list body at max-h-96 with overflow-y-auto and overscroll-contain, leaving the card header/actions outside the scroll region so additions cannot grow the detail surface indefinitely.
+
+## Notes need a larger viewport-aware scroll area
+Supersedes the Notes portion of “Cap unbounded compact-card lists”: notes remain internally scrollable, but use max-h-[min(36rem,calc(100dvh-12rem))] so a note's content is readable without allowing the card to grow beyond the viewport. Deals and Tasks retain max-h-96.
+
+## Calls card uses only implemented inbound-call state
+The Calls card must use the existing LeadCall status/claimant data and direct WhatsApp lead source check. Do not reference outbound-call permissions, callable WhatsApp source resolvers, CallDirection, or associated Livewire actions unless their model, resolver, enum, and component API are implemented together; dangling references prevent every lead detail page from rendering.
+
+## Notes need large fixed list and tile dimensions
+Supersedes “Notes need a larger viewport-aware scroll area”: the viewport-aware cap made Notes too short in flyouts. Keep the list at max-h-[48rem] with internal scrolling, and each note tile at min-h-32 so its content has a readable area. Deals and Tasks remain max-h-96.

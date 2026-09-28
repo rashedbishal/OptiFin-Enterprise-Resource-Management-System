@@ -6,7 +6,7 @@
     $canUpdate = $this->canUpdate;
 @endphp
 
-<flux:card class="flex flex-col gap-4">
+<flux:card class="h-full flex flex-col gap-4">
     <div class="flex flex-wrap items-center justify-between gap-2">
         <flux:heading size="lg">{{ __('Tasks') }}</flux:heading>
         @if ($canUpdate)
@@ -14,7 +14,7 @@
         @endif
     </div>
 
-    <div data-test="lead-tasks-list" class="flex max-h-96 flex-col gap-3.5 overflow-y-auto overscroll-contain pe-1">
+    <div data-test="lead-tasks-list" class="min-h-0 flex flex-1 flex-col gap-3.5 overflow-y-auto overscroll-contain pe-1">
         @forelse ($this->tasks as $task)
             @php
             // "Overdue" (this row's own red visual cue) is deliberately a
