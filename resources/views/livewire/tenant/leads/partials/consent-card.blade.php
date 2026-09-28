@@ -8,7 +8,7 @@
     $consents = $this->currentConsents;
 @endphp
 
-<flux:card class="h-full flex flex-col gap-4">
+<flux:card class="flex flex-col gap-4">
     <flux:heading size="lg">{{ __('Consent') }}</flux:heading>
 
     <div class="flex flex-col gap-3">
