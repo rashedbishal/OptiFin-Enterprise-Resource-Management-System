@@ -76,7 +76,7 @@ test('a WhatsApp lead without calls shows the card with its empty state', functi
     lccShow($x)->assertSee('No calls yet.')->assertSeeHtml('data-test="lead-calls-card"');
 });
 
-test('the Calls card can stretch to match its row peers', function () {
+test('the Calls card stays compact and scrolls its call history internally', function () {
     $x = Lc::make();
 
     $html = lccShow($x)->html();
@@ -89,7 +89,9 @@ test('the Calls card can stretch to match its row peers', function () {
 
     expect($callsRow)->not->toBeNull();
     expect($callsRow->getAttribute('class'))->toContain('items-stretch');
-    expect($callsCard)->toContain('min-h-96 overflow-hidden');
+    expect($callsCard)
+        ->toContain('h-96 overflow-hidden')
+        ->toContain('min-h-0 flex-1 gap-3 overflow-y-auto overscroll-contain pe-1');
 });
 
 test('a lead from another channel shows the card only once it has calls', function () {
