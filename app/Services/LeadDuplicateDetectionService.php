@@ -6,6 +6,7 @@ use App\Enums\LeadDuplicateLinkStatus;
 use App\Models\Lead;
 use App\Models\LeadDuplicateLink;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
@@ -139,18 +140,38 @@ class LeadDuplicateDetectionService
     {
         [$leadId, $duplicateLeadId] = LeadDuplicateLink::pairKeys($a, $b);
 
-        LeadDuplicateLink::query()->firstOrCreate(
-            [
+        // Race-safe equivalent of firstOrCreate(): this runs on every live
+        // detail-page view (detectFor() is not gated behind any explicit
+        // action), so two concurrent viewers of the same lead — or of the
+        // two leads in this exact pair — can both see no existing link and
+        // both attempt create(). A plain firstOrCreate() has no recovery
+        // for that; the loser's INSERT hits the real
+        // unique(lead_id, duplicate_lead_id) constraint uncaught.
+        $exists = LeadDuplicateLink::query()
+            ->where('lead_id', $leadId)
+            ->where('duplicate_lead_id', $duplicateLeadId)
+            ->exists();
+
+        if ($exists) {
+            return;
+        }
+
+        try {
+            LeadDuplicateLink::query()->create([
                 'lead_id' => $leadId,
                 'duplicate_lead_id' => $duplicateLeadId,
-            ],
-            [
                 'tenant_id' => $a->tenant_id,
                 'status' => LeadDuplicateLinkStatus::Pending,
                 'matched_fields' => $matchedFields,
                 'detected_at' => now(),
-            ],
-        );
+            ]);
+        } catch (UniqueConstraintViolationException) {
+            // Lost the race: a concurrent call recorded this exact pair
+            // first, between our own exists() check and this create().
+            // firstOrCreate()'s own intent is "ensure a row exists, never
+            // touch one that already does" — losing the race IS that
+            // outcome, so there is nothing further to reconcile.
+        }
     }
 
     public static function normalizeEmail(?string $email): ?string

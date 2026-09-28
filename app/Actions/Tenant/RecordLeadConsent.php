@@ -8,6 +8,7 @@ use App\Enums\ConsentType;
 use App\Models\Lead;
 use App\Models\LeadConsent;
 use App\Models\LeadConsentEvent;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -55,10 +56,44 @@ class RecordLeadConsent
                 'occurred_at' => now(),
             ];
 
-            $consent = LeadConsent::updateOrCreate(
-                ['lead_id' => $lead->id, 'consent_type' => $type],
-                $attributes,
-            );
+            // Race-safe equivalent of updateOrCreate(['lead_id' => ...,
+            // 'consent_type' => ...], $attributes): a plain updateOrCreate()
+            // has no recovery when two concurrent callers (Grant/Withdraw,
+            // a Website Form submission, or two admins) both see no
+            // existing row and both attempt create() — the loser's INSERT
+            // hits the real unique(lead_id, consent_type) constraint
+            // uncaught. This preserves the exact same "whichever write
+            // lands last wins" semantics as before (never a freshness/
+            // timestamp comparison, unlike LeadCallPermission's writers) —
+            // only the create-then-recover shape is new.
+            $consent = LeadConsent::query()->where('lead_id', $lead->id)->where('consent_type', $type)->first();
+
+            if ($consent === null) {
+                try {
+                    // withSavepointIfNeeded() equivalent: this whole method
+                    // already runs inside the outer DB::transaction() above
+                    // (transactionLevel() > 0), so a nested DB::transaction()
+                    // here is a SAVEPOINT, not a second real transaction —
+                    // critical on Postgres, where an uncaught constraint
+                    // violation otherwise leaves the OUTER transaction
+                    // aborted even after this catch, failing every
+                    // statement after it (the recovery re-read below, and
+                    // the LeadConsentEvent::create() after this whole
+                    // if/else) with "current transaction is aborted".
+                    $consent = DB::transaction(fn () => LeadConsent::query()->create($attributes));
+                } catch (UniqueConstraintViolationException) {
+                    // Lost the race: a concurrent call for this same
+                    // lead+type created the row first, between our own read
+                    // above and this create(). Re-read it and fall through
+                    // to the same unconditional update every call below
+                    // already makes — this call's own attributes still win
+                    // if it's genuinely the last write to land.
+                    $consent = LeadConsent::query()->where('lead_id', $lead->id)->where('consent_type', $type)->firstOrFail();
+                    $consent->update($attributes);
+                }
+            } else {
+                $consent->update($attributes);
+            }
 
             LeadConsentEvent::create($attributes);
 

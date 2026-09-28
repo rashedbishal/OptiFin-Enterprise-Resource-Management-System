@@ -5,6 +5,7 @@ namespace App\Actions\Tenant;
 use App\Models\Lead;
 use App\Models\LeadCustomFieldDefinition;
 use App\Models\LeadCustomFieldValue;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -93,12 +94,45 @@ class SaveLeadCustomFieldValues
             return true;
         }
 
-        LeadCustomFieldValue::create([
-            'tenant_id' => $definition->tenant_id,
-            'lead_id' => $lead->id,
-            'lead_custom_field_definition_id' => $definition->id,
-            'value' => $stringValue,
-        ]);
+        // Race-safe create: two concurrent submissions for this same
+        // lead+definition can both observe $existing === null above and
+        // both attempt create() — a plain create() has no recovery for
+        // that, and the loser's INSERT hits the real
+        // unique(lead_id, lead_custom_field_definition_id) constraint
+        // uncaught, aborting this whole submission's DB::transaction() (see
+        // handle()) and rolling back every OTHER field in the same
+        // submission along with it.
+        try {
+            // withSavepointIfNeeded() equivalent: handle() already runs
+            // this inside its own DB::transaction() (transactionLevel() >
+            // 0), so a nested DB::transaction() here is a SAVEPOINT — on
+            // Postgres, an uncaught constraint violation would otherwise
+            // leave the OUTER transaction aborted even after this catch,
+            // failing the recovery re-read below and every other field's
+            // own write in the same submission.
+            DB::transaction(fn () => LeadCustomFieldValue::create([
+                'tenant_id' => $definition->tenant_id,
+                'lead_id' => $lead->id,
+                'lead_custom_field_definition_id' => $definition->id,
+                'value' => $stringValue,
+            ]));
+        } catch (UniqueConstraintViolationException) {
+            // Lost the race: a concurrent submission created the row first,
+            // between our own read above and this create(). Re-read it and
+            // apply this call's own value through the same update path the
+            // pre-existing-row branch above already uses — "changed" only
+            // if the value actually differs.
+            $existing = LeadCustomFieldValue::query()
+                ->where('lead_id', $lead->id)
+                ->where('lead_custom_field_definition_id', $definition->id)
+                ->firstOrFail();
+
+            if ($existing->value === $stringValue) {
+                return false;
+            }
+
+            $existing->update(['value' => $stringValue]);
+        }
 
         return true;
     }

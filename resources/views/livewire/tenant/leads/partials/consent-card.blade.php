@@ -37,9 +37,9 @@
 
                 @if ($canUpdate)
                     @if ($consent?->status->value === 'granted')
-                        <flux:button size="sm" variant="danger" wire:click="withdrawConsent('{{ $type->value }}')">{{ __('Withdraw') }}</flux:button>
+                        <flux:button size="sm" variant="danger" wire:click="withdrawConsent('{{ $type->value }}')" wire:loading.attr="disabled" wire:target="withdrawConsent('{{ $type->value }}')">{{ __('Withdraw') }}</flux:button>
                     @else
-                        <flux:button size="sm" wire:click="grantConsent('{{ $type->value }}')">{{ __('Grant') }}</flux:button>
+                        <flux:button size="sm" wire:click="grantConsent('{{ $type->value }}')" wire:loading.attr="disabled" wire:target="grantConsent('{{ $type->value }}')">{{ __('Grant') }}</flux:button>
                     @endif
                 @endif
             </div>
