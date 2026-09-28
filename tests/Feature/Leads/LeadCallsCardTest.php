@@ -76,6 +76,22 @@ test('a WhatsApp lead without calls shows the card with its empty state', functi
     lccShow($x)->assertSee('No calls yet.')->assertSeeHtml('data-test="lead-calls-card"');
 });
 
+test('the Calls card can stretch to match its row peers', function () {
+    $x = Lc::make();
+
+    $html = lccShow($x)->html();
+    $callsCard = lccCardHtml($html);
+    $document = new DOMDocument;
+    libxml_use_internal_errors(true);
+    $document->loadHTML('<?xml encoding="utf-8" ?>'.$html);
+    libxml_clear_errors();
+    $callsRow = (new DOMXPath($document))->query('//*[@data-test="lead-calls-card"]/parent::*')->item(0);
+
+    expect($callsRow)->not->toBeNull();
+    expect($callsRow->getAttribute('class'))->toContain('items-stretch');
+    expect($callsCard)->toContain('min-h-96 overflow-hidden');
+});
+
 test('a lead from another channel shows the card only once it has calls', function () {
     $x = Lc::make();
     $manual = LeadSource::factory()->create(['tenant_id' => $x->tenant->id, 'type' => LeadSourceType::Manual]);
