@@ -60,6 +60,30 @@ class WhatsAppCallingClient
         ], retryOnce: false, parse: fn (array $body): ?array => $this->requireSuccessFlag($body));
     }
 
+    /**
+     * WhatsApp Outbound Calling — GET the consumer's current call permission
+     * state (`GET /{phone_number_id}/call_permissions?user_wa_id=...`). Uses
+     * the existing `calling.graph_version` (unchanged) — this is a read
+     * endpoint, not the outbound `/calls` connect action, which is what
+     * needs `calling.outbound_graph_version` instead.
+     *
+     * `data`: permission (status: no_permission|temporary|permanent,
+     * expiration_time), actions (a list of {action_name, can_perform_action,
+     * limits}) — preserved whole and dynamic, exactly as Meta returns it.
+     * Callers must read `can_perform_action`/`limits` live for every gating
+     * decision and must never hardcode a rate-limit number.
+     */
+    public function checkCallPermission(string $consumerWaId): CallingApiResult
+    {
+        return $this->request(
+            'GET',
+            'call_permissions',
+            ['user_wa_id' => $consumerWaId],
+            retryOnce: true,
+            parse: fn (array $body): array => $this->parseCallPermission($body),
+        );
+    }
+
     public function preAccept(string $callId, string $sdpAnswer): CallingApiResult
     {
         return $this->callAction('pre_accept', $callId, $sdpAnswer);
@@ -80,6 +104,42 @@ class WhatsAppCallingClient
         return $this->callAction('terminate', $callId);
     }
 
+    /**
+     * WhatsApp Outbound Calling — initiates a business-initiated call
+     * (`action: "connect"`, `session.sdp_type: "offer"`). Sent exactly once,
+     * never retried (same POST-safety reasoning as every other call action:
+     * a timeout here is ambiguous, and Meta may already be ringing the
+     * consumer). Uses `calling.outbound_graph_version`, never
+     * `calling.graph_version` — the one call site in this class that
+     * doesn't.
+     *
+     * `data`: `wacid` — the call id Meta's synchronous response returns
+     * (`calls[0].id`, per the verified contract), which becomes this call's
+     * `external_call_id` the moment this result is applied.
+     */
+    public function connect(string $to, string $sdpOffer, ?string $bizOpaqueCallbackData = null): CallingApiResult
+    {
+        $body = [
+            'messaging_product' => 'whatsapp',
+            'to' => $to,
+            'action' => 'connect',
+            'session' => ['sdp_type' => 'offer', 'sdp' => $sdpOffer],
+        ];
+
+        if ($bizOpaqueCallbackData !== null) {
+            $body['biz_opaque_callback_data'] = $bizOpaqueCallbackData;
+        }
+
+        return $this->request(
+            'POST',
+            'calls',
+            $body,
+            retryOnce: false,
+            parse: fn (array $response): ?array => $this->parseConnect($response),
+            graphVersion: config('calling.outbound_graph_version'),
+        );
+    }
+
     private function callAction(string $action, string $callId, ?string $sdpAnswer = null): CallingApiResult
     {
         $body = [
@@ -98,8 +158,9 @@ class WhatsAppCallingClient
     /**
      * @param  array<string, mixed>|null  $body
      * @param  callable(array<string, mixed>): (array<string, mixed>|null)  $parse  Returns the safe data array, or null when the 2xx body is not what the endpoint documents.
+     * @param  string|null  $graphVersion  Defaults to calling.graph_version (every existing action). Only connect() (WhatsApp Outbound Calling) passes calling.outbound_graph_version instead — no other call site is affected by this parameter existing.
      */
-    private function request(string $method, string $path, ?array $body, bool $retryOnce, callable $parse): CallingApiResult
+    private function request(string $method, string $path, ?array $body, bool $retryOnce, callable $parse, ?string $graphVersion = null): CallingApiResult
     {
         $config = $this->source->config;
         $phoneNumberId = is_array($config) ? ($config['phone_number_id'] ?? null) : null;
@@ -111,7 +172,7 @@ class WhatsAppCallingClient
 
         $url = sprintf(
             'https://graph.facebook.com/%s/%s/%s',
-            config('calling.graph_version'),
+            $graphVersion ?? config('calling.graph_version'),
             rawurlencode($phoneNumberId),
             $path,
         );
@@ -124,7 +185,10 @@ class WhatsAppCallingClient
 
             try {
                 $pending = $this->pending($accessToken);
-                $response = $method === 'GET' ? $pending->get($url) : $pending->asJson()->post($url, $body ?? []);
+                // $body doubles as the query string for a GET (e.g.
+                // checkCallPermission()'s user_wa_id) — harmless for every
+                // existing GET (getSettings() never passes one).
+                $response = $method === 'GET' ? $pending->get($url, $body ?? []) : $pending->asJson()->post($url, $body ?? []);
             } catch (ConnectionException) {
                 if ($isLastAttempt) {
                     return CallingApiResult::failure(CallingApiError::Network, null, null, null, $this->elapsedMs($startedAt));
@@ -256,6 +320,71 @@ class WhatsAppCallingClient
         }
 
         return $restrictions;
+    }
+
+    /**
+     * @param  array<string, mixed>  $response
+     * @return array{wacid: string}|null null when the 2xx body doesn't carry calls[0].id, per Meta's documented contract
+     */
+    private function parseConnect(array $response): ?array
+    {
+        $calls = is_array($response['calls'] ?? null) ? $response['calls'] : [];
+        $first = is_array($calls[0] ?? null) ? $calls[0] : [];
+        $wacid = $first['id'] ?? null;
+
+        return is_string($wacid) && $wacid !== '' ? ['wacid' => $wacid] : null;
+    }
+
+    /**
+     * Parse a call_permissions GET defensively — every field optional/typed
+     * defensively, exactly like parseSettings() above. `actions`/`limits`
+     * are preserved as plain, dynamic arrays rather than collapsed into a
+     * boolean, so a caller can read `can_perform_action` and every
+     * `limits[]` entry live instead of any value being hardcoded here.
+     *
+     * @param  array<string, mixed>  $body
+     * @return array{status: ?string, expiration_time: ?int, actions: array<int, array{action_name: ?string, can_perform_action: bool, limits: array<int, array{time_period: ?string, max_allowed: ?int, current_usage: ?int, limit_expiration_time: ?int}>}>}
+     */
+    private function parseCallPermission(array $body): array
+    {
+        $permission = is_array($body['permission'] ?? null) ? $body['permission'] : [];
+        $status = $permission['status'] ?? null;
+        $expiration = $permission['expiration_time'] ?? null;
+
+        $actions = [];
+
+        foreach ((is_array($body['actions'] ?? null) ? $body['actions'] : []) as $action) {
+            if (! is_array($action)) {
+                continue;
+            }
+
+            $limits = [];
+
+            foreach ((is_array($action['limits'] ?? null) ? $action['limits'] : []) as $limit) {
+                if (! is_array($limit)) {
+                    continue;
+                }
+
+                $limits[] = [
+                    'time_period' => is_string($limit['time_period'] ?? null) ? $limit['time_period'] : null,
+                    'max_allowed' => is_numeric($limit['max_allowed'] ?? null) ? (int) $limit['max_allowed'] : null,
+                    'current_usage' => is_numeric($limit['current_usage'] ?? null) ? (int) $limit['current_usage'] : null,
+                    'limit_expiration_time' => is_numeric($limit['limit_expiration_time'] ?? null) ? (int) $limit['limit_expiration_time'] : null,
+                ];
+            }
+
+            $actions[] = [
+                'action_name' => is_string($action['action_name'] ?? null) ? $action['action_name'] : null,
+                'can_perform_action' => ($action['can_perform_action'] ?? false) === true,
+                'limits' => $limits,
+            ];
+        }
+
+        return [
+            'status' => is_string($status) ? $status : null,
+            'expiration_time' => is_numeric($expiration) ? (int) $expiration : null,
+            'actions' => $actions,
+        ];
     }
 
     private function elapsedMs(int|float $startedAt): int

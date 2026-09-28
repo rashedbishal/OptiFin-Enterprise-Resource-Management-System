@@ -7,6 +7,8 @@
     $softphoneConfig = [
         'userId' => (string) $userId,
         'pollMs' => (int) config('calling.softphone_poll_seconds', 5) * 1000,
+        'heartbeatMs' => (int) config('calling.softphone_heartbeat_seconds', 15) * 1000,
+        'staleMs' => (int) config('calling.softphone_staleness_seconds', 20) * 1000,
         'urls' => [
             'active' => route('tenant-lead-calls.active'),
             'claim' => route('tenant-lead-calls.claim', '__CALL__'),
@@ -14,6 +16,11 @@
             'accept' => route('tenant-lead-calls.accept', '__CALL__'),
             'reject' => route('tenant-lead-calls.reject', '__CALL__'),
             'hangup' => route('tenant-lead-calls.hangup', '__CALL__'),
+            // WhatsApp Outbound Calling
+            'initiateOutbound' => route('tenant-lead-calls.initiate-outbound', '__LEAD__'),
+            'outboundAnswer' => route('tenant-lead-calls.outbound-answer', '__CALL__'),
+            'cancelOutbound' => route('tenant-lead-calls.cancel-outbound', '__CALL__'),
+            'outboundConnected' => route('tenant-lead-calls.outbound-connected', '__CALL__'),
         ],
         'texts' => [
             'micNeeded' => __('Microphone access is needed to answer calls.'),
@@ -118,12 +125,19 @@ cards. --}}
                     </div>
                 </template>
 
-                {{-- Connecting --}}
+                {{-- Connecting — WhatsApp Outbound Calling: an outbound
+                card here covers both actually-negotiating AND still
+                Ringing/awaiting-answer (snapshot() maps every non-
+                connected/non-failed outbound phase to this same mode); its
+                Cancel button is a different endpoint from Decline
+                (CancelOutboundLeadCall, not RejectLeadCall) — see
+                controller.js's canCancel/canDecline split. --}}
                 <template x-if="card.mode === 'connecting'">
                     <div class="flex flex-col gap-3">
-                        <span class="text-sm text-zinc-600 dark:text-zinc-300">{{ __('Connecting…') }}</span>
+                        <span class="text-sm text-zinc-600 dark:text-zinc-300" x-text="card.direction === 'outbound' ? @js(__('Calling…')) : @js(__('Connecting…'))"></span>
                         <div class="flex gap-2">
-                            <flux:button size="sm" variant="danger" x-on:click="decline(card.id)" x-bind:disabled="!card.canDecline">{{ __('Decline') }}</flux:button>
+                            <flux:button size="sm" variant="danger" x-show="card.direction === 'outbound'" x-on:click="cancelOutboundCall()" x-bind:disabled="!card.canCancel">{{ __('Cancel') }}</flux:button>
+                            <flux:button size="sm" variant="danger" x-show="card.direction !== 'outbound'" x-on:click="decline(card.id)" x-bind:disabled="!card.canDecline">{{ __('Decline') }}</flux:button>
                         </div>
                     </div>
                 </template>
@@ -134,15 +148,24 @@ cards. --}}
                         <span class="text-sm text-red-700 dark:text-red-300" x-text="card.error"></span>
                         <div class="flex gap-2">
                             <flux:button size="sm" variant="primary" x-show="card.retryable" x-on:click="retry()">{{ __('Retry') }}</flux:button>
-                            <flux:button size="sm" variant="danger" x-on:click="decline(card.id)" x-bind:disabled="!card.canDecline">{{ __('Decline') }}</flux:button>
+                            <flux:button size="sm" variant="danger" x-show="card.direction === 'outbound'" x-on:click="cancelOutboundCall()">{{ __('Dismiss') }}</flux:button>
+                            <flux:button size="sm" variant="danger" x-show="card.direction !== 'outbound'" x-on:click="decline(card.id)" x-bind:disabled="!card.canDecline">{{ __('Decline') }}</flux:button>
                         </div>
                     </div>
                 </template>
 
-                {{-- Connected --}}
+                {{-- Connected — outbound gets a softer "In call…" label than
+                inbound's "Connected": an outbound call's own real WebRTC
+                connection is confirmed here, but that only proves this
+                browser reached Meta's media relay, not that the consumer
+                has actually picked up (Meta does not currently deliver a
+                live "answered" signal for business-initiated calls — see
+                RecordOutboundCallStatusEvent). Inbound has no such
+                ambiguity: Connected there is the agent's own explicit
+                Accept action. --}}
                 <template x-if="card.mode === 'connected'">
                     <div class="flex flex-col gap-3">
-                        <span class="text-sm text-emerald-700 dark:text-emerald-300" x-show="!card.reconnecting">{{ __('Connected') }}</span>
+                        <span class="text-sm text-emerald-700 dark:text-emerald-300" x-show="!card.reconnecting" x-text="card.direction === 'outbound' ? @js(__('In call…')) : @js(__('Connected'))"></span>
                         <span class="text-sm text-amber-700 dark:text-amber-300" x-show="card.reconnecting">{{ __('Reconnecting audio…') }}</span>
                         <div class="flex flex-wrap gap-2">
                             <flux:button size="sm" x-on:click="toggleMute()"><span x-text="card.muted ? @js(__('Unmute')) : @js(__('Mute'))"></span></flux:button>
@@ -252,7 +275,7 @@ cards. --}}
             data-test="softphone-fullscreen-connecting"
         >
             <div class="flex flex-col items-center gap-3 pt-8">
-                <span class="text-sm font-medium text-zinc-500 dark:text-zinc-400">{{ __('Connecting…') }}</span>
+                <span class="text-sm font-medium text-zinc-500 dark:text-zinc-400" x-text="card.direction === 'outbound' ? @js(__('Calling…')) : @js(__('Connecting…'))"></span>
                 <div class="flex size-24 animate-pulse items-center justify-center rounded-full bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
                     <flux:icon.phone class="size-10" />
                 </div>
@@ -265,6 +288,17 @@ cards. --}}
             <button
                 type="button"
                 class="flex size-16 cursor-pointer items-center justify-center rounded-full bg-red-500 text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-40"
+                x-show="card.direction === 'outbound'"
+                x-on:click="cancelOutboundCall()"
+                x-bind:disabled="!card.canCancel"
+                aria-label="{{ __('Cancel') }}"
+            >
+                <flux:icon.phone-x-mark class="size-7" />
+            </button>
+            <button
+                type="button"
+                class="flex size-16 cursor-pointer items-center justify-center rounded-full bg-red-500 text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-40"
+                x-show="card.direction !== 'outbound'"
                 x-on:click="decline(card.id)"
                 x-bind:disabled="!card.canDecline"
                 aria-label="{{ __('Decline') }}"
@@ -296,6 +330,16 @@ cards. --}}
                 <button
                     type="button"
                     class="flex size-16 cursor-pointer items-center justify-center rounded-full bg-red-500 text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-40"
+                    x-show="card.direction === 'outbound'"
+                    x-on:click="cancelOutboundCall()"
+                    aria-label="{{ __('Dismiss') }}"
+                >
+                    <flux:icon.phone-x-mark class="size-7" />
+                </button>
+                <button
+                    type="button"
+                    class="flex size-16 cursor-pointer items-center justify-center rounded-full bg-red-500 text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-40"
+                    x-show="card.direction !== 'outbound'"
                     x-on:click="decline(card.id)"
                     x-bind:disabled="!card.canDecline"
                     aria-label="{{ __('Decline') }}"
@@ -317,7 +361,7 @@ cards. --}}
                 <span
                     class="text-sm font-medium"
                     :class="card.reconnecting ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'"
-                    x-text="card.reconnecting ? @js(__('Reconnecting audio…')) : @js(__('Connected'))"
+                    x-text="card.reconnecting ? @js(__('Reconnecting audio…')) : (card.direction === 'outbound' ? @js(__('In call…')) : @js(__('Connected')))"
                 ></span>
                 <div class="flex size-24 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
                     <flux:icon.phone class="size-10" />

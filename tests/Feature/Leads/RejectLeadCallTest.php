@@ -84,6 +84,18 @@ test('a forged id and another tenant\'s call are not found and nothing is sent',
     expect($theirs->fresh()->status)->toBe(CallStatus::Ringing)->and($log)->toHaveCount(0);
 });
 
+// ── WhatsApp Outbound Calling: the inbound pipeline must never reach it ─────
+
+test('an outbound call can never reach the inbound reject pipeline', function () {
+    $log = Lc::fakeMeta();
+    $x = Lc::make(['direction' => 'outbound']);
+
+    $result = rejectAs($x);
+
+    expect($result->ok)->toBeFalse()->and($result->status)->toBe(404)->and($result->errorCode)->toBe('call_not_found');
+    expect($x->fresh()->status)->toBe(CallStatus::Ringing)->and($log)->toHaveCount(0);
+});
+
 test('an expired but still-ringing call can still be declined by an agent', function () {
     Lc::fakeMeta();
     $x = Lc::make(['ringing_expires_at' => now()->subMinute()]);

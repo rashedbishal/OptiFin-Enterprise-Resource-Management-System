@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Actions\Tenant\RecordCallPermissionReply;
 use App\Actions\Tenant\RecordInboundCall;
 use App\Actions\Tenant\RecordInboundMessage;
 use App\Actions\Tenant\RecordLeadConsent;
+use App\Actions\Tenant\RecordOutboundCallEvent;
+use App\Actions\Tenant\RecordOutboundCallStatusEvent;
 use App\Actions\Tenant\SaveLeadCustomFieldValues;
 use App\Actions\Tenant\ValidateWebsiteFormSubmission;
 use App\Enums\ConsentSource;
@@ -26,6 +29,8 @@ use App\Models\Message;
 use App\Models\Tenant;
 use App\Models\WebsiteForm;
 use App\Support\WhatsAppCallEvent;
+use App\Support\WhatsAppCallStatusEvent;
+use App\Support\WhatsAppOutboundCallEvent;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Client\ConnectionException;
@@ -345,11 +350,48 @@ class LeadWebhookController extends Controller
                     // reliably by wamid — additive, alongside the existing
                     // inbound `messages[]` handling below, never replacing
                     // it. Not previously parsed by this method at all.
+                    //
+                    // WhatsApp Outbound Calling — Meta reuses this SAME
+                    // `statuses[]` array key for a call's mid-call lifecycle
+                    // (RINGING/ACCEPTED/REJECTED), disambiguated by its own
+                    // `type: "call"` field. Routed away BEFORE it ever
+                    // reaches dispatchWhatsappStatusReconciliation() (which
+                    // would otherwise just silently drop it — MessageStatus
+                    // has no ACCEPTED/RINGING/REJECTED case) — every other
+                    // item's handling is completely unaffected.
                     foreach (($change['value']['statuses'] ?? []) as $status) {
+                        if (is_array($status) && ($status['type'] ?? null) === 'call') {
+                            $this->handleOutboundCallStatus($source, $tenant_code, $status);
+
+                            continue;
+                        }
+
                         $this->dispatchWhatsappStatusReconciliation($source, $status);
                     }
 
                     foreach (($change['value']['messages'] ?? []) as $message) {
+                        // WhatsApp Outbound Calling — purely additive: a
+                        // call_permission_reply item is NOT a real inbound
+                        // message (Meta delivers it through this SAME
+                        // messages[] array, never through calls[], per the
+                        // verified permission contract) and must never reach
+                        // the normal message-handling logic below, which
+                        // would otherwise wrongly create/append a Lead from
+                        // it. Every other messages[] item is completely
+                        // unaffected — this check is a no-op for them.
+                        if (($message['interactive']['type'] ?? null) === 'call_permission_reply') {
+                            try {
+                                $this->handleCallPermissionReply($source, $tenant_code, $message);
+                            } catch (Throwable $e) {
+                                Log::channel('whatsapp')->error('WA CALL PERMISSION REPLY PROCESSING FAILED', [
+                                    'tenant_code' => $tenant_code,
+                                    'error' => $e->getMessage(),
+                                ]);
+                            }
+
+                            continue;
+                        }
+
                         $attachment = $this->extractWhatsappAttachment($message);
                         $senderId = (string) ($message['from'] ?? 'unknown');
                         $senderPhone = $message['from'] ?? null;
@@ -1518,6 +1560,20 @@ class LeadWebhookController extends Controller
             return;
         }
 
+        // WhatsApp Outbound Calling — purely additive: `direction:
+        // BUSINESS_INITIATED` is Meta's own signal that this item is OUR
+        // outbound call, never a USER_INITIATED inbound one.
+        // WhatsAppCallEvent::fromWebhook() below already rejects that
+        // direction outright (REASON_UNSUPPORTED_DIRECTION) — routing on it
+        // HERE, before that parser ever runs, keeps every inbound `connect`/
+        // `terminate` item's handling byte-for-byte unchanged, since this
+        // branch is a no-op for anything but BUSINESS_INITIATED.
+        if (($call['direction'] ?? null) === 'BUSINESS_INITIATED') {
+            $this->handleOutboundWhatsappCall($source, $tenantCode, $change, $call);
+
+            return;
+        }
+
         $event = WhatsAppCallEvent::fromWebhook($change, $call);
 
         if (is_string($event)) {
@@ -1558,6 +1614,110 @@ class LeadWebhookController extends Controller
         ]), $acceptNewCalls);
 
         $this->logWhatsappCall($tenantCode, $event->callId, $event->event, $outcome);
+    }
+
+    /**
+     * WhatsApp Outbound Calling — the `direction: BUSINESS_INITIATED` branch
+     * of the SAME calls[] item this method's inbound sibling handles, kept
+     * as its own method because the parser (WhatsAppOutboundCallEvent),
+     * lookup (by direction=outbound, never creates a Lead or a row) and
+     * writer (RecordOutboundCallEvent, never RecordInboundCall) are all
+     * completely different from the inbound path above, which this never
+     * calls into.
+     *
+     * @param  array<mixed>  $change
+     */
+    private function handleOutboundWhatsappCall(LeadSource $source, string $tenantCode, array $change, mixed $call): void
+    {
+        $event = WhatsAppOutboundCallEvent::fromWebhook($change, $call);
+
+        if (is_string($event)) {
+            $this->logWhatsappCall($tenantCode, WhatsAppOutboundCallEvent::loggableId($call), null, 'ignored_outbound_'.$event);
+
+            return;
+        }
+
+        $outcome = app(RecordOutboundCallEvent::class)->handle($event, $source);
+
+        $this->logWhatsappCall($tenantCode, $event->callId, 'outbound_'.$event->event, $outcome);
+    }
+
+    /**
+     * WhatsApp Outbound Calling — one `statuses[]` item whose `type` is
+     * `call` (routed here before ever reaching message-status
+     * reconciliation — see the loop above). Meta's mid-call lifecycle for a
+     * business-initiated call: RINGING/ACCEPTED/REJECTED. Strictly
+     * outbound-only by construction — RecordOutboundCallStatusEvent's own
+     * lookup is scoped to `direction = outbound`, so this can never touch an
+     * inbound row even if a wacid were somehow reused.
+     *
+     * @param  array<string, mixed>  $status
+     */
+    private function handleOutboundCallStatus(LeadSource $source, string $tenantCode, array $status): void
+    {
+        $event = WhatsAppCallStatusEvent::fromWebhook($status);
+
+        if (is_string($event)) {
+            $this->logWhatsappCall($tenantCode, null, 'call_status', 'ignored_'.$event);
+
+            return;
+        }
+
+        $outcome = app(RecordOutboundCallStatusEvent::class)->handle($event, $source);
+
+        $this->logWhatsappCall($tenantCode, $event->callId, 'call_status_'.strtolower($event->status), $outcome);
+    }
+
+    /**
+     * WhatsApp Outbound Calling — one `interactive.type === 'call_permission_reply'`
+     * item from the existing messages[] webhook (never calls[] — see the
+     * verified permission contract). Resolves the Lead the same way the
+     * normal inbound-message path just above does (conversation-first, then
+     * phone-on-source) and hands it to RecordCallPermissionReply. An unknown
+     * consumer's reply (no matching Lead) is logged and dropped — a
+     * permission reply must never create a Lead, mirroring
+     * RecordInboundCall's identical rule for a terminate webhook.
+     *
+     * @param  array<string, mixed>  $message
+     */
+    private function handleCallPermissionReply(LeadSource $source, string $tenantCode, array $message): void
+    {
+        $senderPhone = $message['from'] ?? null;
+        $reply = $message['interactive']['call_permission_reply'] ?? null;
+
+        if (! is_string($senderPhone) || $senderPhone === '' || ! is_array($reply)) {
+            $this->logWhatsappCall($tenantCode, null, 'call_permission_reply', 'malformed');
+
+            return;
+        }
+
+        $response = $reply['response'] ?? null;
+
+        if ($response !== 'accept' && $response !== 'reject') {
+            $this->logWhatsappCall($tenantCode, null, 'call_permission_reply', 'unsupported_response');
+
+            return;
+        }
+
+        $lead = $this->existingLeadForConversation($source, MessageChannel::Whatsapp, $senderPhone)
+            ?? Lead::query()->where('source_id', $source->id)->where('phone', $senderPhone)->whereNull('merged_into_lead_id')->first();
+
+        if (! $lead instanceof Lead) {
+            $this->logWhatsappCall($tenantCode, null, 'call_permission_reply', 'unknown_consumer');
+
+            return;
+        }
+
+        $isPermanent = ($reply['is_permanent'] ?? false) === true;
+        $expiration = $reply['expiration_timestamp'] ?? null;
+        $expirationTimestamp = is_numeric($expiration) ? (int) $expiration : null;
+        $observedAt = isset($message['timestamp']) && is_numeric($message['timestamp'])
+            ? Carbon::createFromTimestamp((int) $message['timestamp'])
+            : Carbon::now();
+
+        app(RecordCallPermissionReply::class)->handle($lead, $source, $response, $isPermanent, $expirationTimestamp, $observedAt);
+
+        $this->logWhatsappCall($tenantCode, null, 'call_permission_reply', $response);
     }
 
     /**

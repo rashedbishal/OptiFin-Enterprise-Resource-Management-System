@@ -424,7 +424,12 @@ test('candidates are read in id-ordered chunks of 100', function () {
 
     expect(FinalizeStaleLeadCalls::CHUNK_SIZE)->toBe(100)
         ->and($summary['missed_ring'])->toBe(250)
-        ->and(collect($reads)->filter(fn (string $sql): bool => str_contains($sql, 'limit 100'))->count())->toBe(5);
+        // 3 chunks for the 250 (inbound) Ringing rows + 1 each for the
+        // outbound-Ringing, inbound-Answering, outbound-Answering, Connected
+        // and Initiated (WhatsApp Outbound Calling) rules' own sweeps, which
+        // chunkById() always queries at least once even when they find
+        // nothing.
+        ->and(collect($reads)->filter(fn (string $sql): bool => str_contains($sql, 'limit 100'))->count())->toBe(8);
 });
 
 test('a row that fails is counted, logged and skipped, the rest are still reconciled, and the command exits non-zero', function () {

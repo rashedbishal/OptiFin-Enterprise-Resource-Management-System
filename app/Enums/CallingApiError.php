@@ -23,6 +23,7 @@ enum CallingApiError: string
     case CallingNotEnabled = 'calling_not_enabled';
     case TemporarilyDisabled = 'temporarily_disabled';
     case NotEligible = 'not_eligible';
+    case MissingPermission = 'missing_permission';
     case SipNumber = 'sip_number';
     case Payment = 'payment';
     case Limit = 'limit';
@@ -42,6 +43,11 @@ enum CallingApiError: string
                 $metaCode === 138000 => self::CallingNotEnabled,
                 $metaCode === 138014 => self::TemporarilyDisabled,
                 in_array($metaCode, [138013, 138015, 138018], true) => self::NotEligible,
+                // WhatsApp Outbound Calling — "No approved call permission found."
+                // Checked ahead of the generic 401-based Authentication fallback
+                // below, so a missing/expired/revoked consumer permission is never
+                // misreported as a rejected access token.
+                $metaCode === 138006 => self::MissingPermission,
                 $metaCode === 131055 => self::SipNumber,
                 $metaCode === 131044 => self::Payment,
                 in_array($metaCode, [138002, 138005, 138009, 138012, 613], true) => self::Limit,
@@ -79,6 +85,7 @@ enum CallingApiError: string
             self::CallingNotEnabled => __('Calling is not enabled for this WhatsApp number.'),
             self::TemporarilyDisabled => __('WhatsApp has temporarily disabled calling for this number.'),
             self::NotEligible => __('This WhatsApp number does not meet WhatsApp\'s requirements for calling.'),
+            self::MissingPermission => __('This WhatsApp user has not granted permission for calls from this business.'),
             self::SipNumber => __('This number uses SIP calling, which cannot be managed through this API.'),
             self::Payment => __('WhatsApp reports that no valid payment method is attached to this account.'),
             self::Limit => __('WhatsApp is rate limiting this request. Try again in a few minutes.'),

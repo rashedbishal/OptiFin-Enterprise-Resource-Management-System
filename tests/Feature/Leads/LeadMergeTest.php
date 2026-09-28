@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\LeadCallPermissionStatus;
 use App\Enums\LeadDuplicateLinkStatus;
 use App\Enums\LeadSourceType;
 use App\Enums\MessageChannel;
@@ -10,6 +11,7 @@ use App\Models\Conversation;
 use App\Models\Lead;
 use App\Models\LeadAssignment;
 use App\Models\LeadAttachment;
+use App\Models\LeadCallPermission;
 use App\Models\LeadDetailUpdateLog;
 use App\Models\LeadDuplicateLink;
 use App\Models\LeadNote;
@@ -87,6 +89,140 @@ test('merging two leads reparents all of the loser\'s history onto the survivor'
     expect($survivorConversation->fresh()->lead_id)->toBe($survivor->id);
 
     expect($loser->fresh()->merged_into_lead_id)->toBe($survivor->id);
+});
+
+// ── WhatsApp Outbound Calling — LeadCallPermission merge consistency ───────
+// A CURRENT-state, unique(lead_id) table, never a plain CHILD_MODELS
+// reparent target (see LeadMergeService::mergeCallPermissions()'s own
+// docblock) — these tests cover all four meaningful cases.
+
+test('only the loser has a permission row: it is simply reparented onto the survivor', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $survivor = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $loser = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id]);
+    $permission = LeadCallPermission::factory()->permanent()->create(['tenant_id' => $tenant->id, 'lead_id' => $loser->id, 'lead_source_id' => $source->id]);
+
+    app(LeadMergeService::class)->merge($survivor, $loser, $clientAdmin, []);
+
+    expect(LeadCallPermission::count())->toBe(1);
+    expect($permission->fresh()->lead_id)->toBe($survivor->id);
+});
+
+test('only the survivor has a permission row: it is left completely untouched', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $survivor = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $loser = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id]);
+    $permission = LeadCallPermission::factory()->temporary()->create(['tenant_id' => $tenant->id, 'lead_id' => $survivor->id, 'lead_source_id' => $source->id]);
+
+    app(LeadMergeService::class)->merge($survivor, $loser, $clientAdmin, []);
+
+    expect(LeadCallPermission::count())->toBe(1);
+    $fresh = $permission->fresh();
+    expect($fresh->lead_id)->toBe($survivor->id);
+    expect($fresh->status)->toBe(LeadCallPermissionStatus::Temporary);
+    expect($fresh->updated_at->eq($permission->updated_at))->toBeTrue();
+});
+
+test('neither lead has a permission row: nothing is created', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $survivor = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $loser = Lead::factory()->create(['tenant_id' => $tenant->id]);
+
+    app(LeadMergeService::class)->merge($survivor, $loser, $clientAdmin, []);
+
+    expect(LeadCallPermission::count())->toBe(0);
+});
+
+test('both leads have a permission row: the survivor\'s row is upserted from whichever observation is newer, and the loser\'s own row is left untouched, not deleted', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $survivor = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $loser = Lead::factory()->create(['tenant_id' => $tenant->id]);
+
+    $survivorSource = LeadSource::factory()->create(['tenant_id' => $tenant->id]);
+    $survivorPermission = LeadCallPermission::factory()->rejected()->create([
+        'tenant_id' => $tenant->id,
+        'lead_id' => $survivor->id,
+        'lead_source_id' => $survivorSource->id,
+        'last_synced_at' => now()->subDay(),
+    ]);
+    // The loser's own observation is the NEWER one — it must win, even
+    // though it lives on the row being merged away.
+    $loserSource = LeadSource::factory()->create(['tenant_id' => $tenant->id]);
+    $loserPermission = LeadCallPermission::factory()->permanent()->create([
+        'tenant_id' => $tenant->id,
+        'lead_id' => $loser->id,
+        'lead_source_id' => $loserSource->id,
+        'last_synced_at' => now(),
+    ]);
+
+    app(LeadMergeService::class)->merge($survivor, $loser, $clientAdmin, []);
+
+    // The loser's own row is never deleted — same "nothing here is ever
+    // actually lost" philosophy as every other unique-constrained child.
+    expect(LeadCallPermission::count())->toBe(2);
+    expect($loserPermission->fresh()->lead_id)->toBe($loser->id);
+
+    $survivorRow = $survivorPermission->fresh();
+    expect($survivorRow->id)->toBe($survivorPermission->id);
+    expect($survivorRow->status)->toBe(LeadCallPermissionStatus::Permanent);
+    expect($survivorRow->lead_source_id)->toBe($loserSource->id);
+});
+
+test('the older observation never overwrites the survivor\'s own newer one, even though it lost the merge', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $survivor = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $loser = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id]);
+
+    $survivorPermission = LeadCallPermission::factory()->permanent()->create([
+        'tenant_id' => $tenant->id,
+        'lead_id' => $survivor->id,
+        'lead_source_id' => $source->id,
+        'last_synced_at' => now(),
+    ]);
+    LeadCallPermission::factory()->rejected()->create([
+        'tenant_id' => $tenant->id,
+        'lead_id' => $loser->id,
+        'lead_source_id' => $source->id,
+        'last_synced_at' => now()->subDay(),
+    ]);
+
+    app(LeadMergeService::class)->merge($survivor, $loser, $clientAdmin, []);
+
+    expect($survivorPermission->fresh()->status)->toBe(LeadCallPermissionStatus::Permanent);
+});
+
+test('last_requested_at is taken as the later of the two, independent of which row wins on last_synced_at', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $survivor = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $loser = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id]);
+
+    // Survivor's observation is newer (wins on status), but the LOSER's
+    // request was sent more recently.
+    $survivorPermission = LeadCallPermission::factory()->permanent()->create([
+        'tenant_id' => $tenant->id,
+        'lead_id' => $survivor->id,
+        'lead_source_id' => $source->id,
+        'last_synced_at' => now(),
+        'last_requested_at' => now()->subWeek(),
+    ]);
+    $loserPermission = LeadCallPermission::factory()->requested()->create([
+        'tenant_id' => $tenant->id,
+        'lead_id' => $loser->id,
+        'lead_source_id' => $source->id,
+        'last_synced_at' => now()->subDay(),
+        'last_requested_at' => now()->subHour(),
+    ]);
+    $loserRequestedAt = $loserPermission->fresh()->last_requested_at;
+
+    app(LeadMergeService::class)->merge($survivor, $loser, $clientAdmin, []);
+
+    $fresh = $survivorPermission->fresh();
+    expect($fresh->status)->toBe(LeadCallPermissionStatus::Permanent);
+    expect($fresh->last_requested_at->eq($loserRequestedAt))->toBeTrue();
 });
 
 test('merge only overwrites a conflicting field when the loser\'s value is explicitly chosen', function () {

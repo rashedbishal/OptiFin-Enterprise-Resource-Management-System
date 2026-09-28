@@ -61,11 +61,13 @@ test('a ringing call routed to the user is listed with exactly the approved fiel
     $calls = lalList($x->agent);
 
     expect($calls)->toHaveCount(1);
-    expect(array_keys($calls[0]))->toBe(['id', 'status', 'claimed_by_me', 'lead', 'expires_in_seconds', 'connected_at']);
+    expect(array_keys($calls[0]))->toBe(['id', 'status', 'direction', 'claimed_by_me', 'accepted', 'lead', 'expires_in_seconds', 'connected_at']);
     expect($calls[0])->toMatchArray([
         'id' => $x->call->id,
         'status' => 'ringing',
+        'direction' => 'inbound',
         'claimed_by_me' => false,
+        'accepted' => false,
         'lead' => ['id' => $x->lead->id, 'name' => 'Ada Lovelace', 'phone' => '+15551230000'],
         'connected_at' => null,
     ]);

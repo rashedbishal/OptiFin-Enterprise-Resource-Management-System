@@ -61,11 +61,19 @@ Route::middleware(['auth', 'verified', 'tenant.identify', 'tenant.active'])->gro
             Route::post('accept', [LeadCallController::class, 'accept'])->name('tenant-lead-calls.accept');
             Route::post('reject', [LeadCallController::class, 'reject'])->name('tenant-lead-calls.reject');
             Route::post('hangup', [LeadCallController::class, 'hangup'])->name('tenant-lead-calls.hangup');
+            // WhatsApp Outbound Calling — additive.
+            Route::post('cancel-outbound', [LeadCallController::class, 'cancelOutbound'])->name('tenant-lead-calls.cancel-outbound');
+            Route::get('outbound-answer', [LeadCallController::class, 'outboundAnswer'])->name('tenant-lead-calls.outbound-answer');
+            Route::post('outbound-connected', [LeadCallController::class, 'outboundConnected'])->name('tenant-lead-calls.outbound-connected');
         });
 
         Route::livewire('leads/{lead}', LeadsShow::class)->name('tenant-leads.show');
         Route::get('leads/{lead}/attachments/{attachment}', [LeadAttachmentController::class, 'download'])->name('tenant-leads.attachment.download');
         Route::get('leads/{lead}/messages/{message}/attachment', [LeadMessageAttachmentController::class, 'show'])->name('tenant-leads.message-attachment');
+        // WhatsApp Outbound Calling — an agent places a call to this lead.
+        Route::post('leads/{lead}/calls/outbound', [LeadCallController::class, 'initiateOutbound'])
+            ->middleware('throttle.fail-open:lead-call-actions')
+            ->name('tenant-lead-calls.initiate-outbound');
     });
 });
 

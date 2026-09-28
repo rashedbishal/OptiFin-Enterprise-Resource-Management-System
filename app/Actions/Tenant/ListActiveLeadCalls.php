@@ -31,7 +31,7 @@ class ListActiveLeadCalls
     public const int LIMIT = 20;
 
     /**
-     * @return array<int, array{id: string, status: string, claimed_by_me: bool, lead: array{id: string, name: ?string, phone: ?string}, expires_in_seconds: ?int, connected_at: ?string}>
+     * @return array<int, array{id: string, status: string, direction: string, claimed_by_me: bool, accepted: bool, lead: array{id: string, name: ?string, phone: ?string}, expires_in_seconds: ?int, connected_at: ?string}>
      */
     public function handle(TenantUser $user): array
     {
@@ -71,7 +71,18 @@ class ListActiveLeadCalls
         return $calls->map(fn (LeadCall $call): array => [
             'id' => $call->id,
             'status' => $call->status->value,
+            // WhatsApp Outbound Calling — needed client-side so a reloaded
+            // outbound Ringing call (this tab's own session is gone, so it
+            // is no longer "own") never falls into the inbound Ringing/
+            // Answer card — see SoftphoneController.apply()/snapshot().
+            'direction' => $call->direction->value,
             'claimed_by_me' => $call->claimed_by === $user->id,
+            // WhatsApp Outbound Calling — Meta's own ACCEPTED call-status
+            // webhook (RecordOutboundCallStatusEvent), surfaced so the
+            // existing controller refresh/realtime mechanism can observe it
+            // without a second polling timer. Always false for an inbound
+            // call, which never sets consumer_accepted_at.
+            'accepted' => $call->consumer_accepted_at !== null,
             'lead' => [
                 'id' => $call->lead_id,
                 'name' => $call->lead->name,

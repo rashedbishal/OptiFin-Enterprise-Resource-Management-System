@@ -34,6 +34,7 @@ export function defaultCsrfHeaders(doc = document) {
 
 export function createApi({ urls, fetchImpl = (...args) => fetch(...args), csrfHeaders = defaultCsrfHeaders } = {}) {
     const forCall = (template, id) => template.replace('__CALL__', encodeURIComponent(id));
+    const forLead = (template, id) => template.replace('__LEAD__', encodeURIComponent(id));
 
     async function request(method, url, body) {
         let response;
@@ -84,5 +85,10 @@ export function createApi({ urls, fetchImpl = (...args) => fetch(...args), csrfH
         accept: (id) => request('POST', forCall(urls.accept, id)),
         reject: (id) => request('POST', forCall(urls.reject, id)),
         hangup: (id) => request('POST', forCall(urls.hangup, id)),
+        // WhatsApp Outbound Calling
+        initiateOutbound: (leadId, sdp) => request('POST', forLead(urls.initiateOutbound, leadId), { sdp }),
+        outboundAnswer: (id) => request('GET', forCall(urls.outboundAnswer, id)),
+        cancelOutbound: (id) => request('POST', forCall(urls.cancelOutbound, id)),
+        confirmOutboundConnected: (id) => request('POST', forCall(urls.outboundConnected, id)),
     };
 }

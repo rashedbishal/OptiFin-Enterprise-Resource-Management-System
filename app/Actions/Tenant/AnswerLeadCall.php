@@ -3,6 +3,7 @@
 namespace App\Actions\Tenant;
 
 use App\Concerns\InteractsWithLeadCalls;
+use App\Enums\CallDirection;
 use App\Enums\CallEndReason;
 use App\Enums\CallingApiError;
 use App\Enums\CallMetaStage;
@@ -64,7 +65,7 @@ class AnswerLeadCall
     {
         $call = $this->findCall($user, $callId);
 
-        if ($call === null) {
+        if ($call === null || $call->direction !== CallDirection::Inbound) {
             return LeadCallActionResult::notFound();
         }
 
@@ -156,7 +157,7 @@ class AnswerLeadCall
     {
         $call = $this->findCall($user, $callId);
 
-        if ($call === null) {
+        if ($call === null || $call->direction !== CallDirection::Inbound) {
             return LeadCallActionResult::notFound();
         }
 

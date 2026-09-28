@@ -27,7 +27,9 @@ export function registerSoftphone(alpine) {
                 supported,
                 audioEl,
                 getMicrophone: () => navigator.mediaDevices.getUserMedia({ audio: true }),
-                env: { RTCPeerConnection: window.RTCPeerConnection, iceServers: [] },
+                // AudioContext: only OutboundSession's ringback uses this —
+                // undefined here simply means ringback silently never starts.
+                env: { RTCPeerConnection: window.RTCPeerConnection, iceServers: [], AudioContext: window.AudioContext },
             };
         };
 
@@ -47,6 +49,8 @@ export function registerSoftphone(alpine) {
                     subscribe: ({ onEvent, onReconnect }) => subscribeToCalls({ echo: window.Echo, userId: config.userId, onEvent, onReconnect }),
                     texts: config.texts ?? {},
                     pollMs: config.pollMs,
+                    heartbeatMs: config.heartbeatMs,
+                    staleMs: config.staleMs,
                     onChange: (snapshot) => {
                         this.view = snapshot;
                     },
@@ -55,10 +59,24 @@ export function registerSoftphone(alpine) {
                 controller.start();
                 // Once a second so countdowns and call timers stay current.
                 clock = setInterval(() => controller.notify(), 1000);
+
+                // WhatsApp Outbound Calling — the global softphone's bridge
+                // to a "Call" button anywhere else on the page (e.g. the Lead
+                // detail view), which has no direct reference to this Alpine
+                // component instance. A plain window event, not a Livewire/
+                // Alpine store, so it works the same regardless of where the
+                // button lives; window.dispatchEvent(new CustomEvent(
+                // 'softphone:call', { detail: { leadId, leadName, leadPhone } })).
+                // leadName/leadPhone are carried along purely so the card can
+                // render instantly (see controller.js's pendingLead) — never
+                // trusted as anything beyond display text.
+                this.onSoftphoneCall = (event) => this.callOutbound(event.detail?.leadId, event.detail?.leadName, event.detail?.leadPhone);
+                window.addEventListener('softphone:call', this.onSoftphoneCall);
             },
 
             destroy() {
                 clearInterval(clock);
+                window.removeEventListener('softphone:call', this.onSoftphoneCall);
                 controller?.stop();
             },
 
@@ -72,6 +90,13 @@ export function registerSoftphone(alpine) {
             retry: () => controller?.retry(),
             toggleMute: () => controller?.toggleMute(),
             enableAudio: () => controller?.enableAudio(),
+
+            callOutbound(leadId, leadName = null, leadPhone = null) {
+                // Called straight from the click (or the window event above)
+                // so the microphone prompt is a user gesture.
+                return leadId ? controller?.callOutbound(leadId, { id: leadId, name: leadName ?? null, phone: leadPhone ?? null }) : undefined;
+            },
+            cancelOutboundCall: () => controller?.cancelOutboundCall(),
 
             toggleMinimized(id) {
                 this.minimized = { ...this.minimized, [id]: !this.minimized[id] };

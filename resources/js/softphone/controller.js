@@ -1,4 +1,5 @@
 import { AnswerSession, PHASE } from './media.js';
+import { OUTBOUND_PHASE, OutboundSession } from './outbound-media.js';
 
 /**
  * WhatsApp inbound calling — the softphone's brain. Framework-free on purpose
@@ -7,12 +8,23 @@ import { AnswerSession, PHASE } from './media.js';
  *
  * Principles:
  *  - The server is the source of truth. Every realtime event, reconnect, `online`,
- *    visibility return and the 30-second safety poll simply triggers a refetch of
- *    the active calls; an event's payload is never treated as state. Refetches are
+ *    visibility return and poll tick simply triggers a refetch of the active
+ *    calls; an event's payload is never treated as state. Refetches are
  *    serialized (never two in flight; a burst coalesces into one re-run), so
  *    duplicate and out-of-order events cannot corrupt the view.
  *  - Realtime is primary; polling is only a recovery net, and only while the tab is
- *    visible and online.
+ *    visible and online — but it never fully stops. It runs at one of two speeds
+ *    (`POLL_MODE.HEALTHY` at `heartbeatMs`, `POLL_MODE.DEGRADED` at `pollMs`),
+ *    never both at once. The healthy-speed poll is a plain, Reverb-independent
+ *    HTTP check — it alone bounds how late a brand-new call can be discovered
+ *    even with a fully dead realtime connection, which is what makes a call with
+ *    zero prior active calls (nothing for realtime to ever have delivered)
+ *    discoverable at all. `lastFreshAt` tracks the last successful refresh
+ *    (poll- or event-triggered, never the event's mere arrival); the connection
+ *    escalates to the faster degraded speed only once `staleMs` has passed with
+ *    none succeeding — a broader "even the HTTP path is unreliable" condition,
+ *    never inferred from Pusher's own `connection.state`, which can lie. Any
+ *    successful refresh while degraded returns to the healthy speed immediately.
  *  - One media session per browser: while a call owns it (here or in another tab),
  *    Answer is disabled on every other ringing card; Decline and Dismiss stay.
  *  - Nothing sensitive is stored: state is in memory, no SDP/credentials anywhere.
@@ -27,6 +39,11 @@ export const MODE = {
     FAILED: 'failed',
     OTHER_TAB: 'other-tab',
     LOST: 'lost',
+};
+
+export const POLL_MODE = {
+    HEALTHY: 'healthy',
+    DEGRADED: 'degraded',
 };
 
 export const DEFAULT_TEXTS = {
@@ -59,6 +76,8 @@ export class SoftphoneController {
         },
         now = () => Date.now(),
         pollMs = 30000,
+        heartbeatMs = 15000,
+        staleMs = 20000,
         noticeMs = 8000,
         texts = {},
         onChange = () => {},
@@ -72,6 +91,8 @@ export class SoftphoneController {
         this.timers = timers;
         this.now = now;
         this.pollMs = pollMs;
+        this.heartbeatMs = heartbeatMs;
+        this.staleMs = staleMs;
         this.noticeMs = noticeMs;
         this.texts = { ...DEFAULT_TEXTS, ...texts };
         this.onChange = onChange;
@@ -81,6 +102,12 @@ export class SoftphoneController {
         this.busy = new Set();
         this.notices = [];
         this.session = null;
+        // WhatsApp Outbound Calling — the lead's display name/phone, carried
+        // in purely so snapshot() can render this tab's own outbound card
+        // the instant callOutbound() is clicked, before the server row has
+        // ever been polled (see snapshot()'s own note). Cleared alongside
+        // session in finishSession(); never read once this.session is null.
+        this.pendingLead = null;
         this.loaded = false;
         this.offline = false;
         this.noticeSeq = 0;
@@ -88,6 +115,9 @@ export class SoftphoneController {
         this.refreshing = null;
         this.refreshQueued = false;
         this.pollTimer = null;
+        this.pollTimerMs = null;
+        this.mode = POLL_MODE.HEALTHY;
+        this.lastFreshAt = null;
         this.unsubscribe = null;
         this.stopped = false;
         this.listeners = [];
@@ -97,6 +127,10 @@ export class SoftphoneController {
 
     start() {
         this.offline = this.win.navigator?.onLine === false;
+        // A fair baseline: "just started" counts as fresh until a refresh
+        // actually fails to keep up, not as already-stale before the first
+        // one has even had a chance to run.
+        this.lastFreshAt = this.now();
 
         this.unsubscribe = this.subscribe({
             onEvent: () => this.refresh(),
@@ -159,17 +193,29 @@ export class SoftphoneController {
 
     onRefreshError() {
         // A failed read changes nothing: the previous view stays, and the next
-        // event / poll / reconnect tries again.
+        // event / poll / reconnect tries again. lastFreshAt is deliberately NOT
+        // touched here — only evaluateMode() re-checks whether enough time has
+        // now passed since the last SUCCESS to escalate polling.
         this.loaded = true;
+        this.evaluateMode();
         this.notify();
     }
 
     apply(rawCalls) {
         const receivedAt = this.now();
+        this.lastFreshAt = receivedAt;
         const next = rawCalls.map((raw) => ({
             id: raw.id,
             status: raw.status,
+            // WhatsApp Outbound Calling — only meaningfully consulted for a
+            // call this tab does NOT own (see snapshot()'s ringing branch);
+            // the tab's own card derives direction from its session instead.
+            direction: raw.direction === 'outbound' ? 'outbound' : 'inbound',
             claimedByMe: raw.claimed_by_me === true,
+            // WhatsApp Outbound Calling — Meta's own ACCEPTED call-status
+            // webhook, surfaced by ListActiveLeadCalls. Always false for an
+            // inbound call.
+            accepted: raw.accepted === true,
             lead: { id: raw.lead?.id ?? null, name: raw.lead?.name ?? null, phone: raw.lead?.phone ?? null },
             expiresAt: typeof raw.expires_in_seconds === 'number' ? receivedAt + raw.expires_in_seconds * 1000 : null,
             connectedAt: raw.connected_at ? Date.parse(raw.connected_at) || null : null,
@@ -182,11 +228,33 @@ export class SoftphoneController {
 
         // The call this tab is handling is no longer active on the server: it
         // ended (caller hung up, Meta terminated it, a reject, a failure).
-        if (this.session && !present.has(this.session.callId)) {
+        // callId !== null excludes an OutboundSession still in its brief
+        // INITIATING window (no server-side call to match against yet) —
+        // never true for AnswerSession, whose callId is always known from
+        // construction, so this guard is a no-op for every inbound call.
+        if (this.session && this.session.callId !== null && !present.has(this.session.callId)) {
             this.finishSession(this.texts.ended);
         }
 
+        // WhatsApp Outbound Calling — the controller-driven nudge
+        // OutboundSession.applyAnswer() depends on: this call's status
+        // reaching 'answering' (via a poll/realtime-triggered refresh,
+        // never trusted from the realtime payload itself) is what tells the
+        // session to go fetch the answer. Meta's SDP answer arriving is not
+        // itself evidence the consumer answered — RecordOutboundCallEvent
+        // only ever moves a row to 'answering'; ConfirmOutboundCallConnected,
+        // driven by this same session once its own WebRTC connection is
+        // real, is the only path to 'connected'. A no-op once already applied.
+        if (this.session instanceof OutboundSession && this.session.callId) {
+            const outboundCall = next.find((candidate) => candidate.id === this.session.callId);
+
+            if (outboundCall && outboundCall.status === 'answering') {
+                this.session.applyAnswer();
+            }
+        }
+
         this.notify();
+        this.evaluateMode();
     }
 
     // ── Polling / visibility / connectivity ─────────────────────────────────
@@ -195,18 +263,66 @@ export class SoftphoneController {
         return this.doc.visibilityState !== 'hidden';
     }
 
+    /**
+     * The interval the poll timer should be running at for the CURRENT mode.
+     */
+    currentPollInterval() {
+        return this.mode === POLL_MODE.DEGRADED ? this.pollMs : this.heartbeatMs;
+    }
+
+    /**
+     * Re-derives mode purely from `now() - lastFreshAt` (never from Pusher's own
+     * `connection.state`) and, if visible/online, makes sure the poll timer is
+     * running at whatever interval that mode now calls for. Called after every
+     * refresh attempt, success or failure, from apply()/onRefreshError() — the
+     * only two places a refresh can settle.
+     */
+    evaluateMode() {
+        if (this.stopped) {
+            return;
+        }
+
+        const age = this.now() - this.lastFreshAt;
+        this.mode = age >= this.staleMs ? POLL_MODE.DEGRADED : POLL_MODE.HEALTHY;
+
+        if (this.isVisible() && !this.offline) {
+            this.rearmPollTimer();
+        }
+    }
+
     syncPolling() {
         if (this.isVisible() && !this.offline && !this.stopped) {
-            this.pollTimer ??= this.timers.setInterval(() => this.refresh(), this.pollMs);
+            this.rearmPollTimer();
         } else {
             this.pausePolling();
         }
+    }
+
+    /**
+     * Starts (or restarts) the single poll timer at the current mode's
+     * interval. A no-op if it is already running at that same interval, so a
+     * realtime event succeeding mid-cycle doesn't keep resetting the healthy
+     * heartbeat's phase — only an actual mode change ever re-arms it, and
+     * pausePolling() first guarantees the old interval is never left running
+     * alongside the new one.
+     */
+    rearmPollTimer() {
+        const desired = this.currentPollInterval();
+
+        if (this.pollTimer !== null && this.pollTimerMs === desired) {
+            return;
+        }
+
+        this.pausePolling();
+        this.pollTimerMs = desired;
+        this.pollTimer = this.timers.setInterval(() => this.refresh(), desired);
     }
 
     pausePolling() {
         if (this.pollTimer !== null) {
             this.timers.clearInterval(this.pollTimer);
             this.pollTimer = null;
+            this.pollTimerMs = null;
         }
     }
 
@@ -264,7 +380,14 @@ export class SoftphoneController {
     async answer(callId) {
         const call = this.findCall(callId);
 
-        if (!call || call.status !== 'ringing' || this.isExpired(call) || this.busy.has(callId) || this.mediaBusy()) {
+        // WhatsApp Outbound Calling — a defense-in-depth guard, not just the
+        // hidden Answer button in snapshot(): an outbound call has no
+        // cached offer server-side at all (ClaimLeadCall would fail it as
+        // offer_unavailable), so this must never be reachable regardless of
+        // how answer() ends up called — a stale reference, a replayed
+        // click, or future code that doesn't go through the card's own
+        // canAnswer flag.
+        if (!call || call.status !== 'ringing' || call.direction === 'outbound' || this.isExpired(call) || this.busy.has(callId) || this.mediaBusy()) {
             return;
         }
 
@@ -329,6 +452,136 @@ export class SoftphoneController {
     }
 
     /**
+     * WhatsApp Outbound Calling — places a call to a Lead. Must be invoked
+     * directly from the "Call" click, exactly like answer(): the microphone
+     * permission prompt is requested from that user gesture, before
+     * anything is sent to the server.
+     *
+     * `leadInfo` ({id, name, phone}), when the caller has it to hand (the
+     * "Call" button does — see index.js), is stored as pendingLead purely so
+     * snapshot() can render this tab's own card immediately, before the
+     * server row has ever been polled. Display-only — never sent anywhere,
+     * never trusted for anything but text.
+     */
+    async callOutbound(leadId, leadInfo = null) {
+        if (this.mediaBusy() || this.busy.has(leadId) || this.stopped) {
+            return;
+        }
+
+        const media = this.createMedia();
+
+        if (!media.supported) {
+            this.addNotice(this.texts.unsupported, 'error');
+
+            return;
+        }
+
+        this.busy.add(leadId);
+        this.notify();
+
+        let stream;
+
+        try {
+            stream = await media.getMicrophone();
+        } catch {
+            this.busy.delete(leadId);
+            this.addNotice(this.texts.micNeeded, 'error');
+            this.notify();
+
+            return;
+        }
+
+        if (this.session !== null || this.stopped) {
+            stream.getTracks().forEach((track) => track.stop());
+            this.busy.delete(leadId);
+            this.notify();
+
+            return;
+        }
+
+        this.pendingLead = leadInfo ?? { id: leadId, name: null, phone: null };
+        this.session = new OutboundSession({
+            leadId,
+            api: this.api,
+            stream,
+            env: media.env,
+            audioEl: media.audioEl,
+            timers: this.timers,
+            now: this.now,
+            onChange: () => this.onSessionChange(),
+        });
+        this.busy.delete(leadId);
+        this.notify();
+
+        await this.session.initiate();
+
+        if (this.session?.callId) {
+            this.ownership.claim(this.session.callId);
+        }
+
+        this.afterOutboundInitiate();
+    }
+
+    /**
+     * After initiate() or retry(): a failed attempt ends the local session —
+     * either the server never created a row (refused before Meta), already
+     * recorded its own Failed outcome, or a retry() exhausted itself. A
+     * successful attempt needs no action here; applyAnswer()'s own CONNECTED
+     * transition already notified.
+     */
+    afterOutboundInitiate() {
+        const session = this.session;
+
+        if (session instanceof OutboundSession && session.phase === 'failed') {
+            this.finishSession(session.error?.message || this.texts.genericError);
+            this.refresh();
+        }
+    }
+
+    /**
+     * Cancels this tab's own outbound call before it connects. While still
+     * INITIATING (no callId yet — the connect() request hasn't resolved),
+     * there is nothing server-side to cancel, so this only tears the local
+     * session down; once Ringing, CancelOutboundLeadCall is called first,
+     * local-first exactly like decline()/hangup().
+     */
+    async cancelOutboundCall() {
+        const session = this.session;
+
+        if (!(session instanceof OutboundSession) || session.phase === 'connected') {
+            return;
+        }
+
+        const callId = session.callId;
+
+        if (!callId) {
+            this.finishSession();
+
+            return;
+        }
+
+        if (this.busy.has(callId)) {
+            return;
+        }
+
+        this.busy.add(callId);
+        this.notify();
+
+        try {
+            await this.api.cancelOutbound(callId);
+        } catch {
+            // Local-first, never rolled back — the session is torn down
+            // below regardless of whether Meta confirmed the terminate.
+        } finally {
+            this.finishSession(this.texts.ended);
+            this.calls = this.calls.filter((call) => call.id !== callId);
+            this.busy.delete(callId);
+            this.notify();
+            this.refresh();
+        }
+    }
+
+    /**
      * After a step of the answer flow settles: a failure that says the call is no
      * longer ours ends the session and refetches; anything else stays on screen
      * (retryable → Retry, otherwise Decline).
@@ -352,6 +605,13 @@ export class SoftphoneController {
 
     async retry() {
         if (!this.session) {
+            return;
+        }
+
+        if (this.session instanceof OutboundSession) {
+            await this.session.retry();
+            this.afterOutboundInitiate();
+
             return;
         }
 
@@ -442,6 +702,7 @@ export class SoftphoneController {
         if (this.session) {
             this.session.close();
             this.session = null;
+            this.pendingLead = null;
             this.ownership.release();
 
             if (message) {
@@ -479,9 +740,15 @@ export class SoftphoneController {
         const otherTabs = this.ownership.otherOwnedCallIds();
         const mediaBusy = this.session !== null || otherTabs.size > 0;
         const cards = [];
+        let sessionRendered = false;
 
         for (const call of this.calls) {
             const own = this.session?.callId === call.id;
+
+            if (own) {
+                sessionRendered = true;
+            }
+
             const base = {
                 id: call.id,
                 lead: call.lead,
@@ -497,9 +764,11 @@ export class SoftphoneController {
 
             if (own) {
                 const session = this.session;
+                const outbound = session instanceof OutboundSession;
                 cards.push({
                     ...base,
-                    mode: session.phase === PHASE.CONNECTED ? MODE.CONNECTED : session.phase === PHASE.FAILED ? MODE.FAILED : MODE.CONNECTING,
+                    direction: outbound ? 'outbound' : 'inbound',
+                    mode: session.phase === 'connected' ? MODE.CONNECTED : session.phase === 'failed' ? MODE.FAILED : MODE.CONNECTING,
                     phase: session.phase,
                     error: session.error?.message ?? null,
                     retryable: session.error?.retryable === true,
@@ -511,17 +780,50 @@ export class SoftphoneController {
                     // over the server-derived base.elapsedSeconds, which
                     // depends on a poll/realtime round-trip that can lag or
                     // simply never land on this same tab.
-                    elapsedSeconds: session.phase === PHASE.CONNECTED
+                    elapsedSeconds: session.phase === 'connected'
                         ? Math.max(0, Math.floor((now - (session.connectedAt ?? call.connectedAt ?? now)) / 1000))
                         : null,
-                    // Decline covers pre-connect states; once Connected, Hang Up
-                    // (Step 7a) is the only way this tab can end its own call.
-                    canDecline: session.phase !== PHASE.CONNECTED,
-                    canHangup: session.phase === PHASE.CONNECTED && !base.busy,
+                    // Inbound: Decline covers pre-connect states. Outbound has
+                    // no decline concept at all (cancelOutboundCall() covers
+                    // its pre-connect states instead, a different endpoint —
+                    // see CancelOutboundLeadCall). Either way, once Connected,
+                    // Hang Up (Step 7a, reused unchanged for both directions)
+                    // is the only way this tab can end its own call.
+                    canDecline: !outbound && session.phase !== PHASE.CONNECTED,
+                    // CancelOutboundLeadCall (server) only allows Initiated/
+                    // Ringing — cancellation once the consumer's acceptance
+                    // and/or real WebRTC negotiation is in progress is an
+                    // open product question the architecture change did not
+                    // decide, so this stays scoped to what the backend
+                    // actually allows today rather than offering a button
+                    // that would be refused. Gated on the SERVER's own
+                    // `call.status`, not local phase — the local phase
+                    // deliberately stays RINGING (for ringback) well past
+                    // the point the server has already moved to Answering,
+                    // so local phase alone can no longer stand in for
+                    // "still cancellable" here (unlike canHangup below,
+                    // which is keyed off CONNECTED — a point local phase and
+                    // server status always agree on, since goLive() only
+                    // ever runs after the server has already confirmed it).
+                    canCancel: outbound && call.status === 'ringing',
+                    canHangup: session.phase === (outbound ? 'connected' : PHASE.CONNECTED) && !base.busy,
                     canAnswer: false,
                     canDismiss: false,
                 });
-            } else if (call.status === 'ringing') {
+            } else if (call.status === 'ringing' && call.direction !== 'outbound') {
+                // WhatsApp Outbound Calling — an outbound call never belongs
+                // in this inbound ringing/Answer card, direction-checked
+                // here rather than relying on `own` alone: after a reload
+                // this tab's own outbound session is gone (own is false),
+                // so without this check a still-Ringing outbound call would
+                // otherwise fall through to this branch and wrongly expose
+                // an "Answer" button — clicking it would POST to the
+                // inbound-only /claim endpoint, which has no offer cached
+                // for an outbound call at all and would incorrectly fail a
+                // perfectly healthy in-progress call. It falls through to
+                // the claimedByMe branch below instead, same as a reloaded
+                // Connected call already does — read-only, no inbound
+                // action ever offered for it.
                 if (this.dismissed.has(call.id) || this.isExpired(call)) {
                     continue;
                 }
@@ -543,10 +845,33 @@ export class SoftphoneController {
                     // Only a call still being answered can be declined here. Hang Up
                     // (Step 7a) needs the live media session, which only the tab that
                     // owns it has — never this one (other-tab or post-reload "lost").
-                    canDecline: call.status === 'answering' && !otherTabs.has(call.id) && !base.busy,
+                    // An outbound call now also reaches 'answering' (Meta's SDP
+                    // answer received, not yet browser-confirmed — see
+                    // RecordOutboundCallEvent/ConfirmOutboundCallConnected), so
+                    // direction is checked here too, same reasoning as the
+                    // Ringing branch above: a reloaded outbound Answering call
+                    // must never expose the inbound-only decline/reject action.
+                    canDecline: call.status === 'answering' && call.direction !== 'outbound' && !otherTabs.has(call.id) && !base.busy,
                     canDismiss: false,
                 });
             }
+        }
+
+        // WhatsApp Outbound Calling — the card must appear the INSTANT
+        // callOutbound() is clicked, not only once the server row has been
+        // polled at least once (a real, sometimes multi-second gap: mic
+        // permission + createOffer()/setLocalDescription() + the initiate
+        // request all happen before a callId even exists, and even after
+        // that the row is only visible once the next active-calls refresh
+        // returns it). Synthesized directly from local session state using
+        // pendingLead for display — this only ever applies during
+        // INITIATING/RINGING (or a FAILED that never got as far as the
+        // first refresh): once the row has appeared in `this.calls` even
+        // once, it stays there for the rest of the call's active lifetime,
+        // so the loop above always renders it from then on and this never
+        // fires again for the same call.
+        if (this.session instanceof OutboundSession && !sessionRendered) {
+            cards.push(this.buildPendingOutboundCard(now));
         }
 
         return {
@@ -564,7 +889,43 @@ export class SoftphoneController {
             // ringing card so an unclaimed incoming call still rings
             // full-screen. A second simultaneous call never also goes
             // full-screen — it stays the existing compact card, on every width.
-            primaryCallId: this.session?.callId ?? cards.find((card) => card.mode === MODE.RINGING)?.id ?? null,
+            primaryCallId: this.session?.callId ?? (this.session ? this.session.leadId : null) ?? cards.find((card) => card.mode === MODE.RINGING)?.id ?? null,
+        };
+    }
+
+    /**
+     * The card for this tab's own outbound session before its call row has
+     * ever appeared in `this.calls` — see snapshot()'s own note. Keyed by
+     * `session.callId ?? session.leadId` so it has a stable id even during
+     * the brief INITIATING window with no call id at all yet.
+     */
+    buildPendingOutboundCard(now) {
+        const session = this.session;
+        const lead = this.pendingLead ?? { id: session.leadId, name: null, phone: null };
+
+        return {
+            id: session.callId ?? session.leadId,
+            lead,
+            remainingSeconds: null,
+            elapsedSeconds: null,
+            busy: false,
+            direction: 'outbound',
+            mode: session.phase === 'failed' ? MODE.FAILED : MODE.CONNECTING,
+            phase: session.phase,
+            error: session.error?.message ?? null,
+            retryable: session.error?.retryable === true,
+            muted: session.muted,
+            audioBlocked: session.audioBlocked,
+            reconnecting: false,
+            // The server row, once it exists at all, is always created
+            // Ringing (InitiateOutboundCall) — so for as long as this
+            // synthesized card applies at all (INITIATING/RINGING only, see
+            // above), cancelling is always legitimate to offer.
+            canCancel: true,
+            canDecline: false,
+            canHangup: false,
+            canAnswer: false,
+            canDismiss: false,
         };
     }
 }

@@ -21,10 +21,10 @@ use Illuminate\Support\Facades\Schema;
 
 test('the lead_calls table has exactly the approved columns', function () {
     expect(Schema::getColumnListing('lead_calls'))->toEqualCanonicalizing([
-        'id', 'tenant_id', 'lead_id', 'lead_source_id', 'conversation_id', 'external_call_id',
+        'id', 'tenant_id', 'lead_id', 'lead_source_id', 'conversation_id', 'direction', 'external_call_id', 'biz_opaque_callback_data',
         'status', 'end_reason', 'meta_stage', 'meta_status', 'meta_terminated_at',
         'assignee_id_at_arrival', 'routing_mode', 'routed_user_ids',
-        'claimed_by', 'claimed_at', 'connected_at', 'ended_at', 'duration_seconds', 'ringing_expires_at',
+        'claimed_by', 'claimed_at', 'connected_at', 'consumer_accepted_at', 'ended_at', 'duration_seconds', 'ringing_expires_at',
         'created_at', 'updated_at',
     ]);
 });
@@ -124,7 +124,7 @@ test('the active scope returns only calls still in flight', function () {
 
     $active = LeadCall::query()->where('lead_id', $lead->id)->active()->get();
 
-    expect($active->pluck('status')->map->value->sort()->values()->all())->toBe(['answering', 'connected', 'ringing']);
+    expect($active->pluck('status')->map->value->sort()->values()->all())->toBe(['answering', 'connected', 'initiated', 'ringing']);
     expect($active->every->isActive())->toBeTrue();
 });
 

@@ -16,7 +16,7 @@ final class LeadCallPresenter
     public static function statusColor(CallStatus $status): string
     {
         return match ($status) {
-            CallStatus::Ringing, CallStatus::Answering => 'sky',
+            CallStatus::Initiated, CallStatus::Ringing, CallStatus::Answering => 'sky',
             CallStatus::Connected => 'emerald',
             CallStatus::Completed => 'green',
             CallStatus::Missed => 'amber',
@@ -45,6 +45,10 @@ final class LeadCallPresenter
             CallEndReason::MetaFailedAfterConnect, CallEndReason::IceFailedClientReported => __('Connection lost'),
             CallEndReason::SdpCacheFailure => __('Could not be answered'),
             CallEndReason::MetaError, CallEndReason::MetaCallingDisabled, CallEndReason::MetaApiError, CallEndReason::MetaUnreachable => __('WhatsApp reported a problem'),
+            CallEndReason::AgentCancelledOutbound => __('Cancelled by an agent'),
+            CallEndReason::OutboundConnectFailed => __('Could not be started'),
+            CallEndReason::ConsumerDeclinedOutbound => __('Declined by the recipient'),
+            CallEndReason::ConsumerNoAnswerOutbound => __('Not answered'),
         };
     }
 

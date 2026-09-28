@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\CallDirection;
 use App\Enums\CallEndReason;
 use App\Enums\CallRoutingMode;
 use App\Enums\CallStatus;
@@ -32,6 +33,23 @@ class LeadCallFactory extends Factory
             'routed_user_ids' => [],
             'ringing_expires_at' => now()->addSeconds(60),
         ];
+    }
+
+    /**
+     * WhatsApp Outbound Calling — an Initiated row: no wacid yet, agent-
+     * initiated routing, no ringing_expires_at (that's set only once Meta's
+     * connect response is applied — see InitiateOutboundCall).
+     */
+    public function outbound(): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'direction' => CallDirection::Outbound,
+            'external_call_id' => null,
+            'biz_opaque_callback_data' => 'test-'.Str::random(20),
+            'status' => CallStatus::Initiated,
+            'routing_mode' => CallRoutingMode::AgentInitiated,
+            'ringing_expires_at' => null,
+        ]);
     }
 
     public function answering(): static

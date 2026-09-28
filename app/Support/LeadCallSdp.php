@@ -60,6 +60,41 @@ final class LeadCallSdp
         return $sdp.(str_ends_with($sdp, "\r") ? "\n" : "\r\n");
     }
 
+    /**
+     * WhatsApp Outbound Calling — validates the browser's own SDP offer
+     * before it is ever sent to Meta's `/calls` connect action. Identical
+     * checks to normalizeAnswer() (a well-formed SDP is a well-formed SDP
+     * regardless of direction) kept as its own method rather than a shared
+     * rename, so normalizeAnswer() — and the hardening coverage already
+     * built around it — stays completely untouched.
+     *
+     * @return string|null the normalized SDP, or null when it is not an acceptable SDP
+     */
+    public static function normalizeOffer(mixed $sdp): ?string
+    {
+        if (! is_string($sdp) || $sdp === '' || strlen($sdp) > self::MAX_BYTES) {
+            return null;
+        }
+
+        if (! str_starts_with($sdp, 'v=0')) {
+            return null;
+        }
+
+        if (preg_match('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/', $sdp) === 1) {
+            return null;
+        }
+
+        if (preg_match('/^m=/m', $sdp) !== 1) {
+            return null;
+        }
+
+        if (str_ends_with($sdp, "\n")) {
+            return $sdp;
+        }
+
+        return $sdp.(str_ends_with($sdp, "\r") ? "\n" : "\r\n");
+    }
+
     public static function answerKey(LeadSource $source, string $callId): string
     {
         return "wa-call-answer:{$source->tenant_id}:{$source->id}:{$callId}";

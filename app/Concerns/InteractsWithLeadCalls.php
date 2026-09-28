@@ -55,8 +55,9 @@ trait InteractsWithLeadCalls
     }
 
     /**
-     * The call's WhatsApp source, resolved from the call row itself and
-     * required to be in the same tenant — never from anything the browser sent.
+     * The call's own WhatsApp source, resolved from the call row itself
+     * (never from anything the browser sent) and required to be in the same
+     * tenant.
      */
     private function sourceFor(LeadCall $call): ?LeadSource
     {

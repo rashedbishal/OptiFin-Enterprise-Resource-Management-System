@@ -3,9 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Actions\Tenant\AnswerLeadCall;
+use App\Actions\Tenant\CancelOutboundLeadCall;
 use App\Actions\Tenant\ClaimLeadCall;
+use App\Actions\Tenant\ConfirmOutboundCallConnected;
+use App\Actions\Tenant\FetchOutboundCallAnswer;
 use App\Actions\Tenant\HangupLeadCall;
+use App\Actions\Tenant\InitiateOutboundCall;
 use App\Actions\Tenant\RejectLeadCall;
+use App\Models\Lead;
 use App\Models\TenantUser;
 use App\Support\LeadCallActionResult;
 use Closure;
@@ -30,6 +35,18 @@ class LeadCallController extends Controller
         return $this->respond($request, fn (TenantUser $user): LeadCallActionResult => $action->handle($user, $leadCall));
     }
 
+    /**
+     * WhatsApp Outbound Calling — an agent places a call to $lead. Route-
+     * model-bound like every other Lead route; InitiateOutboundCall's own
+     * Gate::authorize('update', $lead) (LeadPolicy, tenant-scoped) is what
+     * actually refuses a cross-tenant lead — the same trust pattern this
+     * module already uses everywhere else, never the binding itself.
+     */
+    public function initiateOutbound(Request $request, Lead $lead, InitiateOutboundCall $action): JsonResponse
+    {
+        return $this->respond($request, fn (TenantUser $user): LeadCallActionResult => $action->handle($user, $lead, (string) $request->input('sdp')));
+    }
+
     public function answer(Request $request, string $leadCall, AnswerLeadCall $action): JsonResponse
     {
         return $this->respond($request, fn (TenantUser $user): LeadCallActionResult => $action->answer(
@@ -51,6 +68,37 @@ class LeadCallController extends Controller
     }
 
     public function hangup(Request $request, string $leadCall, HangupLeadCall $action): JsonResponse
+    {
+        return $this->respond($request, fn (TenantUser $user): LeadCallActionResult => $action->handle($user, $leadCall));
+    }
+
+    /**
+     * WhatsApp Outbound Calling — cancel an Initiated/Ringing call this
+     * agent placed, before it connects. A Connected call must use hangup()
+     * above instead — CancelOutboundLeadCall refuses it outright.
+     */
+    public function cancelOutbound(Request $request, string $leadCall, CancelOutboundLeadCall $action): JsonResponse
+    {
+        return $this->respond($request, fn (TenantUser $user): LeadCallActionResult => $action->handle($user, $leadCall));
+    }
+
+    /**
+     * WhatsApp Outbound Calling — the narrow, repeat-safe read that hands
+     * the claimant Meta's SDP answer once it has been recorded. Never
+     * cacheable, same as every other action here — the body carries the SDP.
+     */
+    public function outboundAnswer(Request $request, string $leadCall, FetchOutboundCallAnswer $action): JsonResponse
+    {
+        return $this->respond($request, fn (TenantUser $user): LeadCallActionResult => $action->handle($user, $leadCall));
+    }
+
+    /**
+     * WhatsApp Outbound Calling — the browser's own authenticated
+     * confirmation that its real WebRTC connection is up, called only after
+     * OutboundSession's waitForConnection() resolves. The one and only path
+     * that moves Answering -> Connected — never triggered by any webhook.
+     */
+    public function outboundConnected(Request $request, string $leadCall, ConfirmOutboundCallConnected $action): JsonResponse
     {
         return $this->respond($request, fn (TenantUser $user): LeadCallActionResult => $action->handle($user, $leadCall));
     }

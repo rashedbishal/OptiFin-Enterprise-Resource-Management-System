@@ -115,6 +115,18 @@ test('a forged or unknown call id is not found', function () {
     expect($result->status)->toBe(404);
 });
 
+// ── WhatsApp Outbound Calling: the inbound pipeline must never reach it ─────
+
+test('an outbound call can never reach the inbound claim pipeline', function () {
+    $log = Lc::fakeMeta();
+    $x = Lc::make(['direction' => 'outbound']);
+
+    $result = claimAs($x);
+
+    expect($result->ok)->toBeFalse()->and($result->status)->toBe(404)->and($result->errorCode)->toBe('call_not_found');
+    expect($x->fresh()->status)->toBe(CallStatus::Ringing)->and($x->fresh()->claimed_by)->toBeNull()->and($log)->toHaveCount(0);
+});
+
 test('the policy is exactly: same tenant, active, lead-management update, in the snapshot', function () {
     $x = Lc::make();
     $policy = new LeadCallPolicy;

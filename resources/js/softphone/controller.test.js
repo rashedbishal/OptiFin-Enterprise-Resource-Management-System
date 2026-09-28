@@ -1,11 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from './api.js';
-import { MODE, SoftphoneController } from './controller.js';
+import { MODE, POLL_MODE, SoftphoneController } from './controller.js';
+import { OUTBOUND_PHASE } from './outbound-media.js';
 import { FakePeerConnection, fakeApi, fakeAudio, fakeStream, rawCall } from './test-helpers.js';
 
 let controllers = [];
 
-function setup({ calls = [], mediaOverrides = {} } = {}) {
+// Mirrors the real production defaults (config/calling.php +
+// components/softphone.blade.php): a 15s healthy-mode heartbeat, a 20s
+// staleness threshold before escalating, and the pre-existing 5s
+// degraded-mode retry rate.
+function setup({ calls = [], mediaOverrides = {}, heartbeatMs = 15000, staleMs = 20000, pollMs = 5000 } = {}) {
     const state = { calls };
     const api = fakeApi({ active: vi.fn(async () => state.calls) });
     const handlers = {};
@@ -28,10 +33,19 @@ function setup({ calls = [], mediaOverrides = {} } = {}) {
     const stream = fakeStream();
     const audioEl = fakeAudio();
     const media = { supported: true, getMicrophone: vi.fn(async () => stream), env: { RTCPeerConnection: FakePeerConnection }, audioEl, ...mediaOverrides };
-    const controller = new SoftphoneController({ api, createMedia: () => media, ownership, subscribe, pollMs: 30000 });
+    const controller = new SoftphoneController({ api, createMedia: () => media, ownership, subscribe, heartbeatMs, staleMs, pollMs });
     controllers.push(controller);
 
     return { controller, api, state, handlers, subscribe, ownership, media, stream, audioEl, cards: () => controller.snapshot().cards };
+}
+
+/**
+ * Fails every `active()` call from now on with a retryable network error —
+ * the shape used throughout this suite to simulate "even the HTTP path is
+ * unreliable" and drive the controller from HEALTHY into DEGRADED.
+ */
+function failActiveCalls(api) {
+    api.active.mockRejectedValue(new ApiError({ status: 0, code: 'network', message: 'Could not reach the server.', retryable: true }));
 }
 
 const flush = () => vi.advanceTimersByTimeAsync(0);
@@ -169,54 +183,258 @@ describe('reconciliation with the server', () => {
     });
 });
 
-describe('safety polling', () => {
-    it('polls about every 30 seconds while the tab is visible', async () => {
+describe('adaptive realtime fallback (safety polling)', () => {
+    it('polls at the healthy heartbeat interval (15s) by default, never the old fixed 30s rate', async () => {
         const { controller, api } = setup();
         controller.start();
         await flush();
         expect(api.active).toHaveBeenCalledTimes(1);
+        expect(controller.mode).toBe(POLL_MODE.HEALTHY);
 
-        await vi.advanceTimersByTimeAsync(30000);
+        await vi.advanceTimersByTimeAsync(15000);
         expect(api.active).toHaveBeenCalledTimes(2);
 
-        await vi.advanceTimersByTimeAsync(60000);
-        expect(api.active).toHaveBeenCalledTimes(4);
+        await vi.advanceTimersByTimeAsync(15000);
+        expect(api.active).toHaveBeenCalledTimes(3);
     });
 
-    it('pauses while hidden and resumes with an immediate refetch when visible again', async () => {
+    it('updates lastFreshAt on every successful refresh, whether poll- or event-triggered', async () => {
+        const { controller, handlers } = setup();
+        controller.start();
+        await flush();
+        const afterMount = controller.lastFreshAt;
+        expect(afterMount).not.toBeNull();
+
+        await vi.advanceTimersByTimeAsync(5000);
+        handlers.onEvent({});
+        await flush();
+        expect(controller.lastFreshAt).toBeGreaterThan(afterMount);
+
+        const afterEvent = controller.lastFreshAt;
+        await vi.advanceTimersByTimeAsync(15000);
+        expect(controller.lastFreshAt).toBeGreaterThan(afterEvent);
+    });
+
+    it('a realtime event landing does NOT by itself count as fresh — only the refresh it triggers succeeding does', async () => {
+        const { controller, api, handlers } = setup();
+        controller.start();
+        await flush();
+        const beforeFailedEvent = controller.lastFreshAt;
+
+        await vi.advanceTimersByTimeAsync(5000);
+        failActiveCalls(api);
+        handlers.onEvent({}); // the event arrives, but the refresh it triggers fails
+        await flush();
+
+        // Unchanged: the event's mere arrival never counts, only a SUCCESSFUL
+        // refresh reaching apply() does — and this one failed.
+        expect(controller.lastFreshAt).toBe(beforeFailedEvent);
+    });
+
+    it('transitions to degraded only once staleMs (20s) has passed with zero successful refresh', async () => {
+        const { controller, api } = setup();
+        controller.start();
+        await flush();
+        expect(controller.mode).toBe(POLL_MODE.HEALTHY);
+
+        failActiveCalls(api);
+
+        await vi.advanceTimersByTimeAsync(15000); // first heartbeat tick fails, age=15s < staleMs=20s
+        expect(controller.mode).toBe(POLL_MODE.HEALTHY);
+
+        await vi.advanceTimersByTimeAsync(15000); // next tick at age=30s >= staleMs=20s
+        expect(controller.mode).toBe(POLL_MODE.DEGRADED);
+    });
+
+    it('switches to the degraded (5s) retry interval immediately on crossing the staleness threshold, no gap', async () => {
+        const { controller, api } = setup();
+        controller.start();
+        await flush();
+        failActiveCalls(api);
+
+        await vi.advanceTimersByTimeAsync(30000); // -> degraded, per the previous test's timeline
+        expect(controller.mode).toBe(POLL_MODE.DEGRADED);
+
+        api.active.mockResolvedValue([]);
+        const before = api.active.mock.calls.length;
+        await vi.advanceTimersByTimeAsync(5000); // degraded-mode tick
+        expect(api.active.mock.calls.length).toBe(before + 1);
+    });
+
+    it('any successful refresh while degraded returns immediately to healthy and resumes the 15s heartbeat', async () => {
+        const { controller, api } = setup();
+        controller.start();
+        await flush();
+        failActiveCalls(api);
+
+        await vi.advanceTimersByTimeAsync(30000);
+        expect(controller.mode).toBe(POLL_MODE.DEGRADED);
+
+        api.active.mockResolvedValue([]);
+        await vi.advanceTimersByTimeAsync(5000); // the next degraded-mode tick succeeds
+        expect(controller.mode).toBe(POLL_MODE.HEALTHY);
+
+        const afterRecovery = api.active.mock.calls.length;
+        await vi.advanceTimersByTimeAsync(5000); // would already have ticked again if still degraded
+        expect(api.active.mock.calls.length).toBe(afterRecovery);
+
+        await vi.advanceTimersByTimeAsync(10000); // total 15s since recovery -> one heartbeat tick
+        expect(api.active.mock.calls.length).toBe(afterRecovery + 1);
+    });
+
+    it('a Reverb reconnect refetching while degraded also returns the controller to healthy', async () => {
+        const { controller, api, handlers } = setup();
+        controller.start();
+        await flush();
+        failActiveCalls(api);
+
+        await vi.advanceTimersByTimeAsync(30000);
+        expect(controller.mode).toBe(POLL_MODE.DEGRADED);
+
+        api.active.mockResolvedValue([]);
+        handlers.onReconnect();
+        await flush();
+
+        expect(controller.mode).toBe(POLL_MODE.HEALTHY);
+    });
+
+    it('discovers a brand-new ringing call within one heartbeat interval even with zero prior active calls and no realtime delivery at all — connection.state is never consulted', async () => {
+        const { controller, api, state, cards } = setup({ calls: [] });
+        controller.start();
+        await flush();
+        expect(cards()).toHaveLength(0);
+
+        // The server-side call arrives (e.g. Meta's webhook landed, the row was
+        // written) but is simulated as fully undelivered over realtime: no
+        // handlers.onEvent, no handlers.onReconnect is ever called here. Only
+        // the independent HTTP heartbeat can find it.
+        state.calls = [rawCall({ id: 'zombie-call' })];
+
+        await vi.advanceTimersByTimeAsync(15000);
+
+        expect(cards().map((card) => card.id)).toEqual(['zombie-call']);
+        // The HTTP path itself never failed, so mode never needed to escalate —
+        // proving the healthy-mode heartbeat alone is what caught this, not a
+        // fallback to degraded polling.
+        expect(controller.mode).toBe(POLL_MODE.HEALTHY);
+        expect(api.active).toHaveBeenCalledTimes(2);
+    });
+
+    it('a heartbeat tick and a realtime event landing together coalesce into one refresh (existing serialization holds under the new triggers)', async () => {
+        const { controller, handlers, api } = setup();
+        controller.start();
+        await flush();
+
+        let resolveTick;
+        api.active.mockImplementation(() => new Promise((resolve) => { resolveTick = resolve; }));
+
+        vi.advanceTimersByTime(15000); // the heartbeat tick fires and is now in flight
+        handlers.onEvent({}); // arrives mid-flight: queued, not a second fetch
+        await flush();
+
+        expect(api.active).toHaveBeenCalledTimes(2); // mount + the in-flight tick only
+
+        resolveTick([]);
+        await flush();
+
+        expect(api.active).toHaveBeenCalledTimes(3); // the queued re-run then executes once more
+
+        resolveTick([]); // settle the trailing run too, so nothing is left in flight
+        await flush();
+    });
+
+    it('a failed refresh never advances lastFreshAt and never throws, while degraded', async () => {
+        const { controller, api } = setup();
+        controller.start();
+        await flush();
+        failActiveCalls(api);
+
+        await vi.advanceTimersByTimeAsync(30000);
+        expect(controller.mode).toBe(POLL_MODE.DEGRADED);
+        const freshAtWhileDegraded = controller.lastFreshAt;
+
+        // Nothing here should throw; an unhandled error inside the timer
+        // callback would make this await reject and fail the test on its own.
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(controller.lastFreshAt).toBe(freshAtWhileDegraded);
+        expect(controller.mode).toBe(POLL_MODE.DEGRADED);
+    });
+
+    it('pauses while hidden and resumes with an immediate refetch when visible again — no activity while hidden even past staleMs, and no burst on return', async () => {
         const { controller, api } = setup();
         controller.start();
         await flush();
 
         setVisibility('hidden');
-        await vi.advanceTimersByTimeAsync(120000);
+        await vi.advanceTimersByTimeAsync(120000); // well past staleMs (20s) while hidden
         expect(api.active).toHaveBeenCalledTimes(1);
+        expect(controller.mode).toBe(POLL_MODE.HEALTHY); // hidden time is never evidence of degradation
 
         setVisibility('visible');
         await flush();
-        expect(api.active).toHaveBeenCalledTimes(2);
+        expect(api.active).toHaveBeenCalledTimes(2); // exactly one refetch, not a storm
 
-        await vi.advanceTimersByTimeAsync(30000);
+        await vi.advanceTimersByTimeAsync(15000);
         expect(api.active).toHaveBeenCalledTimes(3);
     });
 
-    it('does not poll or refetch while offline, and catches up when back online', async () => {
+    it('does not poll or refetch while offline (regardless of mode), and catches up with one refresh when back online', async () => {
         const { controller, api } = setup();
         controller.start();
         await flush();
+        failActiveCalls(api);
+        await vi.advanceTimersByTimeAsync(30000);
+        expect(controller.mode).toBe(POLL_MODE.DEGRADED);
 
         window.dispatchEvent(new Event('offline'));
         expect(controller.snapshot().offline).toBe(true);
+        const beforeOffline = api.active.mock.calls.length;
         await vi.advanceTimersByTimeAsync(90000);
-        expect(api.active).toHaveBeenCalledTimes(1);
+        expect(api.active.mock.calls.length).toBe(beforeOffline);
+        expect(controller.mode).toBe(POLL_MODE.DEGRADED); // preserved, not reset, while offline
 
+        api.active.mockResolvedValue([]);
         window.dispatchEvent(new Event('online'));
         await flush();
         expect(controller.snapshot().offline).toBe(false);
-        expect(api.active).toHaveBeenCalledTimes(2);
+        expect(api.active.mock.calls.length).toBe(beforeOffline + 1);
+        expect(controller.mode).toBe(POLL_MODE.HEALTHY); // the online-triggered refresh succeeded
 
+        const afterOnline = api.active.mock.calls.length;
+        await vi.advanceTimersByTimeAsync(15000);
+        expect(api.active.mock.calls.length).toBe(afterOnline + 1);
+    });
+
+    it('two independent controller instances track freshness and mode independently', async () => {
+        const a = setup();
+        const b = setup();
+        a.controller.start();
+        b.controller.start();
+        await flush();
+
+        failActiveCalls(a.api);
         await vi.advanceTimersByTimeAsync(30000);
-        expect(api.active).toHaveBeenCalledTimes(3);
+
+        expect(a.controller.mode).toBe(POLL_MODE.DEGRADED);
+        expect(b.controller.mode).toBe(POLL_MODE.HEALTHY);
+    });
+
+    it('a call that ends while the controller is degraded is still reflected by the recovering refresh (terminal transition across the mode boundary)', async () => {
+        const { controller, api, state, cards } = setup({ calls: [rawCall({ id: 'a' })] });
+        controller.start();
+        await flush();
+        expect(cards()).toHaveLength(1);
+
+        failActiveCalls(api);
+        await vi.advanceTimersByTimeAsync(30000);
+        expect(controller.mode).toBe(POLL_MODE.DEGRADED);
+
+        state.calls = []; // the call ended server-side while we were degraded
+        api.active.mockResolvedValue(state.calls);
+        await vi.advanceTimersByTimeAsync(5000);
+
+        expect(controller.mode).toBe(POLL_MODE.HEALTHY);
+        expect(cards()).toHaveLength(0);
     });
 
     it('never starts a second timer and stops everything on stop()', async () => {
@@ -229,7 +447,7 @@ describe('safety polling', () => {
         await flush();
         const afterVisible = api.active.mock.calls.length;
 
-        await vi.advanceTimersByTimeAsync(30000);
+        await vi.advanceTimersByTimeAsync(15000);
         expect(api.active.mock.calls.length).toBe(afterVisible + 1);
 
         controller.stop();
@@ -724,6 +942,299 @@ describe('primaryCallId (mobile full-screen)', () => {
         await vi.waitFor(() => expect(controller.session?.phase).toBe('connecting'));
         expect(controller.snapshot().primaryCallId).toBe('a');
         expect(cards().find((c) => c.id === 'a').mode).toBe(MODE.CONNECTING);
+    });
+});
+
+describe('outbound calling', () => {
+    it('callOutbound() asks for the microphone first, then sends the offer; once the server row is visible via refresh the card is served from it directly', async () => {
+        const { controller, api, media, state } = setup({ calls: [] });
+        controller.start();
+        await flush();
+
+        controller.callOutbound('lead-1');
+        await flush();
+
+        expect(media.getMicrophone).toHaveBeenCalledTimes(1);
+        expect(api.initiateOutbound).toHaveBeenCalledWith('lead-1', expect.any(String));
+        expect(controller.session).not.toBeNull();
+        expect(controller.session.callId).toBe('oc1');
+
+        state.calls = [rawCall({ id: 'oc1', status: 'ringing' })];
+        await controller.refresh();
+
+        const card = controller.snapshot().cards.find((c) => c.id === 'oc1');
+        expect(card).toMatchObject({ direction: 'outbound', mode: MODE.CONNECTING, canCancel: true, canDecline: false, canAnswer: false });
+    });
+
+    it('the card appears instantly once the session exists — using the lead info passed to callOutbound() — before any server round trip completes', async () => {
+        const { controller, api, media } = setup({ calls: [] });
+        let releaseInitiate;
+        api.initiateOutbound.mockImplementation(() => new Promise((resolve) => { releaseInitiate = resolve; }));
+        controller.start();
+        await flush();
+
+        controller.callOutbound('lead-1', { id: 'lead-1', name: 'Ada Lovelace', phone: '+15551230000' });
+        await flush();
+
+        expect(media.getMicrophone).toHaveBeenCalledTimes(1);
+        expect(controller.session).not.toBeNull();
+        expect(controller.session.callId).toBeNull();
+
+        // Still INITIATING — no call id, no server row could possibly exist
+        // yet — and the card is already there, synthesized from pendingLead.
+        const pending = controller.snapshot().cards.find((c) => c.lead.id === 'lead-1');
+        expect(pending).toMatchObject({
+            direction: 'outbound',
+            mode: MODE.CONNECTING,
+            phase: OUTBOUND_PHASE.INITIATING,
+            lead: { id: 'lead-1', name: 'Ada Lovelace', phone: '+15551230000' },
+            canCancel: true,
+        });
+
+        releaseInitiate({ call: { id: 'oc1', status: 'ringing' } });
+        await flush();
+
+        // A real call id now exists, but no refresh has happened yet — the
+        // card is still synthesized, just re-keyed by the real call id, and
+        // still shows the lead info from the click rather than nothing.
+        const ringingPending = controller.snapshot().cards.find((c) => c.id === 'oc1');
+        expect(ringingPending).toMatchObject({
+            direction: 'outbound',
+            mode: MODE.CONNECTING,
+            phase: OUTBOUND_PHASE.RINGING,
+            lead: { name: 'Ada Lovelace' },
+            canCancel: true,
+        });
+    });
+
+    it('without lead info (e.g. an older caller that never passes it), the pending card still renders using the bare lead id', async () => {
+        const { controller, api } = setup({ calls: [] });
+        let releaseInitiate;
+        api.initiateOutbound.mockImplementation(() => new Promise((resolve) => { releaseInitiate = resolve; }));
+        controller.start();
+        await flush();
+
+        controller.callOutbound('lead-9');
+        await flush();
+
+        const pending = controller.snapshot().cards.find((c) => c.lead.id === 'lead-9');
+        expect(pending).toMatchObject({ direction: 'outbound', lead: { id: 'lead-9', name: null, phone: null } });
+
+        releaseInitiate({ call: { id: 'oc9', status: 'ringing' } });
+        await flush();
+    });
+
+    it('a second call attempt is blocked while one is already active (mediaBusy), same rule as inbound', async () => {
+        const { controller, api, media } = setup({ calls: [] });
+        controller.start();
+        await flush();
+
+        controller.callOutbound('lead-1');
+        await flush();
+        expect(api.initiateOutbound).toHaveBeenCalledTimes(1);
+
+        await controller.callOutbound('lead-2');
+        expect(api.initiateOutbound).toHaveBeenCalledTimes(1);
+        expect(media.getMicrophone).toHaveBeenCalledTimes(1);
+    });
+
+    it('the "session ended" guard never fires while still INITIATING (no call id yet) — only AnswerSession ever has a callId from construction', async () => {
+        const { controller, api, state } = setup({ calls: [] });
+        let releaseInitiate;
+        api.initiateOutbound.mockImplementation(() => new Promise((resolve) => { releaseInitiate = resolve; }));
+        controller.start();
+        await flush();
+
+        controller.callOutbound('lead-1');
+        await flush();
+        expect(controller.session).not.toBeNull();
+        expect(controller.session.callId).toBeNull();
+
+        // A refresh lands while still INITIATING — must not tear the session down.
+        state.calls = [];
+        await controller.refresh();
+        expect(controller.session).not.toBeNull();
+
+        releaseInitiate({ call: { id: 'oc1', status: 'ringing' } });
+        await flush();
+        expect(controller.session.callId).toBe('oc1');
+    });
+
+    it('applyAnswer() is triggered automatically once a refresh reports the call as answering, and only reaches Connected after the real WebRTC connection is confirmed server-side', async () => {
+        const { controller, api, state } = setup({ calls: [] });
+        controller.start();
+        await flush();
+
+        controller.callOutbound('lead-1');
+        await flush();
+        expect(controller.session.phase).toBe(OUTBOUND_PHASE.RINGING);
+
+        // Meta's SDP answer has arrived — the call is Answering, NOT
+        // Connected. This alone must not move the session out of RINGING
+        // (ringback keeps playing) or confirm anything.
+        state.calls = [rawCall({ id: 'oc1', status: 'answering', claimed_by_me: true })];
+        await controller.refresh();
+        await flush();
+        expect(controller.session.phase).toBe(OUTBOUND_PHASE.RINGING);
+        expect(api.confirmOutboundConnected).not.toHaveBeenCalled();
+
+        FakePeerConnection.instances.at(-1).setState('connected');
+        await vi.waitFor(() => expect(controller.session.phase).toBe(OUTBOUND_PHASE.CONNECTED));
+        expect(api.confirmOutboundConnected).toHaveBeenCalledWith('oc1');
+    });
+
+    it('canCancel becomes false once the server reports Answering, regardless of local WebRTC/acceptance progress — CancelOutboundLeadCall does not allow it past Ringing', async () => {
+        const { controller, state } = setup({ calls: [] });
+        controller.start();
+        await flush();
+        controller.callOutbound('lead-1');
+        await flush();
+        state.calls = [rawCall({ id: 'oc1', status: 'answering', claimed_by_me: true })];
+        await controller.refresh();
+        await flush();
+
+        // Local phase is still RINGING at this point (see the test above) —
+        // canCancel must key off the server's own status, not local phase.
+        expect(controller.session.phase).toBe(OUTBOUND_PHASE.RINGING);
+        const card = controller.snapshot().cards.find((c) => c.id === 'oc1');
+        expect(card.canCancel).toBe(false);
+    });
+
+    it('cancelOutboundCall() tears the session down and calls the cancel endpoint once a call id is known', async () => {
+        const { controller, api } = setup({ calls: [] });
+        controller.start();
+        await flush();
+
+        controller.callOutbound('lead-1');
+        await flush();
+
+        await controller.cancelOutboundCall();
+
+        expect(api.cancelOutbound).toHaveBeenCalledWith('oc1');
+        expect(controller.session).toBeNull();
+    });
+
+    it('cancelOutboundCall() during the brief INITIATING window (no call id yet) tears down locally without any API call', async () => {
+        const { controller, api } = setup({ calls: [] });
+        let releaseInitiate;
+        api.initiateOutbound.mockImplementation(() => new Promise((resolve) => { releaseInitiate = resolve; }));
+        controller.start();
+        await flush();
+
+        controller.callOutbound('lead-1');
+        await flush();
+        expect(controller.session.callId).toBeNull();
+
+        await controller.cancelOutboundCall();
+
+        expect(controller.session).toBeNull();
+        expect(api.cancelOutbound).not.toHaveBeenCalled();
+
+        releaseInitiate({ call: { id: 'oc1', status: 'ringing' } });
+    });
+
+    it('cancelOutboundCall() does nothing once Connected — Hang Up (the existing, unchanged endpoint) is the only way to end it', async () => {
+        const { controller, api, state } = setup({ calls: [] });
+        controller.start();
+        await flush();
+        controller.callOutbound('lead-1');
+        await flush();
+        state.calls = [rawCall({ id: 'oc1', status: 'answering', claimed_by_me: true })];
+        await controller.refresh();
+        FakePeerConnection.instances.at(-1).setState('connected');
+        await vi.waitFor(() => expect(controller.session.phase).toBe(OUTBOUND_PHASE.CONNECTED));
+
+        await controller.cancelOutboundCall();
+
+        expect(api.cancelOutbound).not.toHaveBeenCalled();
+        expect(controller.session).not.toBeNull();
+        expect(controller.snapshot().cards[0].canHangup).toBe(true);
+    });
+
+    describe('reload/lost outbound call safety (pre-real-Meta fix #2)', () => {
+        it('an outbound call still Ringing after a reload (no local session) never renders as an answerable inbound ringing card', async () => {
+            // "Reload" = a fresh controller with no session at all, whose
+            // very first /calls/active response already contains this
+            // tab's own outbound call, still Ringing, claimed_by_me true —
+            // exactly what the server would report after a real reload.
+            const { controller, cards } = setup({ calls: [rawCall({ id: 'oc1', status: 'ringing', claimed_by_me: true, direction: 'outbound' })] });
+            controller.start();
+            await flush();
+
+            expect(controller.session).toBeNull();
+            const card = cards().find((c) => c.id === 'oc1');
+            expect(card.mode).not.toBe(MODE.RINGING);
+            expect(card.mode).toBe(MODE.LOST);
+            expect(card.canAnswer).toBe(false);
+        });
+
+        it('no inbound /claim request can be triggered even if answer() is called directly on the reloaded outbound call', async () => {
+            const { controller, api } = setup({ calls: [rawCall({ id: 'oc1', status: 'ringing', claimed_by_me: true, direction: 'outbound' })] });
+            controller.start();
+            await flush();
+
+            await controller.answer('oc1');
+
+            expect(api.claim).not.toHaveBeenCalled();
+            expect(controller.session).toBeNull();
+        });
+
+        it('the call remains exactly as the server reports it (Ringing) — this is a display-only fix, never a state mutation', async () => {
+            const { controller, state } = setup({ calls: [rawCall({ id: 'oc1', status: 'ringing', claimed_by_me: true, direction: 'outbound' })] });
+            controller.start();
+            await flush();
+
+            await controller.answer('oc1');
+            await controller.refresh();
+
+            // Still exactly what the fake server reports — nothing here
+            // ever wrote to state.calls; only a real Meta terminate or the
+            // stale-reconciliation sweep (both server-side, Phase 7) can
+            // end it.
+            expect(state.calls[0].status).toBe('ringing');
+        });
+
+        it('inbound Ringing behavior after a reload is completely unchanged: still answerable', async () => {
+            const { controller, cards } = setup({ calls: [rawCall({ id: 'c1', status: 'ringing', claimed_by_me: false })] });
+            controller.start();
+            await flush();
+
+            const card = cards().find((c) => c.id === 'c1');
+            expect(card.mode).toBe(MODE.RINGING);
+            expect(card.canAnswer).toBe(true);
+        });
+
+        it('a reloaded outbound call already Connected is also never answerable (existing "lost" behavior, unchanged)', async () => {
+            const { controller, cards } = setup({ calls: [rawCall({ id: 'oc1', status: 'connected', claimed_by_me: true, direction: 'outbound', expires_in_seconds: null, connected_at: new Date().toISOString() })] });
+            controller.start();
+            await flush();
+
+            const card = cards().find((c) => c.id === 'oc1');
+            expect(card.mode).toBe(MODE.LOST);
+            expect(card.canAnswer).toBe(false);
+        });
+
+        it('an outbound call in Answering after a reload never exposes the inbound-only decline/reject action (same class of bug as the Ringing case above)', async () => {
+            const { controller, cards } = setup({ calls: [rawCall({ id: 'oc1', status: 'answering', claimed_by_me: true, direction: 'outbound' })] });
+            controller.start();
+            await flush();
+
+            expect(controller.session).toBeNull();
+            const card = cards().find((c) => c.id === 'oc1');
+            expect(card.mode).toBe(MODE.LOST);
+            expect(card.canAnswer).toBe(false);
+            expect(card.canDecline).toBe(false);
+        });
+
+        it('inbound Answering after a reload is completely unchanged: still declinable', async () => {
+            const { controller, cards } = setup({ calls: [rawCall({ id: 'c1', status: 'answering', claimed_by_me: true })] });
+            controller.start();
+            await flush();
+
+            const card = cards().find((c) => c.id === 'c1');
+            expect(card.mode).toBe(MODE.LOST);
+            expect(card.canDecline).toBe(true);
+        });
     });
 });
 

@@ -6,10 +6,17 @@ namespace App\Enums;
  * WhatsApp inbound calling (Phase 1) — a LeadCall's own lifecycle, driven by
  * OUR state, never inferred from Meta's terminate `status` alone (Meta only
  * documents FAILED|COMPLETED there — see the approved architecture's
- * transition matrix). Ringing/Answering/Connected are the "active" states;
- * Completed/Missed/Rejected/Failed are terminal and final — the only writes
- * legal after a terminal state are fill-only ones (meta_status,
+ * transition matrix). Initiated/Ringing/Answering/Connected are the "active"
+ * states; Completed/Missed/Rejected/Failed are terminal and final — the only
+ * writes legal after a terminal state are fill-only ones (meta_status,
  * meta_terminated_at, ended_at, duration_seconds), never a status change.
+ *
+ * Initiated is outbound-only (WhatsApp Outbound Calling): the browser has
+ * created its SDP offer and the server has POSTed Meta's `connect` action, but
+ * Meta has not yet returned the call's `wacid` — a row can therefore exist
+ * before `external_call_id` is known. Inbound rows never pass through this
+ * state; a webhook-recorded call is always created already Ringing (or a
+ * terminal state), exactly as before this case existed.
  *
  * allowedNext() encodes the STRUCTURAL edges of that matrix only (which
  * status may follow which). The guards on each edge (who may trigger it, the
@@ -21,6 +28,7 @@ namespace App\Enums;
  */
 enum CallStatus: string
 {
+    case Initiated = 'initiated';
     case Ringing = 'ringing';
     case Answering = 'answering';
     case Connected = 'connected';
@@ -54,7 +62,7 @@ enum CallStatus: string
     public function isActive(): bool
     {
         return match ($this) {
-            self::Ringing, self::Answering, self::Connected => true,
+            self::Initiated, self::Ringing, self::Answering, self::Connected => true,
             default => false,
         };
     }
@@ -70,6 +78,7 @@ enum CallStatus: string
     public function allowedNext(): array
     {
         return match ($this) {
+            self::Initiated => [self::Ringing, self::Failed],
             self::Ringing => [self::Answering, self::Rejected, self::Missed, self::Failed],
             self::Answering => [self::Connected, self::Completed, self::Missed, self::Rejected, self::Failed],
             self::Connected => [self::Completed, self::Failed],
@@ -85,6 +94,7 @@ enum CallStatus: string
     public function label(): string
     {
         return match ($this) {
+            self::Initiated => 'Initiated',
             self::Ringing => 'Ringing',
             self::Answering => 'Answering',
             self::Connected => 'Connected',

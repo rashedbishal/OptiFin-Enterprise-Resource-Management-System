@@ -39,6 +39,13 @@ export class FakePeerConnection {
         return { type: 'answer', sdp: ANSWER_SDP };
     }
 
+    // WhatsApp Outbound Calling
+    async createOffer() {
+        this.log.push(['createOffer']);
+
+        return { type: 'offer', sdp: OFFER_SDP };
+    }
+
     async setLocalDescription(description) {
         this.log.push(['setLocalDescription', description]);
     }
@@ -76,6 +83,11 @@ export function fakeApi(overrides = {}) {
         accept: vi.fn(async () => ({ call: { id: 'c1', status: 'connected' } })),
         reject: vi.fn(async () => ({ call: { id: 'c1', status: 'rejected' }, meta_confirmed: true })),
         hangup: vi.fn(async () => ({ call: { id: 'c1', status: 'completed' }, meta_confirmed: true })),
+        // WhatsApp Outbound Calling
+        initiateOutbound: vi.fn(async () => ({ call: { id: 'oc1', status: 'ringing' } })),
+        outboundAnswer: vi.fn(async () => ({ call: { id: 'oc1', status: 'answering' }, session: { sdp_type: 'answer', sdp: ANSWER_SDP } })),
+        cancelOutbound: vi.fn(async () => ({ call: { id: 'oc1', status: 'failed' }, meta_confirmed: true })),
+        confirmOutboundConnected: vi.fn(async () => ({ call: { id: 'oc1', status: 'connected' } })),
         ...overrides,
     };
 }

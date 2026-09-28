@@ -414,3 +414,145 @@ test('a connection failure result does not carry the exception text', function (
 
     expect(print_r($result, true).json_encode($result))->not->toContain(WCC_TOKEN)->not->toContain('cURL');
 });
+
+// ── Call permission check (WhatsApp Outbound Calling) ──────────────────────
+
+const WCC_CALL_PERMISSIONS_URL = 'https://graph.facebook.com/v25.0/436666719526789/call_permissions';
+
+test('checkCallPermission sends a bearer-token GET with user_wa_id as a query parameter', function () {
+    Http::fake(['*' => Http::response(['permission' => ['status' => 'no_permission']])]);
+
+    wccClient()->checkCallPermission(Wa::CALLER);
+
+    Http::assertSent(function (Request $request) {
+        return $request->url() === WCC_CALL_PERMISSIONS_URL.'?user_wa_id='.Wa::CALLER
+            && $request->method() === 'GET'
+            && $request->hasHeader('Authorization', 'Bearer '.WCC_TOKEN);
+    });
+});
+
+test('checkCallPermission parses no_permission, temporary and permanent status', function (string $metaStatus, ?int $expiration) {
+    Http::fake(['*' => Http::response(['permission' => array_filter(['status' => $metaStatus, 'expiration_time' => $expiration], fn ($v) => $v !== null)])]);
+
+    $result = wccClient()->checkCallPermission(Wa::CALLER);
+
+    expect($result->successful)->toBeTrue();
+    expect($result->data['status'])->toBe($metaStatus);
+    expect($result->data['expiration_time'])->toBe($expiration);
+})->with([
+    'no_permission' => ['no_permission', null],
+    'temporary' => ['temporary', 1745343479],
+    'permanent' => ['permanent', null],
+]);
+
+test('checkCallPermission preserves actions[] and limits[] dynamically, never collapsing or hardcoding a limit', function () {
+    Http::fake(['*' => Http::response([
+        'permission' => ['status' => 'no_permission'],
+        'actions' => [
+            [
+                'action_name' => 'send_call_permission_request',
+                'can_perform_action' => true,
+                'limits' => [
+                    ['time_period' => 'PT24H', 'max_allowed' => 1, 'current_usage' => 0, 'limit_expiration_time' => 1745622600],
+                    ['time_period' => 'P7D', 'max_allowed' => 2, 'current_usage' => 1, 'limit_expiration_time' => 1746000000],
+                ],
+            ],
+            ['action_name' => 'start_call', 'can_perform_action' => false, 'limits' => []],
+        ],
+    ])]);
+
+    $result = wccClient()->checkCallPermission(Wa::CALLER);
+
+    expect($result->data['actions'])->toHaveCount(2);
+    expect($result->data['actions'][0])->toBe([
+        'action_name' => 'send_call_permission_request',
+        'can_perform_action' => true,
+        'limits' => [
+            ['time_period' => 'PT24H', 'max_allowed' => 1, 'current_usage' => 0, 'limit_expiration_time' => 1745622600],
+            ['time_period' => 'P7D', 'max_allowed' => 2, 'current_usage' => 1, 'limit_expiration_time' => 1746000000],
+        ],
+    ]);
+    expect($result->data['actions'][1])->toBe(['action_name' => 'start_call', 'can_perform_action' => false, 'limits' => []]);
+});
+
+test('checkCallPermission never throws on a malformed response and defaults every field to null/empty', function () {
+    Http::fake(['*' => Http::response(['unexpected' => 'shape'])]);
+
+    $result = wccClient()->checkCallPermission(Wa::CALLER);
+
+    expect($result->successful)->toBeTrue();
+    expect($result->data)->toBe(['status' => null, 'expiration_time' => null, 'actions' => []]);
+});
+
+test('checkCallPermission retries once on a 5xx, like getSettings', function () {
+    $attempts = wccFakeSequence([Http::response([], 503), Http::response(['permission' => ['status' => 'no_permission']])]);
+
+    $result = wccClient()->checkCallPermission(Wa::CALLER);
+
+    expect($result->successful)->toBeTrue();
+    expect($attempts['count'])->toBe(2);
+});
+
+// ── Outbound connect (WhatsApp Outbound Calling) ────────────────────────────
+
+const WCC_OUTBOUND_CALLS_URL = 'https://graph.facebook.com/v26.0/436666719526789/calls';
+
+test('connect POSTs action=connect with an SDP offer to the OUTBOUND graph version, never the inbound one', function () {
+    Http::fake(['*' => Http::response(['messaging_product' => 'whatsapp', 'calls' => [['id' => 'wacid.OUT-1']]])]);
+
+    wccClient()->connect(Wa::CALLER, Wa::sdp(), 'correlation-token-1');
+
+    Http::assertSent(function (Request $request) {
+        return $request->url() === WCC_OUTBOUND_CALLS_URL
+            && $request->method() === 'POST'
+            && $request['action'] === 'connect'
+            && $request['to'] === Wa::CALLER
+            && $request['session'] === ['sdp_type' => 'offer', 'sdp' => Wa::sdp()]
+            && $request['biz_opaque_callback_data'] === 'correlation-token-1';
+    });
+    // Never the inbound version, on this or any other request in the test.
+    Http::assertNotSent(fn (Request $request) => str_starts_with($request->url(), 'https://graph.facebook.com/v25.0'));
+});
+
+test('connect omits biz_opaque_callback_data entirely when none is given', function () {
+    Http::fake(['*' => Http::response(['calls' => [['id' => 'wacid.OUT-2']]])]);
+
+    wccClient()->connect(Wa::CALLER, Wa::sdp());
+
+    Http::assertSent(fn (Request $request) => ! array_key_exists('biz_opaque_callback_data', $request->data()));
+});
+
+test('connect returns the wacid from calls[0].id on success', function () {
+    Http::fake(['*' => Http::response(['calls' => [['id' => 'wacid.OUT-3']]])]);
+
+    $result = wccClient()->connect(Wa::CALLER, Wa::sdp());
+
+    expect($result->successful)->toBeTrue();
+    expect($result->data)->toBe(['wacid' => 'wacid.OUT-3']);
+});
+
+test('connect fails cleanly (InvalidResponse) when the 2xx body carries no calls[0].id', function () {
+    Http::fake(['*' => Http::response(['messaging_product' => 'whatsapp'])]);
+
+    $result = wccClient()->connect(Wa::CALLER, Wa::sdp());
+
+    expect($result->successful)->toBeFalse();
+    expect($result->error)->toBe(CallingApiError::InvalidResponse);
+});
+
+test('connect is never retried, even on a 5xx — a real outbound call side effect must not repeat', function () {
+    $attempts = wccFakeSequence([Http::response([], 503)]);
+
+    wccClient()->connect(Wa::CALLER, Wa::sdp());
+
+    expect($attempts['count'])->toBe(1);
+});
+
+test('connect classifies Meta 138006 (missing call permission) as MissingPermission', function () {
+    Http::fake(['*' => wccMetaError(138006, 401, 'No approved call permission found')]);
+
+    $result = wccClient()->connect(Wa::CALLER, Wa::sdp());
+
+    expect($result->successful)->toBeFalse();
+    expect($result->error)->toBe(CallingApiError::MissingPermission);
+});

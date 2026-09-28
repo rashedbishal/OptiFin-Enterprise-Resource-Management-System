@@ -95,6 +95,28 @@ test('another tenant\'s call id is not found', function () {
     expect($result->status)->toBe(404)->and($log)->toHaveCount(0);
 });
 
+// ── WhatsApp Outbound Calling: the inbound pipeline must never reach it ─────
+
+test('an outbound call can never reach the inbound answer (pre_accept) pipeline', function () {
+    $log = Lc::fakeMeta();
+    $x = Lc::make(['direction' => 'outbound', 'status' => 'answering']);
+
+    $result = alcAnswer($x);
+
+    expect($result->ok)->toBeFalse()->and($result->status)->toBe(404)->and($result->errorCode)->toBe('call_not_found');
+    expect($x->fresh()->meta_stage)->toBeNull()->and($log)->toHaveCount(0);
+});
+
+test('an outbound call can never reach the inbound accept pipeline', function () {
+    $log = Lc::fakeMeta();
+    $x = Lc::make(['direction' => 'outbound', 'status' => 'answering']);
+
+    $result = alcAccept($x);
+
+    expect($result->ok)->toBeFalse()->and($result->status)->toBe(404)->and($result->errorCode)->toBe('call_not_found');
+    expect($x->fresh()->status)->toBe(CallStatus::Answering)->and($x->fresh()->connected_at)->toBeNull()->and($log)->toHaveCount(0);
+});
+
 test('a call that is no longer answering cannot be answered', function (string $state) {
     $log = Lc::fakeMeta();
     $x = Lc::make(['status' => $state, 'claimed_by' => null]);

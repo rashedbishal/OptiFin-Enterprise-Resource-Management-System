@@ -63,6 +63,23 @@ return [
 
     'graph_version' => env('CALLING_GRAPH_VERSION', 'v25.0'),
 
+    /*
+    |--------------------------------------------------------------------------
+    | WhatsApp Outbound Calling — Meta API Version
+    |--------------------------------------------------------------------------
+    |
+    | Used ONLY by WhatsAppCallingClient::connect() (the outbound `/calls`
+    | connect action) — every existing, already-live-validated inbound
+    | Calling API action (settings, pre_accept, accept, reject, terminate,
+    | and the new checkCallPermission()) keeps using graph_version above,
+    | completely unchanged. Kept as a separate key specifically so a future
+    | correction to this one number can never risk inbound calling, which
+    | has no dependency on it at all.
+    |
+    */
+
+    'outbound_graph_version' => env('CALLING_OUTBOUND_GRAPH_VERSION', 'v26.0'),
+
     'api_timeout_seconds' => (int) env('CALLING_API_TIMEOUT_SECONDS', 10),
 
     'api_connect_timeout_seconds' => (int) env('CALLING_API_CONNECT_TIMEOUT_SECONDS', 3),
@@ -130,21 +147,97 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | WhatsApp Inbound Calling — Softphone Realtime Fallback
+    | WhatsApp Outbound Calling — Stale Initiated Reconciliation
     |--------------------------------------------------------------------------
     |
-    | softphone_poll_seconds: how often the browser re-fetches its active
-    | calls as a fallback when realtime (Reverb/websocket) doesn't deliver an
-    | event — a dropped connection, a missed broadcast, or a server restart
-    | the browser's socket didn't notice (it can report itself as still
-    | "connected" even after the underlying connection has died). Realtime is
-    | the primary, near-instant path; this only bounds the worst case. Kept
-    | short because a ring only lasts ring_ttl_seconds (60) — a slow fallback
-    | here is the difference between "the phone rang and nobody could answer
-    | in time" and "briefly late but still answerable."
+    | outbound_initiate_grace_seconds: how long a row may stay Initiated (no
+    | wacid ever applied) before `calls:reconcile-stale` fails it. Distinct
+    | from stale_grace_seconds/ringing_expires_at, which an Initiated row
+    | never has — InitiateOutboundCall's own connect() POST is synchronous,
+    | so under normal operation this state is momentary; this bounds the
+    | abnormal case (the process died mid-request, or a transient failure
+    | left the row unresolved) rather than leaving it stuck forever.
     |
     */
 
+    'outbound_initiate_grace_seconds' => (int) env('CALLING_OUTBOUND_INITIATE_GRACE_SECONDS', 120),
+
+    /*
+    |--------------------------------------------------------------------------
+    | WhatsApp Inbound Calling — Softphone Realtime Fallback (Adaptive)
+    |--------------------------------------------------------------------------
+    |
+    | The browser polls its active calls at one of two speeds, never both at
+    | once — never inferred from the websocket's own reported connection
+    | state, which can lie (it can report itself as still "connected" even
+    | after the underlying connection has died, e.g. an abrupt server
+    | restart the browser's socket never noticed).
+    |
+    | softphone_heartbeat_seconds: the HEALTHY-mode interval. A plain HTTP
+    | check, entirely independent of the websocket — it alone bounds how
+    | late a brand-new call can be discovered even with a fully dead
+    | realtime connection, since it does not depend on realtime having
+    | delivered anything. This is what makes a call arriving with zero
+    | prior active calls (nothing for realtime to ever have nudged)
+    | discoverable at all, and is the number that actually matters against
+    | ring_ttl_seconds (60): 15s leaves 45s of the ring window for an agent
+    | to notice and answer even in the worst case.
+    |
+    | softphone_staleness_seconds: how long the app tolerates zero
+    | successful refresh (poll- or realtime-event-triggered — an event's
+    | mere arrival is never itself "success") before escalating from the
+    | heartbeat to the faster degraded-mode poll. A broader "even the HTTP
+    | path is unreliable" condition than "just the websocket is unhealthy",
+    | since the heartbeat above is unaffected by the websocket's health on
+    | its own.
+    |
+    | softphone_poll_seconds: the DEGRADED-mode interval — the fast retry
+    | rate used only once softphone_staleness_seconds has elapsed with no
+    | successful refresh. Any single successful refresh while degraded
+    | returns the browser to the heartbeat rate immediately. Kept short
+    | because a ring only lasts ring_ttl_seconds (60) — a slow fallback here
+    | is the difference between "the phone rang and nobody could answer in
+    | time" and "briefly late but still answerable." This was the app's
+    | ONLY polling rate before the adaptive heartbeat/staleness split above
+    | was introduced, so it remains the worst-case ceiling: degraded mode
+    | never polls slower than the app already did before this existed.
+    |
+    */
+
+    'softphone_heartbeat_seconds' => (int) env('CALLING_SOFTPHONE_HEARTBEAT_SECONDS', 15),
+
+    'softphone_staleness_seconds' => (int) env('CALLING_SOFTPHONE_STALENESS_SECONDS', 20),
+
     'softphone_poll_seconds' => (int) env('CALLING_SOFTPHONE_POLL_SECONDS', 5),
+
+    /*
+    |--------------------------------------------------------------------------
+    | WhatsApp Outbound Calling — Call Permission
+    |--------------------------------------------------------------------------
+    |
+    | A business-initiated call requires the consumer's explicit call
+    | permission (Meta's verified `GET .../call_permissions` /
+    | `call_permission_reply` webhook contract — see
+    | App\Actions\Tenant\{CheckLeadCallPermission,RequestLeadCallPermission,
+    | RecordCallPermissionReply}). Rate limits are never read from config —
+    | they come live from Meta's own actions[].limits[] on every check.
+    |
+    | call_permission_request_template: the approved WhatsApp Business
+    | template (Meta Business Manager, per WABA) used to ask a consumer for
+    | call permission. name/language and the body's two variables (lead
+    | name, lead inquiry) are the confirmed, approved contract; the
+    | `call_permission_request` component itself remains
+    | `{"type": "call_permission_request"}` with no further fields, since
+    | Meta's public documentation does not confirm any more than that shape
+    | — see RequestLeadCallPermission. The template was In Review, not yet
+    | Active, when this was built: real Meta test-number validation is still
+    | pending and not claimed here.
+    |
+    */
+
+    'call_permission_request_template' => [
+        'name' => env('CALLING_PERMISSION_REQUEST_TEMPLATE_NAME', 'call_permission_request'),
+        'language' => env('CALLING_PERMISSION_REQUEST_TEMPLATE_LANGUAGE', 'en'),
+    ],
 
 ];

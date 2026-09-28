@@ -126,11 +126,10 @@ class HangupLeadCall
         // before the Meta request, so their view of this call updates immediately.
         LeadCallBroadcaster::updated($call, CallStatus::Completed);
 
-        $api = $source === null
-            ? null
-            : (new WhatsAppCallingClient($source))->terminate($call->external_call_id);
+        $api = $source === null ? null : (new WhatsAppCallingClient($source))->terminate($call->external_call_id);
 
         $this->forgetSdp($call, $source);
+
         $this->logCallAction('hangup', $user, $call, $api?->successful ? 'hung_up' : 'hung_up_meta_unconfirmed', $api);
 
         return LeadCallActionResult::success($this->freshCall($call) ?? $call, metaConfirmed: $this->confirmed($api));

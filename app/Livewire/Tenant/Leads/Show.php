@@ -2,9 +2,12 @@
 
 namespace App\Livewire\Tenant\Leads;
 
+use App\Actions\Tenant\CheckLeadCallPermission;
 use App\Actions\Tenant\DeleteLeadConversation;
 use App\Actions\Tenant\RecordLeadConsent;
 use App\Actions\Tenant\RecordLeadDeletionAudit;
+use App\Actions\Tenant\RequestLeadCallPermission;
+use App\Actions\Tenant\ResolveLeadWhatsAppSource;
 use App\Actions\Tenant\SaveLeadCustomFieldValues;
 use App\Enums\ConsentSource;
 use App\Enums\ConsentStatus;
@@ -30,6 +33,7 @@ use App\Models\DealStatusLog;
 use App\Models\Lead;
 use App\Models\LeadAttachment;
 use App\Models\LeadCall;
+use App\Models\LeadCallPermission;
 use App\Models\LeadConsent;
 use App\Models\LeadConsentEvent;
 use App\Models\LeadCustomFieldDefinition;
@@ -37,6 +41,7 @@ use App\Models\LeadDetailUpdateLog;
 use App\Models\LeadDuplicateLink;
 use App\Models\LeadNote;
 use App\Models\LeadScoreLog;
+use App\Models\LeadSource;
 use App\Models\LeadStatus;
 use App\Models\LeadStatusLog;
 use App\Models\LeadTag;
@@ -795,6 +800,93 @@ class Show extends Component
             ->latest('created_at')
             ->limit(10)
             ->get();
+    }
+
+    /**
+     * WhatsApp Outbound Calling — the Lead's own WhatsApp source, if it has
+     * one (see ResolveLeadWhatsAppSource). Drives whether the "Call" button
+     * and the permission UI render at all — a Lead with no WhatsApp
+     * presence gets neither.
+     */
+    #[Computed]
+    public function callableWhatsappSource(): ?LeadSource
+    {
+        return app(ResolveLeadWhatsAppSource::class)->handle($this->lead);
+    }
+
+    /**
+     * WhatsApp Outbound Calling — this lead's current, LOCALLY-CACHED call
+     * permission state. Bookkeeping/UI only, exactly like the model's own
+     * docblock says: checkCallPermission()/requestCallPermission() below
+     * always re-verify live against Meta before acting, this is only ever
+     * what the button/badge shows between clicks.
+     */
+    #[Computed]
+    public function callPermission(): ?LeadCallPermission
+    {
+        return LeadCallPermission::query()
+            ->where('tenant_id', $this->lead->tenant_id)
+            ->where('lead_id', $this->lead->id)
+            ->first();
+    }
+
+    /**
+     * A manual, agent-triggered live refresh of the permission state (the
+     * "Checking permission…" / refresh action) — CheckLeadCallPermission
+     * itself is also run automatically as the first step of every
+     * requestCallPermission() and outbound-connect attempt.
+     */
+    public function checkCallPermission(): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        $source = $this->callableWhatsappSource();
+
+        if ($source === null) {
+            return;
+        }
+
+        app(CheckLeadCallPermission::class)->handle($this->lead, $source);
+        unset($this->callPermission);
+    }
+
+    /**
+     * The explicit "Request permission" click — never fired automatically.
+     * RequestLeadCallPermission itself re-checks live and refuses (without
+     * sending anything) if Meta's own actions[].limits[] currently say no.
+     */
+    public function requestCallPermission(): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        $source = $this->callableWhatsappSource();
+
+        if ($source === null) {
+            return;
+        }
+
+        $result = app(RequestLeadCallPermission::class)->handle($this->lead, $source);
+        unset($this->callPermission);
+
+        if ($result->sent) {
+            Flux::toast(variant: 'success', text: __('Call permission requested.'));
+
+            return;
+        }
+
+        Flux::toast(variant: 'warning', text: match ($result->refusalReason) {
+            'not_allowed' => __('WhatsApp is not currently allowing a permission request for this number right now — try again later.'),
+            'permission_check_failed' => __('Could not check WhatsApp permission right now. Try again.'),
+            default => __('Could not request calling permission.'),
+        });
     }
 
     /**

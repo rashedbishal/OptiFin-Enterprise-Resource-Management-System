@@ -37,6 +37,15 @@ enum CallEndReason: string
     case SdpCacheFailure = 'sdp_cache_failure';
     case IceFailedClientReported = 'ice_failed_client_reported';
 
+    // WhatsApp Outbound Calling — deliberately NOT reusing the inbound-
+    // worded cases above, whose semantics differ (e.g. AgentRejected is
+    // "an agent declined a call someone else placed", not "the agent who
+    // placed this call cancelled their own attempt").
+    case AgentCancelledOutbound = 'agent_cancelled_outbound';
+    case OutboundConnectFailed = 'outbound_connect_failed';
+    case ConsumerDeclinedOutbound = 'consumer_declined_outbound';
+    case ConsumerNoAnswerOutbound = 'consumer_no_answer_outbound';
+
     /**
      * @return array<int, string>
      */

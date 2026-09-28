@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\CallDirection;
 use App\Enums\CallEndReason;
 use App\Enums\CallMetaStage;
 use App\Enums\CallRoutingMode;
@@ -33,12 +34,33 @@ use Illuminate\Support\Carbon;
  * The SDP offer/answer is never stored on this row — see the architecture
  * (offer lives in the cache, briefly).
  *
+ * WhatsApp Outbound Calling: `direction` defaults `inbound` for every
+ * pre-existing and inbound-webhook-created row. An outbound row (created
+ * only by App\Actions\Tenant\InitiateOutboundCall) may exist with
+ * `external_call_id` still NULL — created before Meta's synchronous /calls
+ * response returns the wacid (status Initiated) — never true for an inbound
+ * row. `biz_opaque_callback_data` is the server-minted correlation token
+ * used for that brief window and, after, as a defense-in-depth secondary
+ * check; never accepted from the browser.
+ *
+ * `consumer_accepted_at` — set exactly once, only by
+ * App\Actions\Tenant\RecordOutboundCallStatusEvent on Meta's own `ACCEPTED`
+ * call-status webhook. It is a second, independent precondition
+ * App\Actions\Tenant\ConfirmOutboundCallConnected requires alongside the
+ * browser's own real WebRTC/ICE confirmation before Answering -> Connected —
+ * Meta's earlier `connect` webhook (the SDP answer) is not evidence the
+ * consumer answered, and neither is the browser's ICE state alone (that only
+ * proves the browser reached Meta's own media relay). Always NULL for an
+ * inbound row.
+ *
  * @property string $id
  * @property string $tenant_id
  * @property string $lead_id
  * @property string $lead_source_id
  * @property string|null $conversation_id
- * @property string $external_call_id
+ * @property CallDirection $direction
+ * @property string|null $external_call_id
+ * @property string|null $biz_opaque_callback_data
  * @property CallStatus $status
  * @property CallEndReason|null $end_reason
  * @property CallMetaStage|null $meta_stage
@@ -50,6 +72,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $claimed_by
  * @property Carbon|null $claimed_at
  * @property Carbon|null $connected_at
+ * @property Carbon|null $consumer_accepted_at
  * @property Carbon|null $ended_at
  * @property int|null $duration_seconds
  * @property Carbon|null $ringing_expires_at
@@ -62,10 +85,10 @@ use Illuminate\Support\Carbon;
  * @property-read TenantUser|null $assigneeAtArrival
  */
 #[Fillable([
-    'tenant_id', 'lead_id', 'lead_source_id', 'conversation_id', 'external_call_id',
+    'tenant_id', 'lead_id', 'lead_source_id', 'conversation_id', 'direction', 'external_call_id', 'biz_opaque_callback_data',
     'status', 'end_reason', 'meta_stage', 'meta_status', 'meta_terminated_at',
     'assignee_id_at_arrival', 'routing_mode', 'routed_user_ids',
-    'claimed_by', 'claimed_at', 'connected_at', 'ended_at', 'duration_seconds', 'ringing_expires_at',
+    'claimed_by', 'claimed_at', 'connected_at', 'consumer_accepted_at', 'ended_at', 'duration_seconds', 'ringing_expires_at',
 ])]
 class LeadCall extends Model
 {
@@ -78,6 +101,7 @@ class LeadCall extends Model
     protected function casts(): array
     {
         return [
+            'direction' => CallDirection::class,
             'status' => CallStatus::class,
             'end_reason' => CallEndReason::class,
             'meta_stage' => CallMetaStage::class,
@@ -86,6 +110,7 @@ class LeadCall extends Model
             'meta_terminated_at' => 'datetime',
             'claimed_at' => 'datetime',
             'connected_at' => 'datetime',
+            'consumer_accepted_at' => 'datetime',
             'ended_at' => 'datetime',
             'ringing_expires_at' => 'datetime',
             'duration_seconds' => 'integer',
