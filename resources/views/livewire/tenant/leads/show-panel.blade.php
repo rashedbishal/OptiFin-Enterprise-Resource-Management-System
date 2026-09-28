@@ -3,21 +3,28 @@
 
     @include('livewire.tenant.leads.partials.duplicate-warning')
 
-    @include('livewire.tenant.leads.partials.score-breakdown', ['lead' => $lead, 'compact' => true])
+    {{-- Compact cards flow into as many ≥20rem columns as the panel's
+    own width allows (1 on phones, 2–3 on desktop) instead of each
+    stretching full-width. auto-fit sizes off the container, not the
+    viewport, and items-start keeps every card at its natural height
+    (see .ai/rules/tenant-leads.md for why stretched rows backfire). --}}
+    <div class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] items-start gap-5">
+        @include('livewire.tenant.leads.partials.score-breakdown', ['lead' => $lead, 'compact' => true])
 
-    @include('livewire.tenant.leads.partials.deals-card', ['lead' => $lead])
+        @include('livewire.tenant.leads.partials.deals-card', ['lead' => $lead])
 
-    @include('livewire.tenant.leads.partials.tasks-card', ['lead' => $lead])
+        @include('livewire.tenant.leads.partials.tasks-card', ['lead' => $lead])
 
-    @include('livewire.tenant.leads.partials.custom-fields-card', ['lead' => $lead])
+        @include('livewire.tenant.leads.partials.custom-fields-card', ['lead' => $lead])
 
-    @include('livewire.tenant.leads.partials.consent-card', ['lead' => $lead])
+        @include('livewire.tenant.leads.partials.consent-card', ['lead' => $lead])
+
+        @include('livewire.tenant.leads.partials.notes-card')
+    </div>
 
     @include('livewire.tenant.leads.partials.calls-card')
 
     @include('livewire.tenant.leads.partials.message-composer-card')
-
-    @include('livewire.tenant.leads.partials.notes-card')
 
     {{-- Left column is fixed-width and stacks Details/Activity on their
     own — they're read-only reference material, not part of the edit

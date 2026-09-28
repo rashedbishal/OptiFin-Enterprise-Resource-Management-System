@@ -7,7 +7,7 @@
 @endphp
 
 <flux:card class="flex flex-col gap-4">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-wrap items-center justify-between gap-2">
         <flux:heading size="lg">{{ __('Tasks') }}</flux:heading>
         @if ($canUpdate)
             <flux:button size="sm" variant="primary" icon="plus" wire:click="createTask">{{ __('New Task') }}</flux:button>

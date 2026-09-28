@@ -18,7 +18,7 @@ it) — see Show::latestScoreLog()'s docblock. --}}
 @endphp
 
 <flux:card class="flex flex-col gap-4">
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="min-w-0">
             <div class="flex items-center gap-2">
                 <flux:heading size="{{ $compact ? 'sm' : 'lg' }}" class="font-semibold text-zinc-900 dark:text-white">{{ __('Lead Score') }}</flux:heading>
@@ -30,11 +30,11 @@ it) — see Show::latestScoreLog()'s docblock. --}}
         </div>
 
         @if ($this->canManageScoring)
-            <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                <flux:button size="sm" icon="adjustments-horizontal" :href="route('tenant-leads.scoring-rules')" wire:navigate class="flex-1 sm:flex-none font-semibold border border-zinc-300 dark:border-zinc-700 bg-white hover:bg-zinc-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs">
+            <div class="flex flex-wrap items-center gap-2">
+                <flux:button size="sm" icon="adjustments-horizontal" :href="route('tenant-leads.scoring-rules')" wire:navigate class="font-semibold border border-zinc-300 dark:border-zinc-700 bg-white hover:bg-zinc-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 shadow-2xs">
                     {{ __('Manage Rules') }}
                 </flux:button>
-                <flux:button size="sm" variant="primary" icon="arrow-path" wire:click="recalculateScore" wire:loading.attr="disabled" wire:target="recalculateScore" class="flex-1 sm:flex-none font-semibold shadow-xs">
+                <flux:button size="sm" variant="primary" icon="arrow-path" wire:click="recalculateScore" wire:loading.attr="disabled" wire:target="recalculateScore" class="font-semibold shadow-xs">
                     <span wire:loading.remove wire:target="recalculateScore">{{ __('Recalculate') }}</span>
                     <span wire:loading wire:target="recalculateScore">{{ __('Recalculating...') }}</span>
                 </flux:button>
@@ -71,8 +71,8 @@ it) — see Show::latestScoreLog()'s docblock. --}}
                 <span class="text-xs font-bold uppercase tracking-wider text-zinc-700 dark:text-zinc-300">{{ __('Rule Breakdown') }}</span>
                 <div class="flex flex-col gap-2">
                     @foreach ($this->latestScoreLog->breakdown as $entry)
-                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-3 rounded-lg border border-zinc-200/80 bg-white p-2.5 shadow-2xs dark:border-zinc-700/80 dark:bg-zinc-800/90">
-                            <div class="flex flex-col min-w-0">
+                        <div class="flex items-center justify-between gap-3 rounded-lg border border-zinc-200/80 bg-white p-2.5 shadow-2xs dark:border-zinc-700/80 dark:bg-zinc-800/90">
+                            <div class="flex flex-col min-w-0 flex-1">
                                 <span class="font-semibold text-xs sm:text-sm text-zinc-900 dark:text-white truncate">
                                     {{ $entry['rule_name'] }}
                                 </span>
@@ -80,7 +80,7 @@ it) — see Show::latestScoreLog()'s docblock. --}}
                                     {{ $entry['field'] }} {{ $entry['operator'] }} {{ is_array($entry['value']) ? implode(', ', $entry['value']) : $entry['value'] }}
                                 </span>
                             </div>
-                            <flux:badge size="sm" :color="$entry['points'] >= 0 ? 'emerald' : 'red'" class="shrink-0 self-start sm:self-center font-bold">
+                            <flux:badge size="sm" :color="$entry['points'] >= 0 ? 'emerald' : 'red'" class="shrink-0 font-bold">
                                 {{ $entry['points'] >= 0 ? '+' : '' }}{{ $entry['points'] }}
                             </flux:badge>
                         </div>

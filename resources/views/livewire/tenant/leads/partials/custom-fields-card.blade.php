@@ -8,7 +8,7 @@
 @endphp
 
 <flux:card class="flex flex-col gap-4">
-    <div class="flex items-center justify-between border-b border-zinc-100 pb-3 dark:border-zinc-800">
+    <div class="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 pb-3 dark:border-zinc-800">
         <div class="flex items-center gap-2">
             <div class="flex size-7 items-center justify-center rounded-lg bg-teal-50 text-teal-600 dark:bg-teal-950/60 dark:text-teal-400">
                 <flux:icon.document-text variant="micro" class="size-4" />
@@ -22,7 +22,7 @@
 
     @if ($editingCustomFields)
         <form wire:submit="updateCustomFields" class="flex flex-col gap-4 rounded-xl border border-zinc-200/90 bg-zinc-50/50 p-4 dark:border-zinc-800 dark:bg-zinc-900/50">
-            <div class="grid gap-4 sm:grid-cols-2">
+            <div class="grid gap-4 grid-cols-[repeat(auto-fit,minmax(min(100%,14rem),1fr))]">
                 @include('livewire.tenant.leads.partials.custom-fields-form-fields', ['definitions' => $this->activeCustomFieldDefinitions])
             </div>
             <div class="flex justify-end gap-2 border-t border-zinc-200/80 pt-3 dark:border-zinc-800">
