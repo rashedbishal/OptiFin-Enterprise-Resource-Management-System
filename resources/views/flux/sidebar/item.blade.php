@@ -36,27 +36,21 @@ $classes = Flux::classes()
     ->add('h-8 in-data-flux-sidebar-on-mobile:h-10 relative flex items-center gap-3 rounded-lg')
     ->add('in-data-flux-sidebar-collapsed-desktop:w-10 in-data-flux-sidebar-collapsed-desktop:justify-center')
     ->add('py-0 text-start w-full px-3 has-data-flux-navlist-badge:not-in-data-flux-sidebar-collapsed-desktop:pe-1.5 my-px')
-    // zinc-700, not the vendor default zinc-500: against this app's near-
-    // white sidebar background (light theme), zinc-500 fell to ~3.6:1
+    // zinc-700, not the vendor default zinc-500: against this app's warm
+    // parchment sidebar background (light theme), zinc-500 fell to ~3.6:1
     // contrast and even zinc-600 (~6:1) still read as muted. zinc-700
     // clears ~8:1. Dark mode's text-white/80 was already fine as-is.
     ->add('text-zinc-700 dark:text-white/80')
     ->add(match ($accent) {
         true => [
             'data-current:text-(--color-accent-content) hover:data-current:text-(--color-accent-content)',
-            // Canvas/card swap — the sidebar itself is now near-white, so an
-            // active bg-white pill would nearly vanish against it. A
-            // translucent frosted cream fill (same family as .card-surface,
-            // app.css) instead keeps the active item visible as its own
-            // small glass pill, ties it to the same "elevated glass" family
-            // as cards/tables, and gives it a soft inner sheen via the ring.
-            'data-current:bg-gradient-to-br data-current:from-[#fff6d9]/80 data-current:to-[#f7e3a0]/50 data-current:backdrop-blur-md data-current:inset-ring-1 data-current:inset-ring-white/80 dark:data-current:bg-white/[7%] dark:data-current:bg-none dark:data-current:backdrop-blur-none dark:data-current:inset-ring-0 data-current:border data-current:border-[#e4d6be]/60 dark:data-current:border-transparent',
+            'data-current:bg-white dark:data-current:bg-white/[7%] data-current:border data-current:border-zinc-200 dark:data-current:border-transparent',
             'hover:text-zinc-800 dark:hover:text-white dark:hover:bg-white/[7%] hover:bg-zinc-800/5 ',
             'border border-transparent',
         ],
         false => [
-            'data-current:text-zinc-800 dark:data-current:text-zinc-100',
-            'data-current:bg-gradient-to-br data-current:from-[#fff6d9]/80 data-current:to-[#f7e3a0]/50 data-current:backdrop-blur-md data-current:inset-ring-1 data-current:inset-ring-white/80 dark:data-current:bg-white/10 dark:data-current:bg-none dark:data-current:backdrop-blur-none dark:data-current:inset-ring-0 data-current:border data-current:border-[#e4d6be]/60 dark:data-current:border-white/10 data-current:shadow-xs',
+            'data-current:text-zinc-800 dark:data-current:text-zinc-100 data-current:border-zinc-200',
+            'data-current:bg-white dark:data-current:bg-white/10 data-current:border data-current:border-zinc-200 dark:data-current:border-white/10 data-current:shadow-xs',
             'hover:text-zinc-800 dark:hover:text-white',
         ],
     })

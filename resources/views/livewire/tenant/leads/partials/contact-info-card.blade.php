@@ -31,7 +31,7 @@
     @if ($hasContactDetails)
         <div class="flex flex-col gap-2.5">
             @if ($lead->phone)
-                <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#e4d6be]/55 bg-[#fdf6de]/60 bg-[image:linear-gradient(165deg,rgb(255_253_244_/_0.4),rgb(250_233_185_/_0.28))] backdrop-blur-[16px] backdrop-saturate-150 shadow-[inset_0_1px_1px_rgb(255_255_255_/_0.75),inset_0_-1px_1px_rgb(120_90_40_/_0.05)] p-3 dark:border-zinc-800 dark:bg-zinc-900 dark:bg-[image:none] dark:backdrop-blur-none dark:backdrop-saturate-100 dark:shadow-none">
+                <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200/80 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
                     <div class="flex items-center gap-2.5 min-w-0">
                         <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400">
                             <flux:icon.phone variant="micro" class="size-4" />
@@ -57,7 +57,7 @@
             @endif
 
             @if ($lead->email)
-                <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#e4d6be]/55 bg-[#fdf6de]/60 bg-[image:linear-gradient(165deg,rgb(255_253_244_/_0.4),rgb(250_233_185_/_0.28))] backdrop-blur-[16px] backdrop-saturate-150 shadow-[inset_0_1px_1px_rgb(255_255_255_/_0.75),inset_0_-1px_1px_rgb(120_90_40_/_0.05)] p-3 dark:border-zinc-800 dark:bg-zinc-900 dark:bg-[image:none] dark:backdrop-blur-none dark:backdrop-saturate-100 dark:shadow-none">
+                <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200/80 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
                     <div class="flex items-center gap-2.5 min-w-0">
                         <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
                             <flux:icon.envelope variant="micro" class="size-4" />
@@ -74,7 +74,7 @@
             @endif
 
             @if ($lead->website)
-                <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#e4d6be]/55 bg-[#fdf6de]/60 bg-[image:linear-gradient(165deg,rgb(255_253_244_/_0.4),rgb(250_233_185_/_0.28))] backdrop-blur-[16px] backdrop-saturate-150 shadow-[inset_0_1px_1px_rgb(255_255_255_/_0.75),inset_0_-1px_1px_rgb(120_90_40_/_0.05)] p-3 dark:border-zinc-800 dark:bg-zinc-900 dark:bg-[image:none] dark:backdrop-blur-none dark:backdrop-saturate-100 dark:shadow-none">
+                <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200/80 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
                     <div class="flex items-center gap-2.5 min-w-0">
                         <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-purple-50 text-purple-600 dark:bg-purple-950/60 dark:text-purple-400">
                             <flux:icon.globe-alt variant="micro" class="size-4" />
@@ -91,7 +91,7 @@
             @endif
 
             @if ($lead->location)
-                <div class="flex items-center gap-2.5 rounded-xl border border-[#e4d6be]/55 bg-[#fdf6de]/60 bg-[image:linear-gradient(165deg,rgb(255_253_244_/_0.4),rgb(250_233_185_/_0.28))] backdrop-blur-[16px] backdrop-saturate-150 shadow-[inset_0_1px_1px_rgb(255_255_255_/_0.75),inset_0_-1px_1px_rgb(120_90_40_/_0.05)] p-3 dark:border-zinc-800 dark:bg-zinc-900 dark:bg-[image:none] dark:backdrop-blur-none dark:backdrop-saturate-100 dark:shadow-none">
+                <div class="flex items-center gap-2.5 rounded-xl border border-zinc-200/80 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
                     <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400">
                         <flux:icon.map-pin variant="micro" class="size-4" />
                     </div>

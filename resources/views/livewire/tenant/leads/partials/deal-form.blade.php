@@ -136,7 +136,7 @@
                 {{-- Financial Metrics Grid --}}
                 <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
                     @if ($lead->estimated_budget !== null)
-                        <div class="flex items-center gap-2.5 rounded-xl border border-[#e4d6be]/55 bg-[#fdf6de]/60 bg-[image:linear-gradient(165deg,rgb(255_253_244_/_0.4),rgb(250_233_185_/_0.28))] backdrop-blur-[16px] backdrop-saturate-150 shadow-[inset_0_1px_1px_rgb(255_255_255_/_0.75),inset_0_-1px_1px_rgb(120_90_40_/_0.05)] p-3 dark:border-zinc-800 dark:bg-zinc-900 dark:bg-[image:none] dark:backdrop-blur-none dark:backdrop-saturate-100 dark:shadow-none">
+                        <div class="flex items-center gap-2.5 rounded-xl border border-zinc-200/80 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
                             <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600 dark:bg-blue-950/60 dark:text-blue-400">
                                 <flux:icon.calculator variant="micro" class="size-4" />
                             </div>
@@ -164,7 +164,7 @@
                     @endif
 
                     @if ($lead->win_probability !== null)
-                        <div class="flex items-center gap-2.5 rounded-xl border border-[#e4d6be]/55 bg-[#fdf6de]/60 bg-[image:linear-gradient(165deg,rgb(255_253_244_/_0.4),rgb(250_233_185_/_0.28))] backdrop-blur-[16px] backdrop-saturate-150 shadow-[inset_0_1px_1px_rgb(255_255_255_/_0.75),inset_0_-1px_1px_rgb(120_90_40_/_0.05)] p-3 dark:border-zinc-800 dark:bg-zinc-900 dark:bg-[image:none] dark:backdrop-blur-none dark:backdrop-saturate-100 dark:shadow-none">
+                        <div class="flex items-center gap-2.5 rounded-xl border border-zinc-200/80 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
                             <div class="flex size-7 shrink-0 items-center justify-center rounded-lg bg-sky-50 text-sky-600 dark:bg-sky-950/60 dark:text-sky-400">
                                 <flux:icon.chart-bar variant="micro" class="size-4" />
                             </div>
