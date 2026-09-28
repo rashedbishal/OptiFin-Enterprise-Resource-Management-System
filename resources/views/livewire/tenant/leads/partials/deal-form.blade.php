@@ -32,24 +32,20 @@
             </div>
 
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                @php
+                    $currencyPickerOptions = collect($this->tenantCurrencies)->map(fn ($c) => ['value' => (string) $c->id, 'label' => $c->symbolLabel().' — '.$c->name, 'short' => $c->symbolLabel()])->values()->all();
+                @endphp
+
                 <flux:input.group :label="__('Est. Budget')">
                     <flux:input.group.prefix class="!px-2">
-                        <select wire:model.live="leadEstimatedBudgetCurrencyId" class="cursor-pointer border-0 bg-transparent p-0 pe-5 text-sm font-medium focus:ring-0">
-                            @foreach ($this->tenantCurrencies as $currency)
-                                <option value="{{ $currency->id }}">{{ $currency->code }}</option>
-                            @endforeach
-                        </select>
+                        <x-dropdown-select wire:model.live="leadEstimatedBudgetCurrencyId" variant="bare" placeholder="—" :options="$currencyPickerOptions" />
                     </flux:input.group.prefix>
                     <flux:input wire:model="leadEstimatedBudget" type="number" step="0.01" min="0" placeholder="0.00" />
                 </flux:input.group>
 
                 <flux:input.group :label="__('Deal Value')">
                     <flux:input.group.prefix class="!px-2">
-                        <select wire:model.live="leadDealValueCurrencyId" class="cursor-pointer border-0 bg-transparent p-0 pe-5 text-sm font-medium focus:ring-0">
-                            @foreach ($this->tenantCurrencies as $currency)
-                                <option value="{{ $currency->id }}">{{ $currency->code }}</option>
-                            @endforeach
-                        </select>
+                        <x-dropdown-select wire:model.live="leadDealValueCurrencyId" variant="bare" placeholder="—" :options="$currencyPickerOptions" />
                     </flux:input.group.prefix>
                     <flux:input wire:model="leadDealValue" type="number" step="0.01" min="0" placeholder="0.00" />
                 </flux:input.group>

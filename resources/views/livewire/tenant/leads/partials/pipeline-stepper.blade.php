@@ -48,7 +48,7 @@ the hero above). Clicking a stage here does nothing on purpose. --}}
                     $isCurrent = $statusCase->id === $lead->status_id;
                     $isPassed = $currentIndex !== false && $index < $currentIndex;
                 @endphp
-                <div class="flex w-full items-center gap-1.5 sm:w-auto sm:flex-1 sm:min-w-[130px] sm:max-w-[220px]">
+                <div class="flex w-full items-center gap-1.5 sm:w-auto sm:flex-auto sm:min-w-[130px] sm:max-w-[280px]">
                     <div @class([
                         'flex min-w-0 flex-1 items-center justify-between gap-1.5 sm:gap-2 rounded-xl px-2.5 py-2 sm:py-2.5 border shadow-2xs transition-all duration-150',
                         'bg-zinc-100/90 border-zinc-200/90 dark:bg-zinc-900/80 dark:border-zinc-700/80' => ! $isCurrent && ! $isPassed,
@@ -83,7 +83,7 @@ the hero above). Clicking a stage here does nothing on purpose. --}}
                                 </span>
                             </span>
                             <span @class([
-                                'text-xs sm:text-sm truncate',
+                                'min-w-0 text-xs sm:text-sm leading-snug wrap-break-word',
                                 'text-zinc-900 dark:text-white font-bold' => $isCurrent,
                                 'text-emerald-950 dark:text-emerald-200 font-semibold' => $isPassed,
                                 'text-zinc-700 dark:text-zinc-300 font-semibold' => ! $isCurrent && ! $isPassed,
@@ -108,7 +108,7 @@ the hero above). Clicking a stage here does nothing on purpose. --}}
     <div class="{{ $showSkeletonByDefault ? '' : '!hidden' }} contents" wire:loading.remove.class="!hidden" wire:target="{{ $listLoadingTargets }}">
         <div class="flex flex-wrap items-center gap-2 gap-y-3 sm:gap-3">
             @for ($i = 0; $i < 5; $i++)
-                <div wire:key="pipeline-stepper-skeleton-{{ $i }}" class="flex w-full items-center gap-1.5 sm:w-auto sm:flex-1 sm:min-w-[130px]">
+                <div wire:key="pipeline-stepper-skeleton-{{ $i }}" class="flex w-full items-center gap-1.5 sm:w-auto sm:flex-auto sm:min-w-[130px]">
                     <div class="flex min-w-0 flex-1 items-center gap-2 rounded-xl bg-zinc-100/90 p-2.5 border border-zinc-200/80 dark:bg-zinc-900/80 dark:border-zinc-700/80">
                         <div class="size-6 shrink-0 skeleton-shimmer rounded-full"></div>
                         <div class="h-3.5 w-16 skeleton-shimmer rounded"></div>

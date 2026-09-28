@@ -65,3 +65,14 @@ test('the kanban flyout mirrors the deal value currency onto estimated budget', 
         ->set('leadDealValueCurrencyId', $bdt->id)
         ->assertSet('leadEstimatedBudgetCurrencyId', $bdt->id);
 });
+
+test('a currency resolves its display symbol, falling back to its code', function (string $code, string $symbol, string $symbolLabel) {
+    $currency = new Currency(['code' => $code, 'name' => 'Test']);
+
+    expect($currency->symbol())->toBe($symbol)
+        ->and($currency->symbolLabel())->toBe($symbolLabel);
+})->with([
+    'intl symbol' => ['EUR', '€', '€ EUR'],
+    'fallback map' => ['BDT', '৳', '৳ BDT'],
+    'unknown code' => ['XTS', 'XTS', 'XTS'],
+]);

@@ -3,6 +3,7 @@
     'options' => [],
     'icon' => null,
     'label' => null,
+    'variant' => 'default',
 ])
 
 @php
@@ -12,6 +13,7 @@
             $formattedOptions[] = [
                 'value' => (string) $val['value'],
                 'label' => (string) ($val['label'] ?? $val['value']),
+                'short' => isset($val['short']) ? (string) $val['short'] : null,
             ];
         } elseif (is_numeric($key) && ! is_array($val)) {
             $formattedOptions[] = [
@@ -29,6 +31,14 @@
     $wireModelLive = $attributes->wire('model.live')->value();
     $wireModel = $attributes->wire('model')->value();
     $wireModelName = $wireModelLive ?: $wireModel;
+
+    // 'bare' strips the trigger's own border/background/padding so it can sit
+    // inside a <flux:input.group.prefix> (e.g. a currency picker) and inherit
+    // the prefix's themed chrome instead of stacking a second box inside it.
+    $isBare = $variant === 'bare';
+    $buttonClasses = $isBare
+        ? 'flex w-full items-center justify-between gap-1 rounded-md bg-transparent p-0 text-sm font-medium text-inherit focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 cursor-pointer'
+        : 'flex w-full items-center justify-between gap-2 rounded-lg border border-zinc-300/80 bg-zinc-100/90 px-3 py-1.5 text-xs sm:text-sm font-medium text-zinc-800 shadow-xs transition hover:border-zinc-400 hover:bg-zinc-200/80 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-zinc-700/80 dark:bg-zinc-900/90 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 cursor-pointer';
 @endphp
 
 <div
@@ -43,7 +53,7 @@
                 return this.placeholder;
             }
             const match = this.options.find(o => String(o.value) === String(this.selected));
-            return match ? match.label : this.placeholder;
+            return match ? (match.short ?? match.label) : this.placeholder;
         },
         toggle() {
             this.open = !this.open;
@@ -61,7 +71,7 @@
     }"
     x-on:keydown.escape.window="open = false"
     x-on:click.outside="open = false"
-    class="relative inline-block w-full text-left"
+    class="relative inline-block {{ $isBare ? 'w-auto' : 'w-full' }} text-left"
 >
     @if ($label)
         <flux:label class="mb-1 text-xs font-medium sm:text-sm text-zinc-700 dark:text-zinc-300">{{ $label }}</flux:label>
@@ -73,7 +83,7 @@
         x-on:click="toggle()"
         :aria-expanded="open"
         {{ $attributes->except(['wire:model', 'wire:model.live', 'label'])->merge([
-            'class' => 'flex w-full items-center justify-between gap-2 rounded-lg border border-zinc-300/80 bg-zinc-100/90 px-3 py-1.5 text-xs sm:text-sm font-medium text-zinc-800 shadow-xs transition hover:border-zinc-400 hover:bg-zinc-200/80 focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-zinc-700/80 dark:bg-zinc-900/90 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800 cursor-pointer'
+            'class' => $buttonClasses,
         ]) }}
     >
         <span class="flex items-center gap-2 truncate">

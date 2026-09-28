@@ -110,7 +110,7 @@
             <div class="flex flex-col gap-4 sm:flex-row">
                 <flux:input wire:model="dealValue" type="number" step="0.01" min="0" :label="__('Value')" placeholder="0.00" class="sm:flex-1" />
                 @php
-                    $dealCurrencyOptions = collect($this->tenantCurrencies)->map(fn ($c) => ['value' => (string) $c->id, 'label' => $c->code])->toArray();
+                    $dealCurrencyOptions = collect($this->tenantCurrencies)->map(fn ($c) => ['value' => (string) $c->id, 'label' => $c->symbolLabel().' — '.$c->name, 'short' => $c->symbolLabel()])->toArray();
                 @endphp
                 <x-dropdown-select wire:model="dealCurrencyId" :label="__('Currency')" :options="$dealCurrencyOptions" class="sm:flex-1" />
             </div>

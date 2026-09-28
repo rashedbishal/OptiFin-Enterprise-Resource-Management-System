@@ -59,7 +59,7 @@
             <flux:input wire:model="amount" type="number" step="0.01" min="0" :label="__('Amount Spent')" placeholder="0.00" />
 
             @php
-                $currencyOpts = collect($this->tenantCurrencies)->map(fn($c) => ['value' => (string) $c->id, 'label' => $c->code])->toArray();
+                $currencyOpts = collect($this->tenantCurrencies)->map(fn($c) => ['value' => (string) $c->id, 'label' => $c->symbolLabel().' — '.$c->name, 'short' => $c->symbolLabel()])->toArray();
             @endphp
             <x-dropdown-select wire:model="currencyId" :label="__('Currency')" :placeholder="__('Select a currency')" :options="$currencyOpts" />
 
