@@ -1,4 +1,4 @@
-<flux:card class="h-full flex flex-col gap-4">
+<flux:card class="h-full max-h-[30rem] flex flex-col gap-4">
     <div class="flex items-center justify-between gap-2 border-b border-zinc-100 pb-3 dark:border-zinc-800">
         <div class="flex items-center gap-2">
             <div class="flex size-7 items-center justify-center rounded-lg bg-amber-50 text-amber-600 dark:bg-amber-950/60 dark:text-amber-400">

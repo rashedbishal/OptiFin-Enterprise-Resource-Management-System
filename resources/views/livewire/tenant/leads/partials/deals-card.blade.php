@@ -8,7 +8,7 @@
     $canDelete = $this->canDelete;
 @endphp
 
-<flux:card class="h-full flex flex-col gap-4">
+<flux:card class="h-full max-h-[30rem] flex flex-col gap-4">
     <div class="flex flex-wrap items-center justify-between gap-2">
         <flux:heading size="lg">{{ __('Deals') }}</flux:heading>
         @if ($canUpdate)

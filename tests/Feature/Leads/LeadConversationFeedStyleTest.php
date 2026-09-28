@@ -83,6 +83,8 @@ function feedRow(string $html, string $needle): array
 test('sent and received messages render as visibly different chat bubbles', function () {
     [$html] = conversationFeedHtml();
 
+    expect($html)->toContain('contain-paint');
+
     $incoming = feedRow($html, 'Hello, is this still available?');
     $outgoing = feedRow($html, 'Yes, it is!');
 

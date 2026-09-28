@@ -3,7 +3,7 @@
     ['label' => $lead->name],
 ]])
 
-<div class="flex flex-1 flex-col gap-6 p-4 sm:p-6 lg:p-8 overflow-y-auto min-h-0" wire:init="completeInitialLoad">
+<div class="flex flex-1 flex-col gap-6 overflow-y-auto p-4 min-h-0 sm:p-6 lg:p-8" wire:init="completeInitialLoad">
     @include('livewire.tenant.leads.partials.lead-hero', ['lead' => $lead, 'canDelete' => $this->canDelete])
 
     @include('livewire.tenant.leads.partials.pipeline-stepper', ['lead' => $lead])
@@ -152,9 +152,10 @@
             @endif
 
             {{-- Compact cards flow into as many ≥20rem columns as the page
-            width allows instead of each stretching full-width — same fixed-row
-            grid as show-panel.blade.php's, keeping card boundaries aligned. --}}
-            <div class="grid auto-rows-[30rem] grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] items-stretch gap-6">
+            width allows. Rows size to their useful content; the unbounded
+            lists themselves cap and scroll, so a short final row cannot
+            create a phantom 30rem page-height track. --}}
+            <div class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] items-stretch gap-6">
                 @include('livewire.tenant.leads.partials.score-breakdown', ['lead' => $lead])
 
                 @include('livewire.tenant.leads.partials.deals-card', ['lead' => $lead])

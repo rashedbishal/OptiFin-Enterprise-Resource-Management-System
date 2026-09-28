@@ -3,6 +3,7 @@ paths:
   - 'resources/views/livewire/tenant/leads/**'
   - resources/views/livewire/tenant/leads/source-leads.blade.php
   - 'resources/views/livewire/tenant/leads/{show,show-panel}.blade.php'
+  - resources/views/livewire/tenant/leads/show.blade.php
 ---
 
 # Tenant Leads
@@ -22,8 +23,8 @@ Differences from the main table: `$listLoadingTargets` here is `status,priority,
 ## Lead detail compact cards share an auto-fit grid, not full-width stacking
 Score, Deals, Tasks, Custom Fields, Consent and Notes sit in one `grid grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] items-start` in both show-panel.blade.php (flyout) and show.blade.php (Overview tab; the score card moved there from above the tabs). auto-fit sizes off the container, so it gives 1 column on phones, 2 on tablet and 2–3 on desktop, per the flyout's max-w. Calls and the message composer stay full-width below it. Inside those cards, use content-driven wrapping (flex-wrap, auto-fit grids) rather than sm:/md: viewport breakpoints, because a narrow grid cell on a wide screen still matches sm:. Don't add @container to the cards: it creates a stacking context and a containing block for fixed-position children, which can trap dropdowns and pickers. Don't use CSS columns for masonry either, since absolutely positioned popups get split across columns. The accepted trade-off is blank space under a short card that shares a row with a tall one.
 
-## Compact lead cards use fixed aligned grid rows
-The shared compact-card auto-fit formula uses auto-rows-[30rem] and items-stretch; all included cards use h-full. Deals, Tasks, and Notes use min-h-0 flex-1 internal scroll regions so unbounded data never changes a row's height. This intentionally replaces the earlier natural-height/items-start treatment for these compact cards.
-
 ## Lower lead-detail cards share responsive auto-fit rows
 Calls, channel Reply, and Details sit in a shared auto-fit grid using minmax(min(100%,22rem),1fr), so they share desktop width but collapse cleanly when Calls or Reply do not render for a lead. Calls receives scrollable=true in both contexts; Details is no longer duplicated in the flyout's side column.
+
+## Compact grid rows must not have a fixed height
+The shared compact-card grids use natural-height rows with items-stretch. Do not add auto-rows-[30rem] (or another fixed row height): a short final row becomes literal empty page space. Deals, Tasks, and Notes cap at max-h-[30rem] and their existing inner lists scroll instead.

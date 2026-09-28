@@ -68,7 +68,7 @@
                 }).observe($el);
                 new MutationObserver(() => { $el.scrollTop = $el.scrollHeight; }).observe($el, { childList: true, subtree: true });
             "
-            class="flex {{ $compact ? 'max-h-48' : 'max-h-96' }} flex-col gap-2.5 overflow-y-auto pe-1"
+            class="flex {{ $compact ? 'max-h-48' : 'max-h-96' }} flex-col gap-2.5 overflow-y-auto pe-1 contain-paint"
         >
             {{-- Messenger-style feed: what the customer sent (and every
             attachment, which only ever arrives inbound) sits on the left in
