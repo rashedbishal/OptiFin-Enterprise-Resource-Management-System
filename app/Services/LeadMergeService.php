@@ -13,16 +13,19 @@ use App\Models\Lead;
 use App\Models\LeadAssignment;
 use App\Models\LeadAttachment;
 use App\Models\LeadCall;
+use App\Models\LeadCallPermission;
 use App\Models\LeadConsent;
 use App\Models\LeadConsentEvent;
 use App\Models\LeadCustomFieldValue;
 use App\Models\LeadDetailUpdateLog;
 use App\Models\LeadDuplicateLink;
 use App\Models\LeadNote;
+use App\Models\LeadScoreLog;
 use App\Models\LeadStatusLog;
 use App\Models\Message;
 use App\Models\Task;
 use App\Models\TenantUser;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -101,6 +104,12 @@ class LeadMergeService
      * table's own lead_id moves, keeping a reparented Conversation and its
      * Messages consistent with each other.
      *
+     * LeadScoreLog::class (Feature #2) belongs here too — a plain lead_id-
+     * keyed child with no unique constraint, structurally identical to
+     * LeadStatusLog/LeadDetailUpdateLog above. Its own tenant_id column
+     * never needs touching: merge() already refuses a cross-tenant pair, so
+     * the loser's tenant_id already matches the survivor's.
+     *
      * @var array<int, class-string>
      */
     private const array CHILD_MODELS = [
@@ -109,6 +118,7 @@ class LeadMergeService
         LeadStatusLog::class,
         LeadAssignment::class,
         LeadDetailUpdateLog::class,
+        LeadScoreLog::class,
         Task::class,
         Deal::class,
         LeadConsentEvent::class,
@@ -302,6 +312,7 @@ class LeadMergeService
 
             $this->unionTags($survivor, $loser);
             $this->mergeConsents($survivor, $loser, $performedBy);
+            $this->mergeCallPermissions($survivor, $loser);
 
             if ($updates !== []) {
                 $survivor->fill($updates);
@@ -520,5 +531,107 @@ class LeadMergeService
 
             LeadConsentEvent::create($attributes);
         }
+    }
+
+    /**
+     * WhatsApp Outbound Calling — LeadCallPermission is a CURRENT-state
+     * table, unique(lead_id), exactly like LeadConsent above — never a plain
+     * CHILD_MODELS reparent target, since both leads could independently
+     * already have their own row and a blind reparent would collide with
+     * the survivor's own. Runs inside the caller's existing
+     * DB::transaction() — no nested transaction, plain statements added to
+     * the same one, same pattern as unionTags()/mergeConsents() above.
+     *
+     * Unlike mergeConsents()'s domain-specific "most restrictive wins" rule,
+     * this mirrors the model's OWN established freshness discipline instead
+     * (CheckLeadCallPermission/RecordCallPermissionReply's "whichever
+     * observation is newer wins", compared by last_synced_at) — a call
+     * permission is live Meta API state that changes over time, not a legal
+     * consent record, so "most restrictive" has no meaning here.
+     *
+     *  - Only the loser has a row: simply reparented onto the survivor (no
+     *    collision possible — the survivor has none).
+     *  - Only the survivor has a row: left completely untouched.
+     *  - Neither has a row: nothing to do.
+     *  - Both have a row: the entire status/meta_raw_status/lead_source_id/
+     *    expires_at/last_synced_at set is taken WHOLESALE from whichever
+     *    row's last_synced_at is later (null treated as never-synced, i.e.
+     *    the oldest possible observation, falling back to updated_at if
+     *    both are null) — never stitched field-by-field from both, which
+     *    could pair a status from one observation with an expires_at from
+     *    an unrelated one. last_requested_at is handled separately and
+     *    additively (the later of the two, regardless of which row "wins"
+     *    above): it is purely "was a request recently sent" bookkeeping,
+     *    not a Meta observation, and a request sent via either Lead's
+     *    identity was still sent to the same real consumer phone number.
+     *
+     * Either way, the loser's own row (if any) is never hard-deleted — same
+     * "nothing here is ever actually lost" philosophy as LeadConsent above.
+     * A both-rows merge simply upserts the survivor's row and leaves the
+     * loser's own row exactly where it is, fully queryable under the loser.
+     */
+    private function mergeCallPermissions(Lead $survivor, Lead $loser): void
+    {
+        $survivorPermission = LeadCallPermission::where('tenant_id', $survivor->tenant_id)->where('lead_id', $survivor->id)->first();
+        $loserPermission = LeadCallPermission::where('tenant_id', $loser->tenant_id)->where('lead_id', $loser->id)->first();
+
+        if ($loserPermission === null) {
+            return;
+        }
+
+        if ($survivorPermission === null) {
+            LeadCallPermission::query()->whereKey($loserPermission->id)->update(['lead_id' => $survivor->id]);
+
+            return;
+        }
+
+        $winner = $this->fresherCallPermission($survivorPermission, $loserPermission);
+
+        LeadCallPermission::query()->whereKey($survivorPermission->id)->update([
+            'lead_source_id' => $winner->lead_source_id,
+            'status' => $winner->status,
+            'meta_raw_status' => $winner->meta_raw_status,
+            'expires_at' => $winner->expires_at,
+            'last_synced_at' => $winner->last_synced_at,
+            'last_requested_at' => $this->laterOf($survivorPermission->last_requested_at, $loserPermission->last_requested_at),
+            'updated_at' => now(),
+        ]);
+    }
+
+    /**
+     * Whichever of the two rows carries the more recent observation of the
+     * SAME real-world Meta permission state — a null last_synced_at (never
+     * live-checked/replied-to, only ever "requested") is treated as older
+     * than any real observation, falling back to updated_at only when
+     * neither row has ever been synced at all.
+     */
+    private function fresherCallPermission(LeadCallPermission $a, LeadCallPermission $b): LeadCallPermission
+    {
+        if ($a->last_synced_at === null && $b->last_synced_at === null) {
+            return $a->updated_at->greaterThanOrEqualTo($b->updated_at) ? $a : $b;
+        }
+
+        if ($a->last_synced_at === null) {
+            return $b;
+        }
+
+        if ($b->last_synced_at === null) {
+            return $a;
+        }
+
+        return $a->last_synced_at->greaterThanOrEqualTo($b->last_synced_at) ? $a : $b;
+    }
+
+    private function laterOf(?CarbonInterface $a, ?CarbonInterface $b): ?CarbonInterface
+    {
+        if ($a === null) {
+            return $b;
+        }
+
+        if ($b === null) {
+            return $a;
+        }
+
+        return $a->greaterThanOrEqualTo($b) ? $a : $b;
     }
 }

@@ -2788,9 +2788,9 @@ class Show extends Component
         }
 
         $deal = $this->lead->deals()->findOrFail($dealId);
-        $target = DealStatus::from($newStatus);
+        $target = DealStatus::tryFrom($newStatus);
 
-        if (! $deal->status->canTransitionTo($target)) {
+        if ($target === null || ! $deal->status->canTransitionTo($target)) {
             Flux::toast(variant: 'danger', text: __('That status change is not allowed.'));
 
             return;
@@ -3012,9 +3012,9 @@ class Show extends Component
         }
 
         $task = $this->lead->tasks()->findOrFail($taskId);
-        $target = TaskStatus::from($newStatus);
+        $target = TaskStatus::tryFrom($newStatus);
 
-        if (! $task->status->canTransitionTo($target)) {
+        if ($target === null || ! $task->status->canTransitionTo($target)) {
             Flux::toast(variant: 'danger', text: __('That status change is not allowed.'));
 
             return;

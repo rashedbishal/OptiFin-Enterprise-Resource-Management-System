@@ -329,29 +329,37 @@ class LeadReportingService
             ->with(['source', 'currency'])
             ->get();
 
-        $rows = $allCosts->groupBy('lead_source_id')->map(function (Collection $sourceCosts) use ($tenant): array {
+        // One grouped query instead of one per source: every (source, month)
+        // pair actually present in $allCosts becomes its own OR-branch (with
+        // source_id embedded IN the branch, so a lead can only ever match a
+        // branch belonging to its own source — identical per-source
+        // semantics to the original per-source query it replaces), then
+        // source_id is selected alongside count(*) and grouped on. Same
+        // selectRaw()/groupBy() idiom sourcePerformance()/
+        // assignmentBreakdown() above already use in this same class.
+        $leadCountsBySource = Lead::query()
+            ->where('tenant_id', $tenant->id)
+            ->whereNull('merged_into_lead_id')
+            ->where(function (Builder $query) use ($allCosts): void {
+                foreach ($allCosts as $cost) {
+                    $start = $cost->month->copy()->startOfMonth();
+                    $end = $start->copy()->addMonthNoOverflow();
+                    $query->orWhere(fn (Builder $q) => $q
+                        ->where('source_id', $cost->lead_source_id)
+                        ->where('created_at', '>=', $start)
+                        ->where('created_at', '<', $end));
+                }
+            })
+            ->selectRaw('source_id, count(*) as count')
+            ->groupBy('source_id')
+            ->pluck('count', 'source_id');
+
+        $rows = $allCosts->groupBy('lead_source_id')->map(function (Collection $sourceCosts) use ($leadCountsBySource): array {
             /** @var LeadSourceCost $first */
             $first = $sourceCosts->first();
 
             $totalCost = $sourceCosts->sum(fn (LeadSourceCost $cost): float => (float) $cost->amount);
-
-            $monthRanges = $sourceCosts
-                ->map(fn (LeadSourceCost $cost): array => [
-                    $cost->month->copy()->startOfMonth(),
-                    $cost->month->copy()->startOfMonth()->addMonthNoOverflow(),
-                ])
-                ->all();
-
-            $leadCount = Lead::query()
-                ->where('tenant_id', $tenant->id)
-                ->where('source_id', $first->lead_source_id)
-                ->whereNull('merged_into_lead_id')
-                ->where(function (Builder $query) use ($monthRanges): void {
-                    foreach ($monthRanges as [$start, $end]) {
-                        $query->orWhere(fn (Builder $q) => $q->where('created_at', '>=', $start)->where('created_at', '<', $end));
-                    }
-                })
-                ->count();
+            $leadCount = (int) ($leadCountsBySource[$first->lead_source_id] ?? 0);
 
             return [
                 'source' => $first->source,

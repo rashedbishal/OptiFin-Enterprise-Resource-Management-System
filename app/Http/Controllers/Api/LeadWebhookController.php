@@ -1843,41 +1843,59 @@ class LeadWebhookController extends Controller
         // creating the lead — a lead ad submission is immutable once made,
         // so unlike Messenger's self-healing retry-on-follow-up, a
         // duplicate delivery should just be skipped, never re-created.
-        $this->withDedupeLock($source->id, $leadgenId, function () use ($source, $tenantCode, $leadgenId, $value, $accessToken): void {
-            $alreadyProcessed = Lead::query()
-                ->where('source_id', $source->id)
-                ->where('source_data->leadgen_id', $leadgenId)
-                ->exists();
+        try {
+            $this->withDedupeLock($source->id, $leadgenId, function () use ($source, $tenantCode, $leadgenId, $value, $accessToken): void {
+                $alreadyProcessed = Lead::query()
+                    ->where('source_id', $source->id)
+                    ->where('source_data->leadgen_id', $leadgenId)
+                    ->exists();
 
-            if ($alreadyProcessed) {
-                Log::info("Facebook lead ad [{$leadgenId}] already processed for tenant [{$tenantCode}]; skipping duplicate webhook delivery.");
+                if ($alreadyProcessed) {
+                    Log::info("Facebook lead ad [{$leadgenId}] already processed for tenant [{$tenantCode}]; skipping duplicate webhook delivery.");
 
-                return;
-            }
+                    return;
+                }
 
-            $fetched = $this->fetchFacebookLeadgenData($leadgenId, $accessToken);
-            $mapped = $fetched !== null ? $this->mapLeadgenFieldData($fetched['field_data']) : ['name' => null, 'email' => null, 'phone' => null];
+                $fetched = $this->fetchFacebookLeadgenData($leadgenId, $accessToken);
+                $mapped = $fetched !== null ? $this->mapLeadgenFieldData($fetched['field_data']) : ['name' => null, 'email' => null, 'phone' => null];
 
-            $formId = $value['form_id'] ?? null;
-            $formName = is_string($formId) ? $this->fetchFacebookFormName($formId, $accessToken) : null;
+                $formId = $value['form_id'] ?? null;
+                $formName = is_string($formId) ? $this->fetchFacebookFormName($formId, $accessToken) : null;
 
-            $lead = $this->createLead($source, [
-                'name' => $mapped['name'] ?? ('Facebook Lead '.substr($leadgenId, -4)),
-                'email' => $mapped['email'],
-                'phone' => $mapped['phone'],
-                'source_data' => [
-                    'leadgen_id' => $leadgenId,
-                    'page_id' => $value['page_id'] ?? null,
-                    'form_id' => $formId,
-                    'form_name' => $formName,
-                    'ad_id' => $fetched['ad_id'] ?? ($value['ad_id'] ?? null),
-                    'field_data' => $fetched['field_data'] ?? null,
-                    'fetch_failed' => $fetched === null,
-                ],
-            ]);
+                $lead = $this->createLead($source, [
+                    'name' => $mapped['name'] ?? ('Facebook Lead '.substr($leadgenId, -4)),
+                    'email' => $mapped['email'],
+                    'phone' => $mapped['phone'],
+                    'source_data' => [
+                        'leadgen_id' => $leadgenId,
+                        'page_id' => $value['page_id'] ?? null,
+                        'form_id' => $formId,
+                        'form_name' => $formName,
+                        'ad_id' => $fetched['ad_id'] ?? ($value['ad_id'] ?? null),
+                        'field_data' => $fetched['field_data'] ?? null,
+                        'fetch_failed' => $fetched === null,
+                    ],
+                ]);
 
-            Log::info("Facebook lead ad [{$leadgenId}] created lead [{$lead->id}] for tenant [{$tenantCode}].");
-        }, lockSeconds: 30, blockSeconds: 15);
+                Log::info("Facebook lead ad [{$leadgenId}] created lead [{$lead->id}] for tenant [{$tenantCode}].");
+            }, lockSeconds: 30, blockSeconds: 15);
+        } catch (LockTimeoutException) {
+            // Distinct from both outcomes above (a genuine duplicate, logged
+            // and skipped; a genuine processing failure, caught by
+            // handleFacebookLeadAd()'s own generic catch) — this delivery
+            // lost the dedupe lock to sustained contention and was never
+            // even checked, let alone created. Deliberately fails CLOSED
+            // (this delivery is dropped) rather than proceeding unprotected
+            // the way withWebsiteFormIdempotency() does: source_data
+            // ->leadgen_id has no DB-level uniqueness backing it, so running
+            // the callback unlocked here could genuinely create two Leads
+            // for one leadgen_id, which a dropped-and-retried delivery never
+            // can. Meta retries undelivered webhooks for up to 7 days, so
+            // this is recovered by the next natural redelivery once the
+            // lock is no longer contended — never a manual/automatic retry
+            // from here.
+            Log::error("Facebook lead ad [{$leadgenId}] for tenant [{$tenantCode}]: dedupe lock timed out under contention; this delivery was dropped, not processed. Expect Meta to retry.");
+        }
     }
 
     /**
