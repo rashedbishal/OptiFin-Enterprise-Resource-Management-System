@@ -234,11 +234,20 @@ class Index extends Component
     private function startImport(string $fileHash, int $dataRowCount): void
     {
         $tenant = Auth::user()->tenant;
+        $tenantId = $tenant->id;
 
-        $source = LeadSource::query()->firstOrCreate(
-            ['tenant_id' => $tenant->id, 'type' => LeadSourceType::CsvImport],
-            ['name' => 'CSV Import', 'is_active' => true],
-        );
+        // CsvImport is one of the two confirmed-singleton LeadSourceTypes
+        // (see LeadSource::SINGLETON_TYPES) — see CreateManualLead's
+        // identical comment for why a plain firstOrCreate() isn't race-safe
+        // against the unique(tenant_id, singleton_type) index and why this
+        // SELECT-first + createOrFirst() shape is the fix.
+        $source = LeadSource::query()
+            ->where(['tenant_id' => $tenantId, 'type' => LeadSourceType::CsvImport])
+            ->first()
+            ?? LeadSource::query()->createOrFirst(
+                ['tenant_id' => $tenantId, 'type' => LeadSourceType::CsvImport],
+                ['name' => 'CSV Import', 'is_active' => true],
+            );
 
         $storedPath = $this->csvFile->storeAs('lead-imports', Str::ulid().'.csv', 'local');
 

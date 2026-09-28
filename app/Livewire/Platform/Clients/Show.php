@@ -88,7 +88,20 @@ class Show extends Component
     {
         Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
 
-        $this->tenant->update(['status' => TenantStatus::from($this->status)]);
+        // tryFrom(), not from(): $this->status is a plain wire:model-bound
+        // string, so a tampered request carrying a non-enum value must be
+        // rejected gracefully — never an uncaught ValueError. The tenant is
+        // left untouched, same "don't mutate on bad input" discipline as
+        // DealStatus/TaskStatus's own tryFrom() guard on Show.php (Leads).
+        $status = TenantStatus::tryFrom($this->status);
+
+        if ($status === null) {
+            Flux::toast(variant: 'danger', text: __('That status change is not allowed.'));
+
+            return;
+        }
+
+        $this->tenant->update(['status' => $status]);
         Flux::toast(variant: 'success', text: __('Client status updated.'));
     }
 

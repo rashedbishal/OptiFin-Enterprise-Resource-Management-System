@@ -392,7 +392,13 @@ class LeadSources extends Component
     #[Computed]
     public function selectedType(): ?LeadSourceType
     {
-        return $this->type !== '' ? LeadSourceType::from($this->type) : null;
+        // tryFrom(), not from(): $this->type is a plain wire:model-bound
+        // string, so a tampered request carrying a non-enum value must fall
+        // through to the already-handled null case (see this method's own
+        // callers, both already null-safe) rather than throw an uncaught
+        // ValueError — this is a #[Computed] property, re-evaluated on
+        // every render while the modal is open.
+        return $this->type !== '' ? LeadSourceType::tryFrom($this->type) : null;
     }
 
     /**
@@ -461,15 +467,52 @@ class LeadSources extends Component
             return;
         }
 
-        $type = LeadSourceType::from($this->type);
+        // tryFrom(), not from(): $this->type is a plain wire:model-bound
+        // string. A completely non-enum value can't reach the validate()
+        // call below at all — configValidationRules() needs a real
+        // LeadSourceType to know which config rules to merge in — so it's
+        // rejected here the same way the currency check above rejects,
+        // via toast + return, never an uncaught ValueError. A value that IS
+        // a real enum case but is Manual or CsvImport (typeOptions()'s own
+        // exclusion, see that method's docblock) is deliberately let
+        // through to validate() below instead: Rule::notIn() there rejects
+        // it with the same inline field error a normal Rule::enum() failure
+        // would produce, keeping the Platform Admin UI unable to create
+        // either singleton type exactly like typeOptions() already implies,
+        // now actually enforced rather than merely implied by what's shown.
+        $type = LeadSourceType::tryFrom($this->type);
+
+        if ($type === null) {
+            Flux::toast(variant: 'danger', text: __('Select a valid lead source type.'));
+
+            return;
+        }
 
         $validated = $this->validate(array_merge(
             [
-                'type' => ['required', Rule::enum(LeadSourceType::class)],
+                // Rule::notIn() only applies when creating: $this->type is
+                // always an existing row's own real type when editing (set
+                // by edit() below from $source->type->value, never touched
+                // by this form), so a tenant's already-existing Manual/
+                // CsvImport source — lazily created by CreateManualLead/
+                // LeadImports\Index, listed here like any other row with
+                // the same unrestricted Edit button — must stay editable
+                // (its name is the only thing there is to change on one).
+                // Same $this->editingId === null condition the currency
+                // check above already uses to distinguish create from edit.
+                'type' => array_filter([
+                    'required',
+                    Rule::enum(LeadSourceType::class),
+                    $this->editingId === null
+                        ? Rule::notIn([LeadSourceType::Manual->value, LeadSourceType::CsvImport->value])
+                        : null,
+                ]),
                 'name' => ['required', 'string', 'max:255'],
             ],
             $type->configValidationRules(isUpdate: $this->editingId !== null),
         ));
+
+        $type = LeadSourceType::from($validated['type']);
 
         $config = $this->normalizeConfig($type, $validated['config'] ?? []);
 

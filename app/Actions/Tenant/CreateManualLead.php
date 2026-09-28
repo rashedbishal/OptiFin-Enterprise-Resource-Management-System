@@ -57,10 +57,27 @@ class CreateManualLead
                 ? $data['status_id']
                 : $lockedTenant->initialLeadStatus()?->id;
 
-            $source = LeadSource::query()->firstOrCreate(
-                ['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual],
-                ['name' => 'Custom', 'is_active' => true],
-            );
+            // Manual is one of the two confirmed-singleton LeadSourceTypes
+            // (see LeadSource::SINGLETON_TYPES) — a plain firstOrCreate()
+            // would let two concurrent first-ever manual leads for this
+            // tenant both pass the "does one exist" check and then collide
+            // on the unique(tenant_id, singleton_type) index, crashing the
+            // loser with an uncaught UniqueConstraintViolationException.
+            // The SELECT-first fast path keeps every call after the very
+            // first one as cheap as the original firstOrCreate(); only the
+            // genuine race (or the tenant's actual first-ever manual lead)
+            // reaches createOrFirst(), which — critically, since this whole
+            // method runs inside the outer DB::transaction() above — wraps
+            // its own create() attempt in a SAVEPOINT (Eloquent's
+            // withSavepointIfNeeded()) so a losing insert can't poison this
+            // transaction on Postgres, then re-reads the winner's row.
+            $source = LeadSource::query()
+                ->where(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual])
+                ->first()
+                ?? LeadSource::query()->createOrFirst(
+                    ['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual],
+                    ['name' => 'Custom', 'is_active' => true],
+                );
 
             $lead = Lead::create([
                 'tenant_id' => $tenant->id,

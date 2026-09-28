@@ -144,8 +144,14 @@ trait FiltersLeadsQuery
             $query->byStatus($this->status);
         }
 
-        if ($this->priority !== '') {
-            $query->byPriority(LeadPriority::from($this->priority));
+        // tryFrom(), not from(): $this->priority is a plain
+        // wire:model.live-bound string (leads.blade.php/leads-kanban.blade.php),
+        // so a tampered request carrying a non-enum value must be treated
+        // the same as no filter selected — never an uncaught ValueError.
+        $priority = $this->priority !== '' ? LeadPriority::tryFrom($this->priority) : null;
+
+        if ($priority !== null) {
+            $query->byPriority($priority);
         }
 
         if ($this->tag !== '') {
