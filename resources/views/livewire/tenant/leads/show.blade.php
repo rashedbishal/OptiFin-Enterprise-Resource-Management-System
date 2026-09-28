@@ -168,11 +168,16 @@
                 @include('livewire.tenant.leads.partials.notes-card')
             </div>
 
-            @include('livewire.tenant.leads.partials.calls-card', ['scrollable' => true])
+            {{-- Calls, channel reply, and lead details share available desktop
+            width. auto-fit leaves no empty tracks when a lead has no calls
+            or no conversational channel. --}}
+            <div class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,22rem),1fr))] items-start gap-6">
+                @include('livewire.tenant.leads.partials.calls-card', ['scrollable' => true])
 
-            @include('livewire.tenant.leads.partials.message-composer-card')
+                @include('livewire.tenant.leads.partials.message-composer-card')
 
-            @include('livewire.tenant.leads.partials.detail-card', ['lead' => $lead, 'timeline' => $this->timeline, 'bodyView' => $bodyView])
+                @include('livewire.tenant.leads.partials.detail-card', ['lead' => $lead, 'timeline' => $this->timeline, 'bodyView' => $bodyView])
+            </div>
         </div>
     @else
         {{-- Right column drives the row's height (its natural, in-flow

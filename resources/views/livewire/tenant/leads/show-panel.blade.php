@@ -22,9 +22,16 @@
         @include('livewire.tenant.leads.partials.notes-card')
     </div>
 
-    @include('livewire.tenant.leads.partials.calls-card')
+    {{-- Calls, channel reply, and lead details share the available desktop
+    width. auto-fit collapses naturally when a lead has no calls or isn't a
+    conversational channel, so no empty grid tracks are left behind. --}}
+    <div class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,22rem),1fr))] items-start gap-5">
+        @include('livewire.tenant.leads.partials.calls-card', ['scrollable' => true])
 
-    @include('livewire.tenant.leads.partials.message-composer-card')
+        @include('livewire.tenant.leads.partials.message-composer-card')
+
+        @include('livewire.tenant.leads.partials.detail-card', ['lead' => $lead, 'timeline' => $this->timeline, 'bodyView' => $bodyView, 'compact' => true])
+    </div>
 
     {{-- Left column is fixed-width and stacks Details/Activity on their
     own — they're read-only reference material, not part of the edit
@@ -35,7 +42,6 @@
     share the final row the same way Contact+Company did. --}}
     <div class="flex flex-col gap-5 lg:flex-row lg:items-start">
         <div class="flex flex-col gap-5 lg:w-88 lg:shrink-0">
-            @include('livewire.tenant.leads.partials.detail-card', ['lead' => $lead, 'timeline' => $this->timeline, 'bodyView' => $bodyView, 'compact' => true])
             @include('livewire.tenant.leads.partials.activity-card', ['activity' => $this->activity, 'compact' => true])
         </div>
 

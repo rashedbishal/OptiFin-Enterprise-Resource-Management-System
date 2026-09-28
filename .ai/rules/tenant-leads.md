@@ -24,3 +24,6 @@ Score, Deals, Tasks, Custom Fields, Consent and Notes sit in one `grid grid-cols
 
 ## Compact lead cards use fixed aligned grid rows
 The shared compact-card auto-fit formula uses auto-rows-[30rem] and items-stretch; all included cards use h-full. Deals, Tasks, and Notes use min-h-0 flex-1 internal scroll regions so unbounded data never changes a row's height. This intentionally replaces the earlier natural-height/items-start treatment for these compact cards.
+
+## Lower lead-detail cards share responsive auto-fit rows
+Calls, channel Reply, and Details sit in a shared auto-fit grid using minmax(min(100%,22rem),1fr), so they share desktop width but collapse cleanly when Calls or Reply do not render for a lead. Calls receives scrollable=true in both contexts; Details is no longer duplicated in the flyout's side column.
