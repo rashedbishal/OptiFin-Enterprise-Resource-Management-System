@@ -2,6 +2,7 @@
 paths:
   - resources/views/livewire/tenant/leads/partials/pipeline-stepper.blade.php
   - resources/views/livewire/tenant/leads/partials/lead-hero.blade.php
+  - 'resources/views/livewire/tenant/leads/partials/{deals-card,tasks-card,notes-card}.blade.php'
 ---
 
 # Leads Partials
@@ -25,3 +26,6 @@ Trap: the skeleton's connector placeholder must NOT reuse flux:icon.chevron-righ
 
 ## Pipeline stepper: content-sized stages (flex-auto) + wrapping labels, chevron outside the pill
 Two regressions to keep fixed together. (1) Chevron overlap (fixed in 10bc8ed): the chevron is a shrink-0 sibling of the pill inside each stage unit, never inside the pill or on a fixed-width (w-[calc(50%…)]) unit. (2) Truncated labels: units used sm:flex-1 (basis 0) → every stage forced to the same 130–220px, leaving ~50px for the label, so `truncate` cut it off. Units are now `sm:flex-auto sm:min-w-[130px] sm:max-w-[280px]` (basis = content, so a stage wraps to the next line whole before it shrinks) and the label is `min-w-0 leading-snug wrap-break-word` (never `truncate`) so an over-long custom status wraps inside its own pill. Don't go back to flex-1 or truncate. Verified with Playwright at 1280/900/700/390px: no chevron-over-pill overlap, no clipped label.
+
+## Cap unbounded compact-card lists
+Deals, Tasks, and Notes are unbounded lists shared by the client-user flyout and client-admin detail page. Keep each list body at max-h-96 with overflow-y-auto and overscroll-contain, leaving the card header/actions outside the scroll region so additions cannot grow the detail surface indefinitely.

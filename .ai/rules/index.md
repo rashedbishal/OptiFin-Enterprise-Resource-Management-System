@@ -22,7 +22,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Services/LeadAdminNotifier.php,app/Notifications/MeetingUpdatedNotification.php,app/Notifications/FollowUpUpdatedNotification.php,app/Livewire/Tenant/Leads/Index.php,app/Livewire/Tenant/Leads/Show.php | .ai/rules/leads-livewire-tenant-leads.md |
 | app/Livewire/Tenant/Leads/Index.php,app/Livewire/Tenant/NotificationBell.php | .ai/rules/leads-livewire-tenant.md |
 | resources/views/livewire/tenant/leads/{show,show-panel}.blade.php,resources/views/livewire/tenant/leads/partials/{lead-hero,contact-info-card,pipeline-attributes-card,detail-card,note-form,status-assignment-form}.blade.php,resources/views/livewire/tenant/lead-sources.blade.php | .ai/rules/leads-partials-views-livewire-tenant.md |
-| resources/views/livewire/tenant/leads/partials/pipeline-stepper.blade.php, resources/views/livewire/tenant/leads/partials/lead-hero.blade.php | .ai/rules/leads-partials.md |
+| resources/views/livewire/tenant/leads/partials/pipeline-stepper.blade.php, resources/views/livewire/tenant/leads/partials/lead-hero.blade.php, resources/views/livewire/tenant/leads/partials/{deals-card,tasks-card,notes-card}.blade.php | .ai/rules/leads-partials.md |
 | app/{Livewire/Tenant/Leads,Policies,Exports}/** | .ai/rules/leads-policies-exports.md |
 | app/Livewire/Tenant/Leads/**, app/Livewire/Tenant/Leads/Index.php, app/Livewire/Tenant/Leads/Show.php, app/Livewire/Tenant/Leads/SourceLeads.php | .ai/rules/leads.md |
 | app/Livewire/Tenant/Leads/{Index,SourceLeads}.php,resources/views/livewire/tenant/{leads,leads-kanban,leads/source-leads}.blade.php | .ai/rules/leadsleads-kanbanleads.md |
