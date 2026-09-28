@@ -14,10 +14,10 @@
     <div class="flex flex-col gap-3">
         @foreach (\App\Enums\ConsentType::cases() as $type)
             @php($consent = $consents->get($type->value))
-            <div class="flex items-center justify-between gap-2" wire:key="consent-row-{{ $type->value }}">
-                <div>
+            <div class="flex flex-wrap items-center justify-between gap-2" wire:key="consent-row-{{ $type->value }}">
+                <div class="min-w-0">
                     <flux:text variant="strong">{{ $type->label() }}</flux:text>
-                    <div class="mt-1 flex items-center gap-2">
+                    <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
                         <flux:badge size="sm" :color="match (true) {
                             $consent === null => 'zinc',
                             $consent->status->value === 'granted' => 'emerald',

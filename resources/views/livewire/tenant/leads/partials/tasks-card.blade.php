@@ -7,15 +7,16 @@
 @endphp
 
 <flux:card class="flex flex-col gap-4">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-wrap items-center justify-between gap-2">
         <flux:heading size="lg">{{ __('Tasks') }}</flux:heading>
         @if ($canUpdate)
             <flux:button size="sm" variant="primary" icon="plus" wire:click="createTask">{{ __('New Task') }}</flux:button>
         @endif
     </div>
 
-    @forelse ($this->tasks as $task)
-        @php
+    <div data-test="lead-tasks-list" class="flex max-h-96 flex-col gap-3.5 overflow-y-auto overscroll-contain pe-1">
+        @forelse ($this->tasks as $task)
+            @php
             // "Overdue" (this row's own red visual cue) is deliberately a
             // simpler, stricter check than Task::alertActive() (the tenant
             // alert-window calculation the daily sweep/bell notification
@@ -24,8 +25,8 @@
             // is even on for this tenant.
             $isOverdue = $task->status->value === 'pending' && $task->due_date !== null && $task->due_date->isPast();
             $canDeleteTask = $this->canDeleteTask($task);
-        @endphp
-        <div wire:key="task-row-{{ $task->id }}" class="flex flex-col gap-3.5 rounded-xl border border-zinc-200/90 bg-zinc-50 p-3.5 sm:p-4 shadow-2xs dark:border-zinc-700/80 dark:bg-zinc-900/80">
+            @endphp
+            <div wire:key="task-row-{{ $task->id }}" class="flex flex-col gap-3.5 rounded-xl border border-zinc-200/90 bg-zinc-50 p-3.5 sm:p-4 shadow-2xs dark:border-zinc-700/80 dark:bg-zinc-900/80">
             <div class="flex min-w-0 flex-col gap-1.5">
                 <div class="flex flex-wrap items-center gap-1.5">
                     <flux:text variant="strong" class="text-base font-semibold text-zinc-900 dark:text-white">{{ $task->title }}</flux:text>
@@ -100,10 +101,11 @@
                     @endif
                 </div>
             @endif
-        </div>
-    @empty
-        <flux:text class="font-medium text-zinc-600 dark:text-zinc-400">{{ __('No tasks yet for this lead.') }}</flux:text>
-    @endforelse
+            </div>
+        @empty
+            <flux:text class="font-medium text-zinc-600 dark:text-zinc-400">{{ __('No tasks yet for this lead.') }}</flux:text>
+        @endforelse
+    </div>
 
     <flux:modal wire:model.self="showTaskModal" :dismissible="false" class="sm:max-w-lg md:max-w-xl md:w-[34rem]">
         <form wire:submit="saveTask" class="flex flex-col gap-4">

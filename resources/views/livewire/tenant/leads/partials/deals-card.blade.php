@@ -9,15 +9,16 @@
 @endphp
 
 <flux:card class="flex flex-col gap-4">
-    <div class="flex items-center justify-between">
+    <div class="flex flex-wrap items-center justify-between gap-2">
         <flux:heading size="lg">{{ __('Deals') }}</flux:heading>
         @if ($canUpdate)
             <flux:button size="sm" variant="primary" icon="plus" wire:click="createDeal">{{ __('New Deal') }}</flux:button>
         @endif
     </div>
 
-    @forelse ($this->deals as $deal)
-        <div wire:key="deal-row-{{ $deal->id }}" class="flex flex-col gap-3.5 rounded-xl border border-zinc-200/90 bg-zinc-50 p-3.5 sm:p-4 shadow-2xs dark:border-zinc-700/80 dark:bg-zinc-900/80">
+    <div data-test="lead-deals-list" class="flex max-h-96 flex-col gap-3.5 overflow-y-auto overscroll-contain pe-1">
+        @forelse ($this->deals as $deal)
+            <div wire:key="deal-row-{{ $deal->id }}" class="flex flex-col gap-3.5 rounded-xl border border-zinc-200/90 bg-zinc-50 p-3.5 sm:p-4 shadow-2xs dark:border-zinc-700/80 dark:bg-zinc-900/80">
             <div class="flex min-w-0 flex-col gap-1.5">
                 <div class="flex flex-wrap items-center gap-1.5">
                     <flux:text variant="strong" class="text-base font-semibold text-zinc-900 dark:text-white">{{ $deal->name }}</flux:text>
@@ -96,10 +97,11 @@
                     @endif
                 </div>
             @endif
-        </div>
-    @empty
-        <flux:text class="font-medium text-zinc-600 dark:text-zinc-400">{{ __('No deals yet for this lead.') }}</flux:text>
-    @endforelse
+            </div>
+        @empty
+            <flux:text class="font-medium text-zinc-600 dark:text-zinc-400">{{ __('No deals yet for this lead.') }}</flux:text>
+        @endforelse
+    </div>
 
     <flux:modal wire:model.self="showDealModal" :dismissible="false" class="md:w-[32rem]">
         <form wire:submit="saveDeal" class="flex flex-col gap-4">
@@ -110,7 +112,7 @@
             <div class="flex flex-col gap-4 sm:flex-row">
                 <flux:input wire:model="dealValue" type="number" step="0.01" min="0" :label="__('Value')" placeholder="0.00" class="sm:flex-1" />
                 @php
-                    $dealCurrencyOptions = collect($this->tenantCurrencies)->map(fn ($c) => ['value' => (string) $c->id, 'label' => $c->code])->toArray();
+                    $dealCurrencyOptions = collect($this->tenantCurrencies)->map(fn ($c) => ['value' => (string) $c->id, 'label' => $c->symbolLabel().' — '.$c->name, 'short' => $c->symbolLabel()])->toArray();
                 @endphp
                 <x-dropdown-select wire:model="dealCurrencyId" :label="__('Currency')" :options="$dealCurrencyOptions" class="sm:flex-1" />
             </div>

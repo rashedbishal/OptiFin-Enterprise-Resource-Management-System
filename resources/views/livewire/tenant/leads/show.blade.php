@@ -10,8 +10,6 @@
 
     @include('livewire.tenant.leads.partials.duplicate-warning')
 
-    @include('livewire.tenant.leads.partials.score-breakdown', ['lead' => $lead])
-
     <div class="flex flex-col gap-3">
         {{-- For tablet and mobile devices (below lg): move the Convert to Client button above the tabs --}}
         <div class="flex items-center justify-end lg:hidden">
@@ -153,19 +151,26 @@
                 ])
             @endif
 
-            @include('livewire.tenant.leads.partials.deals-card', ['lead' => $lead])
+            {{-- Compact cards flow into as many ≥20rem columns as the page
+            width allows instead of each stretching full-width — same grid as
+            show-panel.blade.php's. items-start keeps natural card heights. --}}
+            <div class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,20rem),1fr))] items-start gap-6">
+                @include('livewire.tenant.leads.partials.score-breakdown', ['lead' => $lead])
 
-            @include('livewire.tenant.leads.partials.tasks-card', ['lead' => $lead])
+                @include('livewire.tenant.leads.partials.deals-card', ['lead' => $lead])
 
-            @include('livewire.tenant.leads.partials.custom-fields-card', ['lead' => $lead])
+                @include('livewire.tenant.leads.partials.tasks-card', ['lead' => $lead])
 
-            @include('livewire.tenant.leads.partials.consent-card', ['lead' => $lead])
+                @include('livewire.tenant.leads.partials.custom-fields-card', ['lead' => $lead])
+
+                @include('livewire.tenant.leads.partials.consent-card', ['lead' => $lead])
+
+                @include('livewire.tenant.leads.partials.notes-card')
+            </div>
 
             @include('livewire.tenant.leads.partials.calls-card', ['scrollable' => true])
 
             @include('livewire.tenant.leads.partials.message-composer-card')
-
-            @include('livewire.tenant.leads.partials.notes-card')
 
             @include('livewire.tenant.leads.partials.detail-card', ['lead' => $lead, 'timeline' => $this->timeline, 'bodyView' => $bodyView])
         </div>
