@@ -148,6 +148,22 @@ test('a cancelled task cannot transition directly to completed', function () {
     expect($task->closed_at)->not->toBeNull();
 });
 
+test('an invalid status string is rejected with the same "not allowed" toast, never a raw ValueError', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $task = Task::factory()->create(['tenant_id' => $tenant->id, 'lead_id' => $lead->id]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->call('completeInitialLoad')
+        ->call('changeTaskStatus', $task->id, 'not-a-real-status')
+        ->assertHasNoErrors();
+
+    $task->refresh();
+    expect($task->status)->toBe(TaskStatus::Pending);
+    expect(TaskStatusLog::where('task_id', $task->id)->exists())->toBeFalse();
+});
+
 test('no status log is written when a transition is rejected', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);

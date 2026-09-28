@@ -3,7 +3,11 @@
 use App\Enums\LeadSourceType;
 use App\Models\Lead;
 use App\Models\LeadSource;
+use Illuminate\Contracts\Cache\Lock as LockContract;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 /**
  * @param  array<string, mixed>  $extraValue
@@ -125,6 +129,43 @@ test('a duplicate leadgen webhook delivery is not processed twice', function () 
     $this->postJson(route('api.webhook.facebook', $tenant->tenant_code), $payload)->assertOk();
 
     expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(1);
+});
+
+test('a dedupe lock timeout drops the delivery instead of creating a lead, with a distinguishable log entry, and never 500s', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::FacebookLeadAds,
+        'config' => ['page_id' => '1087258341146975', 'page_access_token' => 'page-token', 'verify_token' => 'secret'],
+    ]);
+
+    $realCache = Cache::getFacadeRoot();
+
+    Cache::shouldReceive('lock')->once()->andReturnUsing(function (string $name, int $seconds) use ($realCache): LockContract {
+        if (str_contains($name, 'lead-webhook-dedupe:')) {
+            $lock = Mockery::mock(LockContract::class);
+            $lock->shouldReceive('block')->once()->andThrow(new LockTimeoutException);
+
+            return $lock;
+        }
+
+        return $realCache->lock($name, $seconds);
+    });
+
+    // Never reached: the lock times out before the callback (and so this
+    // Graph fetch) ever runs. Faking nothing here would fail the test hard
+    // on an unexpected real HTTP call if the fix regressed to fail OPEN.
+    Http::fake(['graph.facebook.com/*' => Http::response(['field_data' => []])]);
+
+    Log::shouldReceive('error')->once()->with(Mockery::pattern('/dedupe lock timed out under contention/'));
+
+    $this->postJson(route('api.webhook.facebook', $tenant->tenant_code), leadgenPayload('leadgen-lock-timeout'))->assertOk();
+
+    // Dropped, not created — and critically, never treated as a duplicate
+    // skip (that path logs 'already processed', a different message, and
+    // this mock only ever expects the timeout message above).
+    expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(0);
 });
 
 test('a leadgen event for a tenant with no facebook lead ads source configured is logged and skipped, not a 500', function () {

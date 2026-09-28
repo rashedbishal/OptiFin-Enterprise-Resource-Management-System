@@ -163,7 +163,48 @@ test('rendering the cost per lead card does not N+1 per-source lookups', functio
     DB::disableQueryLog();
 
     expect($summary['rows'])->toHaveCount(5);
-    expect($queryCount)->toBeLessThanOrEqual(8);
+    // A per-source count() would have cost 1 extra query per source (8
+    // total for 5 sources — the exact count the un-fixed N+1 pattern
+    // produced: allCosts + 2 eager loads + 5 per-source counts). The single
+    // grouped query fix costs a fixed 4 (allCosts + 2 eager loads + 1
+    // grouped lead-count query), independent of source count — see the
+    // scaling test below for the stronger, count-independent proof.
+    expect($queryCount)->toBeLessThanOrEqual(5);
+});
+
+test('sourceCostSummary() issues the same number of queries regardless of how many sources have cost data', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $currency = enableCurrency($tenant);
+
+    $makeSources = function (int $count) use ($tenant, $currency): void {
+        foreach (range(1, $count) as $i) {
+            $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::FacebookLeadAds, 'name' => "Src {$i}-{$count}"]);
+            LeadSourceCost::factory()->create(['tenant_id' => $tenant->id, 'lead_source_id' => $source->id, 'currency_id' => $currency->id, 'month' => '2026-09-01', 'amount' => 100]);
+            Lead::factory()->count(2)->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'created_at' => Carbon::parse('2026-09-15')]);
+        }
+    };
+
+    $countQueriesFor = function () use ($tenant): int {
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+        app(LeadReportingService::class)->sourceCostSummary($tenant, Carbon::parse('2026-09-01'), Carbon::parse('2026-10-01'));
+        $count = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        return $count;
+    };
+
+    $makeSources(2);
+    $queriesForTwo = $countQueriesFor();
+
+    $makeSources(8);
+    $queriesForTen = $countQueriesFor();
+
+    // If the per-source count() query were still there, adding 8 more
+    // sources would add 8 more queries. A single grouped query costs the
+    // exact same number of round trips no matter how many sources or
+    // cost-rows it covers.
+    expect($queriesForTen)->toBe($queriesForTwo);
 });
 
 test('the reports page renders the cost per lead card, disclaimer, and source-costs link', function () {

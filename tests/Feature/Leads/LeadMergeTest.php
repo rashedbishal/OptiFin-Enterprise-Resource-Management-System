@@ -15,6 +15,7 @@ use App\Models\LeadCallPermission;
 use App\Models\LeadDetailUpdateLog;
 use App\Models\LeadDuplicateLink;
 use App\Models\LeadNote;
+use App\Models\LeadScoreLog;
 use App\Models\LeadSource;
 use App\Models\LeadStatusLog;
 use App\Models\Message;
@@ -53,6 +54,7 @@ test('merging two leads reparents all of the loser\'s history onto the survivor'
         'assigned_by' => $clientAdmin->id,
     ]);
     $detailLog = LeadDetailUpdateLog::factory()->create(['lead_id' => $loser->id, 'changed_by' => $clientAdmin->id]);
+    $scoreLog = LeadScoreLog::factory()->create(['tenant_id' => $tenant->id, 'lead_id' => $loser->id]);
 
     $leadSource = LeadSource::factory()->create(['tenant_id' => $tenant->id]);
     $conversation = Conversation::factory()->create([
@@ -81,6 +83,7 @@ test('merging two leads reparents all of the loser\'s history onto the survivor'
     expect($statusLog->fresh()->lead_id)->toBe($survivor->id);
     expect($assignment->fresh()->lead_id)->toBe($survivor->id);
     expect($detailLog->fresh()->lead_id)->toBe($survivor->id);
+    expect($scoreLog->fresh()->lead_id)->toBe($survivor->id);
     expect($conversation->fresh()->lead_id)->toBe($survivor->id);
     expect($message->fresh()->lead_id)->toBe($survivor->id);
 
@@ -89,6 +92,50 @@ test('merging two leads reparents all of the loser\'s history onto the survivor'
     expect($survivorConversation->fresh()->lead_id)->toBe($survivor->id);
 
     expect($loser->fresh()->merged_into_lead_id)->toBe($survivor->id);
+});
+
+test('a merge reparents the loser\'s score history without duplicating rows, leaving the survivor\'s own history intact', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+
+    $survivor = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $loser = Lead::factory()->create(['tenant_id' => $tenant->id]);
+
+    $survivorLog = LeadScoreLog::factory()->create(['tenant_id' => $tenant->id, 'lead_id' => $survivor->id, 'score' => 40]);
+    $loserLogA = LeadScoreLog::factory()->create(['tenant_id' => $tenant->id, 'lead_id' => $loser->id, 'score' => 55]);
+    $loserLogB = LeadScoreLog::factory()->create(['tenant_id' => $tenant->id, 'lead_id' => $loser->id, 'score' => 70]);
+
+    app(LeadMergeService::class)->merge($survivor, $loser, $clientAdmin, []);
+
+    expect(LeadScoreLog::count())->toBe(3);
+    expect($loserLogA->fresh()->lead_id)->toBe($survivor->id);
+    expect($loserLogB->fresh()->lead_id)->toBe($survivor->id);
+    // The survivor's own pre-existing score history is untouched, not
+    // replaced or duplicated.
+    expect($survivorLog->fresh()->lead_id)->toBe($survivor->id);
+    expect($survivorLog->fresh()->score)->toBe(40);
+    expect(LeadScoreLog::where('lead_id', $survivor->id)->count())->toBe(3);
+    expect(LeadScoreLog::where('lead_id', $loser->id)->count())->toBe(0);
+});
+
+test('a failed merge leaves the loser\'s score history exactly where it was, never partially reparented', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+
+    $survivor = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $loser = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $scoreLog = LeadScoreLog::factory()->create(['tenant_id' => $tenant->id, 'lead_id' => $loser->id]);
+
+    // Same forced-failure technique as the atomicity test below: a
+    // TenantUser built but never persisted fails LeadDuplicateLink
+    // .resolved_by's foreign key on the merge's very last write, AFTER the
+    // score-log reparenting above it in the SAME transaction has already
+    // run — proving that step is rolled back too, not just committed early.
+    $neverPersisted = TenantUser::factory()->make(['id' => (string) Str::ulid(), 'tenant_id' => $tenant->id]);
+
+    expect(fn () => app(LeadMergeService::class)->merge($survivor, $loser, $neverPersisted, []))
+        ->toThrow(Exception::class);
+
+    expect($scoreLog->fresh()->lead_id)->toBe($loser->id);
+    expect($loser->fresh()->merged_into_lead_id)->toBeNull();
 });
 
 // ── WhatsApp Outbound Calling — LeadCallPermission merge consistency ───────
