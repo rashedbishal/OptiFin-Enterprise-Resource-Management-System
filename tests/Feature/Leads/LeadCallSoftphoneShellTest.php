@@ -28,6 +28,27 @@ test('a user who can take calls gets the softphone shell, wired to their own cha
         ->toMatch('~lead-management\\\\+/calls\\\\+/__CALL__\\\\+/claim~');
 });
 
+test('the shell shows on every tenant page, not just the dashboard — it is mounted once in the shared root layout', function (string $route) {
+    // layouts/app/sidebar.blade.php is the actual <!DOCTYPE html> document
+    // every tenant page renders into (layouts/app.blade.php just fills its
+    // slot); no tenant Livewire component overrides #[Layout(...)]. The
+    // softphone lives inside that shared root, so it is global by
+    // construction, not opted into per page — this locks that guarantee in
+    // against a future page that bypasses the shared layout.
+    $x = Lc::make();
+
+    // The Client Admin, not the agent: tenant-users.index needs
+    // TenantUserPolicy::viewAny (Client-Admin-only) and the Dashboard hub
+    // redirects a non-Client-Admin staff user to the leads list before it
+    // ever renders — neither is about the softphone itself, so a user
+    // guaranteed past both keeps this test only about what it means to test.
+    $this->actingAs($x->admin)->get(route($route))->assertOk()->assertSee('data-test="softphone"', false);
+})->with([
+    'dashboard' => ['dashboard'],
+    'a page entirely outside the lead-management module' => ['tenant-users.index'],
+    'the lead-management module hub itself' => ['lead-management.index'],
+]);
+
 test('the shell is persisted so a live call survives navigation', function () {
     $x = Lc::make();
 

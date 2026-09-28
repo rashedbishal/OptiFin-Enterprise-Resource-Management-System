@@ -40,8 +40,8 @@ export const DEFAULT_TEXTS = {
     genericError: 'Something went wrong with the call.',
 };
 
-// Server errors that mean "this call is no longer yours to answer".
-const GONE_CODES = new Set(['already_claimed', 'call_not_active', 'call_expired', 'offer_unavailable', 'call_state_changed', 'call_not_found', 'not_claimant', 'sdp_mismatch', 'answer_unavailable', 'call_not_answerable', 'call_not_claimed']);
+// Server errors that mean "this call is no longer yours to act on".
+const GONE_CODES = new Set(['already_claimed', 'call_not_active', 'call_expired', 'offer_unavailable', 'call_state_changed', 'call_not_found', 'not_claimant', 'sdp_mismatch', 'answer_unavailable', 'call_not_answerable', 'call_not_claimed', 'call_not_connected']);
 
 export class SoftphoneController {
     constructor({
@@ -308,6 +308,7 @@ export class SoftphoneController {
             audioEl: media.audioEl,
             connectTimeoutMs: this.connectTimeout(call),
             timers: this.timers,
+            now: this.now,
             onChange: () => this.onSessionChange(),
         });
         this.busy.delete(callId);
@@ -381,6 +382,38 @@ export class SoftphoneController {
                 if (this.session?.callId === callId) {
                     this.finishSession(this.texts.ended);
                 }
+            } else {
+                this.addNotice(error.message || this.texts.genericError, 'error');
+            }
+        } finally {
+            this.busy.delete(callId);
+            this.notify();
+            this.refresh();
+        }
+    }
+
+    /**
+     * Ends the connected call this tab owns (Step 7a). Local state is
+     * authoritative the instant the request succeeds, so the media session is
+     * torn down immediately here — never waiting for the next poll or realtime
+     * event — matching how the server never rolls its own Completed transition
+     * back either, regardless of what Meta's terminate call reports.
+     */
+    async hangup(callId) {
+        if (this.busy.has(callId) || this.session?.callId !== callId || this.session.phase !== PHASE.CONNECTED) {
+            return;
+        }
+
+        this.busy.add(callId);
+        this.notify();
+
+        try {
+            await this.api.hangup(callId);
+            this.finishSession(this.texts.ended);
+            this.calls = this.calls.filter((call) => call.id !== callId);
+        } catch (error) {
+            if (GONE_CODES.has(error.code)) {
+                this.finishSession(this.texts.ended);
             } else {
                 this.addNotice(error.message || this.texts.genericError, 'error');
             }
@@ -473,8 +506,18 @@ export class SoftphoneController {
                     muted: session.muted,
                     audioBlocked: session.audioBlocked,
                     reconnecting: session.reconnecting,
-                    elapsedSeconds: session.phase === PHASE.CONNECTED ? (base.elapsedSeconds ?? 0) : null,
+                    // Prefer this tab's own locally-observed connect moment
+                    // (session.connectedAt, set the instant audio went live)
+                    // over the server-derived base.elapsedSeconds, which
+                    // depends on a poll/realtime round-trip that can lag or
+                    // simply never land on this same tab.
+                    elapsedSeconds: session.phase === PHASE.CONNECTED
+                        ? Math.max(0, Math.floor((now - (session.connectedAt ?? call.connectedAt ?? now)) / 1000))
+                        : null,
+                    // Decline covers pre-connect states; once Connected, Hang Up
+                    // (Step 7a) is the only way this tab can end its own call.
                     canDecline: session.phase !== PHASE.CONNECTED,
+                    canHangup: session.phase === PHASE.CONNECTED && !base.busy,
                     canAnswer: false,
                     canDismiss: false,
                 });
@@ -497,7 +540,9 @@ export class SoftphoneController {
                     mode: otherTabs.has(call.id) ? MODE.OTHER_TAB : MODE.LOST,
                     phase: call.status,
                     canAnswer: false,
-                    // Only a call still being answered can be declined (there is no hangup).
+                    // Only a call still being answered can be declined here. Hang Up
+                    // (Step 7a) needs the live media session, which only the tab that
+                    // owns it has — never this one (other-tab or post-reload "lost").
                     canDecline: call.status === 'answering' && !otherTabs.has(call.id) && !base.busy,
                     canDismiss: false,
                 });
@@ -511,6 +556,15 @@ export class SoftphoneController {
             cards,
             notices: this.notices,
             mediaBusy,
+            // Which card (if any) takes over the phone-width full screen —
+            // this tab's own session, by id, for its entire lifecycle
+            // (ringing/connecting/connected/failed — the blade template picks
+            // which of those four get an actual full-screen layout vs falling
+            // back to the compact card by that same id), else the first
+            // ringing card so an unclaimed incoming call still rings
+            // full-screen. A second simultaneous call never also goes
+            // full-screen — it stays the existing compact card, on every width.
+            primaryCallId: this.session?.callId ?? cards.find((card) => card.mode === MODE.RINGING)?.id ?? null,
         };
     }
 }

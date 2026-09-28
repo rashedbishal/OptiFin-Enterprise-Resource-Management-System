@@ -6,12 +6,14 @@
     // ever substituted) and the few strings it shows. No token, no phone number id.
     $softphoneConfig = [
         'userId' => (string) $userId,
+        'pollMs' => (int) config('calling.softphone_poll_seconds', 5) * 1000,
         'urls' => [
             'active' => route('tenant-lead-calls.active'),
             'claim' => route('tenant-lead-calls.claim', '__CALL__'),
             'answer' => route('tenant-lead-calls.answer', '__CALL__'),
             'accept' => route('tenant-lead-calls.accept', '__CALL__'),
             'reject' => route('tenant-lead-calls.reject', '__CALL__'),
+            'hangup' => route('tenant-lead-calls.hangup', '__CALL__'),
         ],
         'texts' => [
             'micNeeded' => __('Microphone access is needed to answer calls.'),
@@ -55,8 +57,21 @@ cards. --}}
     </template>
 
     <template x-for="card in view.cards" :key="card.id">
+        {{-- `contents` keeps this purely a grouping wrapper — it takes no box
+        of its own, so the flex-col stack of compact cards and the fixed
+        full-screen overlays (siblings below) are unaffected by it. Only the
+        PRIMARY call (view.primaryCallId — this tab's own session, else the
+        first ringing call) ever gets the phone full-screen treatment, and
+        only while Ringing or Connected; every other card, and every other
+        state of the primary card, keeps today's compact card unchanged. Both
+        the compact and full-screen markup exist for every card at all times,
+        toggled by CSS (x-show + the sm: breakpoint) rather than created/
+        destroyed, so the full-screen buttons' own drag state never resets
+        under a resize. --}}
+        <div class="contents">
         <div
             class="pointer-events-auto rounded-xl border border-zinc-200 bg-white p-4 shadow-xl dark:border-zinc-700 dark:bg-zinc-800"
+            :class="card.id === view.primaryCallId && ['ringing', 'connecting', 'connected', 'failed'].includes(card.mode) ? 'hidden sm:block' : ''"
             :data-call-id="card.id"
             :data-mode="card.mode"
         >
@@ -132,6 +147,7 @@ cards. --}}
                         <div class="flex flex-wrap gap-2">
                             <flux:button size="sm" x-on:click="toggleMute()"><span x-text="card.muted ? @js(__('Unmute')) : @js(__('Mute'))"></span></flux:button>
                             <flux:button size="sm" variant="primary" x-show="card.audioBlocked" x-on:click="enableAudio()">{{ __('Enable audio') }}</flux:button>
+                            <flux:button size="sm" variant="danger" x-on:click="hangup(card.id)" x-bind:disabled="!card.canHangup">{{ __('Hang up') }}</flux:button>
                         </div>
                     </div>
                 </template>
@@ -151,6 +167,200 @@ cards. --}}
                     </div>
                 </template>
             </div>
+        </div>
+
+        {{-- Ringing — phone full-screen, primary call only. Both buttons stay
+        directly tappable (a near-zero-movement release triggers immediately,
+        same as a click); dragging past the threshold also triggers; a
+        partial drag snaps back. See resources/js/softphone/drag.js. --}}
+        <div
+            x-show="card.id === view.primaryCallId && card.mode === 'ringing'"
+            class="pointer-events-auto fixed inset-0 z-40 flex flex-col items-center justify-between bg-white px-6 py-12 text-center dark:bg-zinc-900 sm:hidden"
+            :data-call-id="card.id"
+            data-test="softphone-fullscreen-ringing"
+        >
+            <div class="flex flex-col items-center gap-3 pt-8">
+                <span class="text-sm font-medium text-sky-600 dark:text-sky-400">{{ __('Incoming WhatsApp call') }}</span>
+                <div class="relative flex size-24 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300">
+                    <span class="absolute inset-0 animate-ping rounded-full bg-sky-400/40"></span>
+                    <flux:icon.phone class="relative size-10" />
+                </div>
+                <div class="mt-2">
+                    <div class="text-xl font-semibold text-zinc-900 dark:text-white" x-text="card.lead.name || card.lead.phone || @js(__('Unknown caller'))"></div>
+                    <div class="text-sm text-zinc-500 dark:text-zinc-400" x-show="card.lead.name && card.lead.phone" x-text="card.lead.phone"></div>
+                </div>
+                <span class="tabular-nums text-xs text-zinc-400 dark:text-zinc-500" x-show="card.remainingSeconds !== null" x-text="card.remainingSeconds + 's'"></span>
+            </div>
+
+            <p class="text-xs text-zinc-500 dark:text-zinc-400" x-show="view.mediaBusy && !card.canAnswer">{{ __('Finish your current call before answering another.') }}</p>
+
+            <div class="flex w-full flex-col items-center gap-4 pb-2">
+                <div class="flex w-full max-w-xs items-center justify-between px-4">
+                    <div class="flex flex-col items-center gap-2">
+                        <div
+                            x-data="callDragButton()"
+                            x-on:pointerdown="start($event)"
+                            x-on:pointermove="move($event)"
+                            x-on:pointerup="end($event)"
+                            x-on:pointercancel="cancel()"
+                            x-on:call-drag-trigger="decline(card.id)"
+                            x-bind:style="dragStyle"
+                            x-bind:class="!card.canDecline ? 'opacity-40 pointer-events-none' : ''"
+                            class="flex size-16 cursor-pointer touch-none items-center justify-center rounded-full bg-red-500 text-white shadow-lg transition-transform"
+                            aria-label="{{ __('Decline') }}"
+                            role="button"
+                        >
+                            <flux:icon.phone-x-mark class="size-7" />
+                        </div>
+                        <span class="text-xs text-zinc-500 dark:text-zinc-400">{{ __('Decline') }}</span>
+                    </div>
+
+                    <div class="flex flex-col items-center gap-2">
+                        <div
+                            x-data="callDragButton()"
+                            x-on:pointerdown="start($event)"
+                            x-on:pointermove="move($event)"
+                            x-on:pointerup="end($event)"
+                            x-on:pointercancel="cancel()"
+                            x-on:call-drag-trigger="answer(card.id)"
+                            x-bind:style="dragStyle"
+                            x-bind:class="!card.canAnswer ? 'opacity-40 pointer-events-none' : ''"
+                            class="flex size-16 cursor-pointer touch-none items-center justify-center rounded-full bg-emerald-500 text-white shadow-lg transition-transform"
+                            aria-label="{{ __('Answer') }}"
+                            role="button"
+                        >
+                            <flux:icon.phone class="size-7" />
+                        </div>
+                        <span class="text-xs text-zinc-500 dark:text-zinc-400">{{ __('Answer') }}</span>
+                    </div>
+                </div>
+
+                <p class="px-4 text-[11px] text-zinc-400 dark:text-zinc-500">{{ __('Decline ends the call for everyone it is ringing. Dismiss only hides it here.') }}</p>
+
+                <button type="button" class="cursor-pointer text-xs text-zinc-400 underline dark:text-zinc-500" x-on:click="dismiss(card.id)">{{ __('Dismiss') }}</button>
+            </div>
+        </div>
+
+        {{-- Connecting — phone full-screen, primary call only. Keeps the
+        screen up continuously from Ringing through to Connected/Failed —
+        dropping to the compact card for this brief WebRTC-negotiation window
+        was a jarring flash back and forth, so it stays full-screen here too. --}}
+        <div
+            x-show="card.id === view.primaryCallId && card.mode === 'connecting'"
+            class="pointer-events-auto fixed inset-0 z-40 flex flex-col items-center justify-between bg-white px-6 py-12 text-center dark:bg-zinc-900 sm:hidden"
+            :data-call-id="card.id"
+            data-test="softphone-fullscreen-connecting"
+        >
+            <div class="flex flex-col items-center gap-3 pt-8">
+                <span class="text-sm font-medium text-zinc-500 dark:text-zinc-400">{{ __('Connecting…') }}</span>
+                <div class="flex size-24 animate-pulse items-center justify-center rounded-full bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400">
+                    <flux:icon.phone class="size-10" />
+                </div>
+                <div class="mt-2">
+                    <div class="text-xl font-semibold text-zinc-900 dark:text-white" x-text="card.lead.name || card.lead.phone || @js(__('Unknown caller'))"></div>
+                    <div class="text-sm text-zinc-500 dark:text-zinc-400" x-show="card.lead.name && card.lead.phone" x-text="card.lead.phone"></div>
+                </div>
+            </div>
+
+            <button
+                type="button"
+                class="flex size-16 cursor-pointer items-center justify-center rounded-full bg-red-500 text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-40"
+                x-on:click="decline(card.id)"
+                x-bind:disabled="!card.canDecline"
+                aria-label="{{ __('Decline') }}"
+            >
+                <flux:icon.phone-x-mark class="size-7" />
+            </button>
+        </div>
+
+        {{-- Failed — phone full-screen, primary call only. --}}
+        <div
+            x-show="card.id === view.primaryCallId && card.mode === 'failed'"
+            class="pointer-events-auto fixed inset-0 z-40 flex flex-col items-center justify-between bg-white px-6 py-12 text-center dark:bg-zinc-900 sm:hidden"
+            :data-call-id="card.id"
+            data-test="softphone-fullscreen-failed"
+        >
+            <div class="flex flex-col items-center gap-3 pt-8">
+                <div class="flex size-24 items-center justify-center rounded-full bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300">
+                    <flux:icon.phone-x-mark class="size-10" />
+                </div>
+                <div class="mt-2">
+                    <div class="text-xl font-semibold text-zinc-900 dark:text-white" x-text="card.lead.name || card.lead.phone || @js(__('Unknown caller'))"></div>
+                    <div class="text-sm text-zinc-500 dark:text-zinc-400" x-show="card.lead.name && card.lead.phone" x-text="card.lead.phone"></div>
+                </div>
+                <span class="text-sm text-red-700 dark:text-red-300" x-text="card.error"></span>
+            </div>
+
+            <div class="flex w-full max-w-xs items-center justify-center gap-10 pb-2">
+                <flux:button variant="primary" x-show="card.retryable" x-on:click="retry()">{{ __('Retry') }}</flux:button>
+                <button
+                    type="button"
+                    class="flex size-16 cursor-pointer items-center justify-center rounded-full bg-red-500 text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-40"
+                    x-on:click="decline(card.id)"
+                    x-bind:disabled="!card.canDecline"
+                    aria-label="{{ __('Decline') }}"
+                >
+                    <flux:icon.phone-x-mark class="size-7" />
+                </button>
+            </div>
+        </div>
+
+        {{-- Connected — phone full-screen, primary call only. Hang Up is
+        tap-only (no drag) so a stray swipe mid-call can never end it. --}}
+        <div
+            x-show="card.id === view.primaryCallId && card.mode === 'connected'"
+            class="pointer-events-auto fixed inset-0 z-40 flex flex-col items-center justify-between bg-white px-6 py-12 text-center dark:bg-zinc-900 sm:hidden"
+            :data-call-id="card.id"
+            data-test="softphone-fullscreen-connected"
+        >
+            <div class="flex flex-col items-center gap-3 pt-8">
+                <span
+                    class="text-sm font-medium"
+                    :class="card.reconnecting ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'"
+                    x-text="card.reconnecting ? @js(__('Reconnecting audio…')) : @js(__('Connected'))"
+                ></span>
+                <div class="flex size-24 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
+                    <flux:icon.phone class="size-10" />
+                </div>
+                <div class="mt-2">
+                    <div class="text-xl font-semibold text-zinc-900 dark:text-white" x-text="card.lead.name || card.lead.phone || @js(__('Unknown caller'))"></div>
+                    <div class="text-sm text-zinc-500 dark:text-zinc-400" x-show="card.lead.name && card.lead.phone" x-text="card.lead.phone"></div>
+                </div>
+                <span class="tabular-nums text-lg text-zinc-500 dark:text-zinc-400" x-text="format(card.elapsedSeconds)"></span>
+            </div>
+
+            <div class="flex w-full flex-col items-center gap-6 pb-2">
+                <flux:button variant="primary" x-show="card.audioBlocked" x-on:click="enableAudio()" class="w-full max-w-xs">{{ __('Enable audio') }}</flux:button>
+
+                <div class="flex w-full max-w-xs items-center justify-center gap-12">
+                    <div class="flex flex-col items-center gap-2">
+                        <button
+                            type="button"
+                            class="flex size-16 cursor-pointer items-center justify-center rounded-full text-zinc-700 shadow-lg dark:text-zinc-200"
+                            :class="card.muted ? 'bg-zinc-300 dark:bg-zinc-600' : 'bg-zinc-100 dark:bg-zinc-800'"
+                            x-on:click="toggleMute()"
+                            aria-label="{{ __('Mute') }}"
+                        >
+                            <flux:icon.microphone class="size-7" />
+                        </button>
+                        <span class="text-xs text-zinc-500 dark:text-zinc-400" x-text="card.muted ? @js(__('Unmute')) : @js(__('Mute'))"></span>
+                    </div>
+
+                    <div class="flex flex-col items-center gap-2">
+                        <button
+                            type="button"
+                            class="flex size-16 cursor-pointer items-center justify-center rounded-full bg-red-500 text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-40"
+                            x-on:click="hangup(card.id)"
+                            x-bind:disabled="!card.canHangup"
+                            aria-label="{{ __('Hang up') }}"
+                        >
+                            <flux:icon.phone-x-mark class="size-7" />
+                        </button>
+                        <span class="text-xs text-zinc-500 dark:text-zinc-400">{{ __('Hang up') }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
         </div>
     </template>
 </div>

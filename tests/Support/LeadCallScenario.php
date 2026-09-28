@@ -12,6 +12,7 @@ use App\Models\Tenant;
 use App\Models\TenantUser;
 use App\Support\LeadCallSdp;
 use ArrayObject;
+use Carbon\CarbonInterface;
 use Closure;
 use Illuminate\Http\Client\Factory;
 use Illuminate\Http\Client\Request;
@@ -108,6 +109,24 @@ final class LeadCallScenario
         $this->claimed($by);
         $this->call->update(['meta_stage' => CallMetaStage::PreAccepted]);
         LeadCallSdp::storeAnswer($this->source, $this->call->external_call_id, self::answerSdp());
+
+        return $this->reload();
+    }
+
+    /**
+     * The call as `accept` leaves it: claimed, Connected, both SDP caches
+     * cleared (accept() drops them on a successful connect). `$connectedAt`
+     * lets a test simulate an old-enough Connected call for the Step 6 sweep.
+     */
+    public function connected(?TenantUser $by = null, ?CarbonInterface $connectedAt = null): self
+    {
+        $this->preAccepted($by);
+        $this->call->update([
+            'status' => CallStatus::Connected,
+            'connected_at' => $connectedAt ?? now(),
+            'meta_stage' => CallMetaStage::Accepted,
+        ]);
+        LeadCallSdp::forget($this->source, $this->call->external_call_id);
 
         return $this->reload();
     }

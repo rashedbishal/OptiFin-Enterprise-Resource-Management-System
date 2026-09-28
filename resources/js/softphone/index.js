@@ -1,5 +1,6 @@
 import { createApi } from './api.js';
 import { SoftphoneController } from './controller.js';
+import { registerCallDragButton } from './drag-button.js';
 import { createOwnership } from './ownership.js';
 import { subscribeToCalls } from './realtime.js';
 
@@ -45,6 +46,7 @@ export function registerSoftphone(alpine) {
                     ownership: createOwnership(),
                     subscribe: ({ onEvent, onReconnect }) => subscribeToCalls({ echo: window.Echo, userId: config.userId, onEvent, onReconnect }),
                     texts: config.texts ?? {},
+                    pollMs: config.pollMs,
                     onChange: (snapshot) => {
                         this.view = snapshot;
                     },
@@ -65,6 +67,7 @@ export function registerSoftphone(alpine) {
                 return controller?.answer(id);
             },
             decline: (id) => controller?.decline(id),
+            hangup: (id) => controller?.hangup(id),
             dismiss: (id) => controller?.dismiss(id),
             retry: () => controller?.retry(),
             toggleMute: () => controller?.toggleMute(),
@@ -90,9 +93,13 @@ export function registerSoftphone(alpine) {
 
 // The Alpine instance is provided by Livewire; register before or after it starts.
 if (typeof document !== 'undefined') {
-    document.addEventListener('alpine:init', () => registerSoftphone(window.Alpine));
+    document.addEventListener('alpine:init', () => {
+        registerSoftphone(window.Alpine);
+        registerCallDragButton(window.Alpine);
+    });
 
     if (window.Alpine?.data) {
         registerSoftphone(window.Alpine);
+        registerCallDragButton(window.Alpine);
     }
 }

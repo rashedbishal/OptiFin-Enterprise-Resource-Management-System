@@ -47,7 +47,7 @@ export class SessionError extends Error {
 const isConnected = (state) => state === 'connected' || state === 'completed';
 
 export class AnswerSession {
-    constructor({ callId, api, stream, env, audioEl, connectTimeoutMs = 20000, onChange = () => {}, timers = { setTimeout: (...a) => setTimeout(...a), clearTimeout: (...a) => clearTimeout(...a) } }) {
+    constructor({ callId, api, stream, env, audioEl, connectTimeoutMs = 20000, onChange = () => {}, timers = { setTimeout: (...a) => setTimeout(...a), clearTimeout: (...a) => clearTimeout(...a) }, now = () => Date.now() }) {
         this.callId = callId;
         this.api = api;
         this.stream = stream;
@@ -56,6 +56,7 @@ export class AnswerSession {
         this.connectTimeoutMs = connectTimeoutMs;
         this.onChange = onChange;
         this.timers = timers;
+        this.now = now;
 
         this.phase = PHASE.CLAIMING;
         this.stage = 'claim';
@@ -63,6 +64,12 @@ export class AnswerSession {
         this.muted = false;
         this.audioBlocked = false;
         this.reconnecting = false;
+        // Set locally the instant audio actually goes live (goLive()) — the
+        // elapsed timer must not depend on the server's own connected_at
+        // reaching this same tab through a poll/realtime round-trip, which can
+        // lag or, on some networks, simply not arrive; this tab already knows
+        // the true moment without asking anyone.
+        this.connectedAt = null;
 
         this.pc = null;
         this.answerSdp = null;
@@ -235,6 +242,7 @@ export class AnswerSession {
             track.enabled = !this.muted;
         }
 
+        this.connectedAt = this.now();
         this.setPhase(PHASE.CONNECTED);
 
         try {

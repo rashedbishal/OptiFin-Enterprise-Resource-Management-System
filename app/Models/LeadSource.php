@@ -18,6 +18,7 @@ use Illuminate\Support\Carbon;
  * @property string $id
  * @property string $tenant_id
  * @property LeadSourceType $type
+ * @property string|null $singleton_type
  * @property string $name
  * @property array<string, mixed>|null $config
  * @property bool $is_active
@@ -41,6 +42,61 @@ class LeadSource extends Model
 {
     /** @use HasFactory<LeadSourceFactory> */
     use BelongsToTenant, HasFactory, HasUlids;
+
+    /**
+     * The only LeadSourceType values confirmed, by direct evidence, as an
+     * enforceable singleton-per-tenant: LeadSourceType's own case comments
+     * ("the single per-tenant source... lazily created on first use"), and
+     * — critically — neither is ever independently creatable through any
+     * other path (both are excluded from Platform\Clients\LeadSources::
+     * typeOptions(), so the Platform Admin UI can never create a second
+     * one), meaning CreateManualLead/LeadImports\Index's own firstOrCreate()
+     * really is the ONLY writer for each.
+     *
+     * WebsiteForm is deliberately NOT included despite WebsiteForm::
+     * leadSource()'s own docblock describing it as "the tenant's ONE shared
+     * ... LeadSource": that describes the Website Form BUILDER's own
+     * lazy-creation intent specifically, not an app-wide invariant — unlike
+     * Manual/CsvImport, WebsiteForm IS independently creatable through the
+     * Platform Admin panel (LeadSources::save() imposes no restriction for
+     * it, unlike Manual/CsvImport which typeOptions() excludes entirely),
+     * and enforcing "at most one" at the database level here broke over a
+     * hundred existing tests that already create multiple WebsiteForm-type
+     * sources per tenant for unrelated scenarios — concrete, empirical
+     * evidence the wider system does not actually treat this as an absolute
+     * rule, whatever the one relationship's own docblock aspires to. Forcing
+     * it through would be a real, invasive behavior change, not a race fix.
+     *
+     * Every other type (FacebookMessenger, FacebookLeadAds, Whatsapp,
+     * Instagram, Email, LinkedInLeadGen) is confirmed to legitimately allow
+     * multiple sources per tenant the same way WebsiteForm does — no
+     * restriction in LeadSources::save(), and an existing, already-passing
+     * test (LeadSourceCostReportingTest.php) exercises 5 FacebookLeadAds
+     * sources for one tenant as normal, expected behavior.
+     *
+     * @var array<int, LeadSourceType>
+     */
+    public const array SINGLETON_TYPES = [
+        LeadSourceType::Manual,
+        LeadSourceType::CsvImport,
+    ];
+
+    protected static function booted(): void
+    {
+        // Derives singleton_type from type on every creation path
+        // automatically, rather than scattering the same three-type check
+        // across CreateManualLead/LeadImports\Index/WebsiteForms\Index (and
+        // any future creator) — see the unique(tenant_id, singleton_type)
+        // index this column backs (migration
+        // 2026_09_28_070000_add_singleton_type_unique_to_lead_sources_table)
+        // for the full reasoning. type is never mutated after creation
+        // anywhere in this codebase, so this only needs to run once, here.
+        static::creating(function (LeadSource $source): void {
+            $source->singleton_type = in_array($source->type, self::SINGLETON_TYPES, true)
+                ? $source->type->value
+                : null;
+        });
+    }
 
     /**
      * @return array<string, string>
