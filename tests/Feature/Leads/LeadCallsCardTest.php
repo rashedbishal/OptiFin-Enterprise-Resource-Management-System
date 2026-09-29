@@ -90,7 +90,7 @@ test('the Calls card stays compact and scrolls its call history internally', fun
     expect($callsRow)->not->toBeNull();
     expect($callsRow->getAttribute('class'))->toContain('items-stretch');
     expect($callsCard)
-        ->toContain('h-96 overflow-hidden')
+        ->toContain('h-full max-h-[34rem] overflow-hidden')
         ->toContain('min-h-0 flex-1 gap-3 overflow-y-auto overscroll-contain pe-1');
 });
 

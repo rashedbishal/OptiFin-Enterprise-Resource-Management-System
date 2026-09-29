@@ -351,10 +351,26 @@ test('a sent image and pdf appear in the chat feed as outgoing bubbles with a do
 
     $html = composer($admin, $lead)->html();
 
-    expect($html)->toContain(route('tenant-leads.message-attachment', [$lead, $image]))
-        ->toContain(route('tenant-leads.message-attachment', [$lead, $pdf]))
+    $imageUrl = route('tenant-leads.message-attachment', [$lead, $image]);
+    $pdfUrl = route('tenant-leads.message-attachment', [$lead, $pdf]);
+
+    expect($html)->toContain($imageUrl)
+        ->toContain($pdfUrl)
         ->toContain('Look at this')->toContain('quote.pdf')->toContain('PDF · 3 MB')->toContain('Sent by '.$admin->name);
-    expect(substr_count($html, 'bg-blue-600 p-1.5'))->toBe(2);
+
+    // Each attachment link must sit inside an outgoing (right-aligned) bubble
+    // — structural alignment, not a Tailwind color utility, so this stays
+    // meaningful regardless of how the bubble's own color/gradient is styled.
+    $document = new DOMDocument;
+    libxml_use_internal_errors(true);
+    $document->loadHTML('<?xml encoding="utf-8" ?>'.$html);
+    libxml_clear_errors();
+    $xpath = new DOMXPath($document);
+
+    foreach ([$imageUrl, $pdfUrl] as $url) {
+        $outgoingAncestors = $xpath->query('//a[@href="'.$url.'"]/ancestor::div[contains(concat(" ", normalize-space(@class), " "), " justify-end ")]');
+        expect($outgoingAncestors->length)->toBeGreaterThan(0);
+    }
 });
 
 // -------------------------------------------------------------- download
