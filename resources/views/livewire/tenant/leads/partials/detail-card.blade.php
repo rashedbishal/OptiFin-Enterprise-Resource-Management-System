@@ -1,6 +1,7 @@
 @php
     $compact ??= false;
     $premium ??= false;
+    $hasConversation = count($lead->messageTimeline()) > 0;
 
     // Self-contained (like activity-card.blade.php) since this partial is
     // shared by two callers (show.blade.php, show-panel.blade.php) that
@@ -22,7 +23,7 @@
     $showSkeletonByDefault = $panel ? ! $initialLoadComplete : ! $tabContentReady;
 @endphp
 
-<flux:card class="{{ $premium ? 'overflow-hidden border-zinc-200/80 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-900' : '' }}">
+<flux:card class="{{ $premium ? 'overflow-hidden border-zinc-200/80 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-900' : '' }} {{ $premium && $hasConversation ? 'h-full max-h-[34rem]' : '' }}">
     <div class="{{ $premium ? '-mx-6 -mt-6 mb-5 flex items-center justify-between gap-3 border-b border-zinc-200/80 bg-linear-to-r from-zinc-50 via-white to-blue-50/70 px-6 py-4 dark:border-zinc-700/80 dark:from-zinc-900 dark:via-zinc-900 dark:to-blue-950/30' : '' }}">
         <div class="flex min-w-0 items-center gap-3">
             @if ($premium)
@@ -38,7 +39,7 @@
             </div>
         </div>
 
-        @if ($premium && count($lead->messageTimeline()) > 0)
+        @if ($premium && $hasConversation)
             <span class="hidden shrink-0 rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-500 sm:inline-flex dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400">
                 {{ trans_choice(':count message|:count messages', count($lead->messageTimeline()), ['count' => count($lead->messageTimeline())]) }}
             </span>
@@ -64,7 +65,7 @@
         </div>
     </div>
 
-    @if (count($lead->messageTimeline()) > 0)
+    @if ($hasConversation)
         {{-- Webhook-sourced leads (Messenger/Instagram/WhatsApp) can carry
         several text messages and attachments over time — shown here as a
         single feed, in the order they actually arrived, rather than as a

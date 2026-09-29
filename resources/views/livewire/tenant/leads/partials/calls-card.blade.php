@@ -20,7 +20,7 @@
 @if ($showCalls)
     <flux:card @class([
         'flex flex-col gap-4',
-        'h-full max-h-[30rem] overflow-hidden border border-zinc-200/80 shadow-md ring-1 ring-zinc-950/5 dark:border-white/10 dark:ring-white/5' => $scrollable,
+        'h-full max-h-[34rem] overflow-hidden border border-zinc-200/80 shadow-md ring-1 ring-zinc-950/5 dark:border-white/10 dark:ring-white/5' => $scrollable,
     ]) data-test="lead-calls-card">
         @if ($scrollable)
             <div class="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200/70 pb-3 dark:border-zinc-700/70">
