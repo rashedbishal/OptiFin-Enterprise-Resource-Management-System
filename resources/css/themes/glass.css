@@ -46,17 +46,17 @@ MOTION (all on the app's shared --motion-* tokens)
 /* 1. Tokens                                                              */
 /* --------------------------------------------------------------------- */
 :root[data-theme="glass"] {
-    --gl-canvas: #eef0fb;
+    --gl-canvas: #edf2f4;
     --gl-mesh:
-        radial-gradient(ellipse 80% 60% at 8% 4%, rgb(196 181 253 / 0.55), transparent 62%),
-        radial-gradient(ellipse 70% 60% at 96% 12%, rgb(125 211 252 / 0.5), transparent 60%),
-        radial-gradient(ellipse 80% 70% at 88% 100%, rgb(249 168 212 / 0.45), transparent 62%),
-        radial-gradient(ellipse 70% 60% at 0% 100%, rgb(153 246 228 / 0.42), transparent 60%),
-        linear-gradient(160deg, #f5f3ff 0%, #eef2ff 45%, #fdf2f8 100%);
-    --gl-blob-1: rgb(167 139 250 / 0.55);
-    --gl-blob-2: rgb(56 189 248 / 0.42);
-    --gl-blob-3: rgb(244 114 182 / 0.4);
-    --gl-blob-4: rgb(251 191 36 / 0.28);
+        radial-gradient(ellipse 80% 60% at 8% 4%, rgb(116 159 183 / 0.32), transparent 62%),
+        radial-gradient(ellipse 70% 60% at 96% 12%, rgb(91 159 169 / 0.26), transparent 60%),
+        radial-gradient(ellipse 80% 70% at 88% 100%, rgb(143 170 167 / 0.22), transparent 62%),
+        radial-gradient(ellipse 70% 60% at 0% 100%, rgb(153 181 173 / 0.24), transparent 60%),
+        linear-gradient(160deg, #f4f7f8 0%, #edf3f5 48%, #f1f5f3 100%);
+    --gl-blob-1: rgb(97 146 171 / 0.34);
+    --gl-blob-2: rgb(59 143 154 / 0.24);
+    --gl-blob-3: rgb(127 165 151 / 0.2);
+    --gl-blob-4: rgb(185 169 126 / 0.14);
 
     --gl-pane: rgb(255 255 255 / 0.46);
     --gl-pane-strong: rgb(255 255 255 / 0.72);
@@ -66,38 +66,37 @@ MOTION (all on the app's shared --motion-* tokens)
     --gl-tint-hover: rgb(255 255 255 / 0.62);
     --gl-rim: rgb(255 255 255 / 0.72);
     --gl-rim-soft: rgb(255 255 255 / 0.5);
-    --gl-divider: rgb(99 102 241 / 0.14);
+    --gl-divider: rgb(65 94 108 / 0.14);
     --gl-edge: inset 0 1px 0 rgb(255 255 255 / 0.9), inset 0 -1px 0 rgb(255 255 255 / 0.25);
-    --gl-shadow: 0 1px 2px rgb(49 46 129 / 0.05), 0 10px 32px -8px rgb(49 46 129 / 0.16);
-    --gl-shadow-lift: 0 2px 4px rgb(49 46 129 / 0.06), 0 18px 44px -10px rgb(49 46 129 / 0.24);
-    --gl-shadow-float: 0 4px 8px rgb(49 46 129 / 0.06), 0 28px 64px -16px rgb(49 46 129 / 0.32);
+    --gl-shadow: 0 1px 2px rgb(35 61 75 / 0.05), 0 10px 32px -8px rgb(35 61 75 / 0.15);
+    --gl-shadow-lift: 0 2px 4px rgb(35 61 75 / 0.06), 0 18px 44px -10px rgb(35 61 75 / 0.22);
+    --gl-shadow-float: 0 4px 8px rgb(35 61 75 / 0.06), 0 28px 64px -16px rgb(35 61 75 / 0.28);
     --gl-sheen: linear-gradient(135deg, rgb(255 255 255 / 0.6) 0%, rgb(255 255 255 / 0.08) 38%, transparent 60%, rgb(255 255 255 / 0.18) 100%);
     --gl-blur: blur(24px) saturate(185%);
     --gl-blur-strong: blur(36px) saturate(200%);
     --gl-blur-chrome: blur(28px) saturate(180%);
     --gl-halo: color-mix(in oklab, var(--color-accent) 22%, transparent);
-    --gl-primary: linear-gradient(120deg, #8b5cf6 0%, #6366f1 35%, #0ea5e9 70%, #8b5cf6 100%);
-    --gl-primary-glow: 0 8px 24px -8px rgb(99 102 241 / 0.65);
+    --gl-primary: linear-gradient(120deg, #286b80 0%, #347f91 38%, #398b83 72%, #286b80 100%);
+    --gl-primary-glow: 0 8px 24px -8px rgb(39 111 130 / 0.42);
     --gl-rings: var(--tw-inset-ring-shadow, 0 0 #0000), var(--tw-ring-offset-shadow, 0 0 #0000), var(--tw-ring-shadow, 0 0 #0000);
 
-    --color-accent: #6d3fe0;
-    --color-accent-content: #6534d6;
+    --color-accent: #286b80;
+    --color-accent-content: #205b6d;
     --color-accent-foreground: #ffffff;
 
-    /* Faint indigo cast so neutral text and lines sit in the same color
-    world as the aurora instead of reading as flat gray. */
-    --color-zinc-50: #f7f7fd;
-    --color-zinc-100: #efeff9;
-    --color-zinc-200: #e1e1f0;
-    --color-zinc-300: #c9c9e0;
-    --color-zinc-400: #9c9cbd;
-    --color-zinc-500: #6b6b8f;
-    --color-zinc-600: #525274;
-    --color-zinc-700: #3e3e5c;
-    --color-zinc-800: #2a2a44;
-    --color-zinc-900: #1b1b30;
-    --color-zinc-950: #10101f;
-    --color-gray-200: rgb(99 102 241 / 0.16);
+    /* Neutral cool grays keep the glass readable without a violet cast. */
+    --color-zinc-50: #f7f9fa;
+    --color-zinc-100: #eef2f4;
+    --color-zinc-200: #dfe6e9;
+    --color-zinc-300: #c5d0d5;
+    --color-zinc-400: #93a3aa;
+    --color-zinc-500: #667981;
+    --color-zinc-600: #4c5e66;
+    --color-zinc-700: #394a52;
+    --color-zinc-800: #27363d;
+    --color-zinc-900: #19262c;
+    --color-zinc-950: #101a1f;
+    --color-gray-200: rgb(65 94 108 / 0.14);
 
     --radius-md: 0.5rem;
     --radius-lg: 0.75rem;
@@ -107,21 +106,21 @@ MOTION (all on the app's shared --motion-* tokens)
 }
 
 :root[data-theme="glass"].dark {
-    --gl-canvas: #070918;
+    --gl-canvas: #0b151b;
     --gl-mesh:
-        radial-gradient(ellipse 80% 60% at 6% 0%, rgb(91 33 182 / 0.55), transparent 62%),
-        radial-gradient(ellipse 70% 60% at 100% 10%, rgb(14 116 144 / 0.45), transparent 60%),
-        radial-gradient(ellipse 80% 70% at 90% 100%, rgb(157 23 77 / 0.38), transparent 62%),
-        radial-gradient(ellipse 70% 60% at 0% 100%, rgb(30 64 175 / 0.45), transparent 62%),
-        linear-gradient(160deg, #0b0a24 0%, #070918 50%, #0d0718 100%);
-    --gl-blob-1: rgb(124 58 237 / 0.5);
-    --gl-blob-2: rgb(6 182 212 / 0.32);
-    --gl-blob-3: rgb(219 39 119 / 0.3);
-    --gl-blob-4: rgb(37 99 235 / 0.4);
+        radial-gradient(ellipse 80% 60% at 6% 0%, rgb(37 91 112 / 0.42), transparent 62%),
+        radial-gradient(ellipse 70% 60% at 100% 10%, rgb(24 98 99 / 0.3), transparent 60%),
+        radial-gradient(ellipse 80% 70% at 90% 100%, rgb(54 83 83 / 0.24), transparent 62%),
+        radial-gradient(ellipse 70% 60% at 0% 100%, rgb(33 66 91 / 0.34), transparent 62%),
+        linear-gradient(160deg, #101c23 0%, #0b151b 50%, #101b20 100%);
+    --gl-blob-1: rgb(41 103 125 / 0.34);
+    --gl-blob-2: rgb(28 111 111 / 0.24);
+    --gl-blob-3: rgb(59 102 96 / 0.2);
+    --gl-blob-4: rgb(57 91 116 / 0.28);
 
     --gl-pane: rgb(255 255 255 / 0.055);
-    --gl-pane-strong: rgb(20 20 46 / 0.72);
-    --gl-pane-chrome: rgb(10 10 30 / 0.42);
+    --gl-pane-strong: rgb(18 31 38 / 0.78);
+    --gl-pane-chrome: rgb(10 21 27 / 0.5);
     --gl-tint: rgb(255 255 255 / 0.06);
     --gl-tint-soft: rgb(255 255 255 / 0.035);
     --gl-tint-hover: rgb(255 255 255 / 0.12);
@@ -133,26 +132,26 @@ MOTION (all on the app's shared --motion-* tokens)
     --gl-shadow-lift: 0 2px 4px rgb(0 0 0 / 0.3), 0 20px 48px -12px rgb(0 0 0 / 0.65);
     --gl-shadow-float: 0 4px 10px rgb(0 0 0 / 0.35), 0 30px 70px -16px rgb(0 0 0 / 0.75);
     --gl-sheen: linear-gradient(135deg, rgb(255 255 255 / 0.12) 0%, rgb(255 255 255 / 0.02) 38%, transparent 60%, rgb(255 255 255 / 0.05) 100%);
-    --gl-primary: linear-gradient(120deg, #8b5cf6 0%, #6366f1 35%, #06b6d4 70%, #8b5cf6 100%);
-    --gl-primary-glow: 0 8px 28px -8px rgb(139 92 246 / 0.7);
+    --gl-primary: linear-gradient(120deg, #286b80 0%, #347f91 38%, #398b83 72%, #286b80 100%);
+    --gl-primary-glow: 0 8px 28px -8px rgb(42 132 147 / 0.4);
 
-    --color-accent: #b9a4ff;
-    --color-accent-content: #c4b3ff;
-    --color-accent-foreground: #16102e;
+    --color-accent: #79b9c2;
+    --color-accent-content: #91cbd0;
+    --color-accent-foreground: #10252a;
 
     /* 50–500 stay opaque (text); 600–950 become glass so every
     dark:bg-zinc-* fill and dark:border-zinc-* line turns translucent. */
-    --color-zinc-50: #f4f4fc;
-    --color-zinc-100: #e6e6f5;
-    --color-zinc-200: #cfcfe6;
-    --color-zinc-300: #b8b8d6;
-    --color-zinc-400: #9d9dc2;
-    --color-zinc-500: #7c7ca3;
+    --color-zinc-50: #f2f6f7;
+    --color-zinc-100: #e3ecef;
+    --color-zinc-200: #cbd9de;
+    --color-zinc-300: #afc2c9;
+    --color-zinc-400: #91aab3;
+    --color-zinc-500: #748d96;
     --color-zinc-600: rgb(255 255 255 / 0.2);
     --color-zinc-700: rgb(255 255 255 / 0.12);
     --color-zinc-800: rgb(255 255 255 / 0.075);
     --color-zinc-900: rgb(255 255 255 / 0.045);
-    --color-zinc-950: rgb(6 6 22 / 0.6);
+    --color-zinc-950: rgb(7 14 19 / 0.64);
     --color-gray-200: rgb(255 255 255 / 0.1);
 
     --color-success: var(--color-emerald-400);
@@ -222,7 +221,7 @@ MOTION (all on the app's shared --motion-* tokens)
         -webkit-backdrop-filter: var(--gl-blur-chrome);
         backdrop-filter: var(--gl-blur-chrome);
         border-color: var(--gl-rim-soft);
-        box-shadow: inset -1px 0 0 rgb(255 255 255 / 0.25), 8px 0 32px -16px rgb(49 46 129 / 0.25);
+        box-shadow: inset -1px 0 0 rgb(255 255 255 / 0.25), 8px 0 32px -16px rgb(35 61 75 / 0.22);
     }
 
     & .app-topbar,
@@ -389,7 +388,7 @@ the whole page away. */
         -webkit-backdrop-filter: var(--gl-blur-strong);
         backdrop-filter: var(--gl-blur-strong);
         border-color: var(--gl-rim);
-        box-shadow: var(--gl-edge), -24px 0 64px -24px rgb(49 46 129 / 0.35);
+        box-shadow: var(--gl-edge), -24px 0 64px -24px rgb(35 61 75 / 0.3);
     }
 
     & [data-flux-modal] > dialog::backdrop {
@@ -430,7 +429,7 @@ the whole page away. */
         -webkit-backdrop-filter: none;
         backdrop-filter: none;
         border-color: var(--gl-rim-soft);
-        box-shadow: inset 0 1px 2px rgb(49 46 129 / 0.06), inset 0 0 0 1px rgb(255 255 255 / 0.12), var(--gl-rings);
+        box-shadow: inset 0 1px 2px rgb(35 61 75 / 0.06), inset 0 0 0 1px rgb(255 255 255 / 0.12), var(--gl-rings);
     }
 
     & input[data-flux-control]:not([type="checkbox"], [type="radio"], [type="hidden"], [type="range"], [type="color"]),
@@ -439,7 +438,7 @@ the whole page away. */
     & [data-flux-sidebar-search] {
         background-color: var(--gl-tint);
         border-color: var(--gl-rim);
-        box-shadow: inset 0 1px 2px rgb(49 46 129 / 0.06), var(--gl-rings);
+        box-shadow: inset 0 1px 2px rgb(35 61 75 / 0.06), var(--gl-rings);
         transition:
             background-color var(--motion-duration-fast) var(--motion-ease-premium),
             border-color var(--motion-duration-fast) var(--motion-ease-premium),
@@ -473,7 +472,7 @@ the whole page away. */
 
     & [data-flux-radio-group-segmented] {
         background-color: var(--gl-tint-soft);
-        box-shadow: inset 0 0 0 1px var(--gl-rim-soft), inset 0 1px 2px rgb(49 46 129 / 0.06);
+        box-shadow: inset 0 0 0 1px var(--gl-rim-soft), inset 0 1px 2px rgb(35 61 75 / 0.06);
     }
 
     & [data-flux-radio-segmented] {
@@ -486,7 +485,7 @@ the whole page away. */
     & [data-flux-radio-segmented][data-checked] {
         background-color: var(--gl-pane-strong);
         color: var(--color-accent-content);
-        box-shadow: var(--gl-edge), 0 0 0 1px var(--gl-rim), 0 4px 12px -4px rgb(49 46 129 / 0.25);
+        box-shadow: var(--gl-edge), 0 0 0 1px var(--gl-rim), 0 4px 12px -4px rgb(35 61 75 / 0.22);
     }
 
     &.dark [data-flux-radio-segmented][data-checked] {
@@ -494,8 +493,8 @@ the whole page away. */
     }
 
     & [data-flux-switch] {
-        background-color: rgb(79 70 229 / 0.16);
-        border: 1px solid rgb(79 70 229 / 0.2);
+        background-color: color-mix(in oklab, var(--color-accent) 16%, transparent);
+        border: 1px solid color-mix(in oklab, var(--color-accent) 22%, transparent);
         -webkit-backdrop-filter: blur(6px);
         backdrop-filter: blur(6px);
         transition: background-color var(--motion-duration-standard) var(--motion-ease-premium), box-shadow var(--motion-duration-standard) var(--motion-ease-premium);
@@ -524,7 +523,7 @@ the whole page away. */
     & [data-flux-checkbox-indicator],
     & [data-flux-radio-indicator] {
         background-color: var(--gl-tint-hover);
-        border-color: rgb(79 70 229 / 0.32);
+        border-color: color-mix(in oklab, var(--color-accent) 32%, transparent);
     }
 
     &.dark [data-flux-checkbox-indicator],
@@ -548,7 +547,7 @@ the whole page away. */
     }
 
     & [data-flux-avatar] {
-        box-shadow: 0 0 0 1.5px var(--gl-rim), 0 4px 12px -4px rgb(49 46 129 / 0.3);
+        box-shadow: 0 0 0 1.5px var(--gl-rim), 0 4px 12px -4px rgb(35 61 75 / 0.26);
     }
 
     & .skeleton-shimmer {
@@ -588,7 +587,7 @@ the whole page away. */
         -webkit-backdrop-filter: blur(12px) saturate(170%);
         backdrop-filter: blur(12px) saturate(170%);
         border-color: var(--gl-rim);
-        box-shadow: var(--gl-edge), 0 2px 8px -2px rgb(49 46 129 / 0.12), var(--gl-rings);
+        box-shadow: var(--gl-edge), 0 2px 8px -2px rgb(35 61 75 / 0.12), var(--gl-rings);
     }
 
     &.dark [data-flux-button]:is([data-flux-variant="outline"], [data-flux-variant="filled"]) {
@@ -597,14 +596,14 @@ the whole page away. */
 
     & [data-flux-button]:is([data-flux-variant="outline"], [data-flux-variant="filled"]):hover {
         background-color: var(--gl-tint-hover);
-        box-shadow: var(--gl-edge), 0 6px 18px -6px rgb(49 46 129 / 0.25), var(--gl-rings);
+        box-shadow: var(--gl-edge), 0 6px 18px -6px rgb(35 61 75 / 0.22), var(--gl-rings);
         transform: translateY(-1px);
     }
 
     /* Liquid primary: a wide gradient that flows sideways on hover. */
     & [data-flux-button][data-flux-variant="primary"] {
         color: #ffffff;
-        background-color: #6d3fe0;
+        background-color: var(--color-accent);
         background-image: var(--gl-primary);
         background-size: 220% 100%;
         background-position: 0% 50%;
@@ -614,7 +613,7 @@ the whole page away. */
 
     & [data-flux-button][data-flux-variant="primary"]:hover {
         background-position: 100% 50%;
-        box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.4), 0 12px 32px -8px rgb(99 102 241 / 0.75), var(--gl-rings);
+        box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.4), 0 12px 32px -8px rgb(39 111 130 / 0.5), var(--gl-rings);
         transform: translateY(-1px);
     }
 
@@ -763,7 +762,7 @@ the whole page away. */
         -webkit-backdrop-filter: none;
         backdrop-filter: none;
         border-color: var(--gl-rim);
-        box-shadow: var(--gl-edge), 0 6px 18px -8px rgb(79 70 229 / 0.4);
+        box-shadow: var(--gl-edge), 0 6px 18px -8px rgb(39 111 130 / 0.32);
     }
 
     &.dark [data-flux-sidebar-item][data-current] {

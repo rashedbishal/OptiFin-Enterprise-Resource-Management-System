@@ -24,7 +24,7 @@
 @endphp
 
 <flux:card class="{{ $premium ? 'overflow-hidden border-zinc-200/80 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-900' : '' }} {{ $premium && $hasConversation ? 'h-full max-h-[34rem]' : '' }}">
-    <div class="{{ $premium ? '-mx-6 -mt-6 mb-5 flex items-center justify-between gap-3 border-b border-zinc-200/80 bg-linear-to-r from-zinc-50 via-white to-blue-50/70 px-6 py-4 dark:border-zinc-700/80 dark:from-zinc-900 dark:via-zinc-900 dark:to-blue-950/30' : '' }}">
+    <div class="{{ $premium ? '-mx-6 -mt-6 mb-5 flex items-center justify-between gap-3 border-b border-zinc-200/80 bg-[linear-gradient(115deg,rgba(255,255,255,0.96)_0%,rgba(248,250,252,0.92)_48%,rgba(239,246,255,0.88)_100%)] px-6 py-4 dark:border-zinc-700/80 dark:bg-[linear-gradient(115deg,rgba(24,24,27,0.98)_0%,rgba(24,24,27,0.94)_48%,rgba(23,37,84,0.76)_100%)]' : '' }}">
         <div class="flex min-w-0 items-center gap-3">
             @if ($premium)
                 <div class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 shadow-lg shadow-blue-600/20">
@@ -50,7 +50,7 @@
     by wire:loading otherwise — never a bare wire:loading/.remove, see
     leads.blade.php's long comment for why. --}}
     <div wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" class="{{ $showSkeletonByDefault ? '!hidden' : '' }} contents">
-    <div class="{{ $premium ? 'mb-5 flex items-center gap-3 rounded-2xl border border-zinc-200/80 bg-zinc-50/80 p-3 dark:border-zinc-700/80 dark:bg-zinc-800/50' : 'mb-4 flex items-center gap-3' }}">
+    <div class="{{ $premium ? 'mb-5 flex items-center gap-3 rounded-2xl border border-white/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.92)_0%,rgba(248,250,252,0.78)_58%,rgba(239,246,255,0.72)_100%)] p-3 shadow-sm shadow-slate-950/5 ring-1 ring-zinc-200/70 dark:border-white/10 dark:bg-[linear-gradient(135deg,rgba(39,39,42,0.86)_0%,rgba(24,24,27,0.78)_58%,rgba(30,41,59,0.72)_100%)] dark:shadow-black/20 dark:ring-white/5' : 'mb-4 flex items-center gap-3' }}">
         <div class="flex size-10 shrink-0 items-center justify-center {{ $premium ? 'rounded-xl bg-white shadow-sm ring-1 ring-zinc-200/80 dark:bg-zinc-800 dark:ring-zinc-700' : 'rounded-full bg-zinc-100 dark:bg-zinc-700' }}">
             <flux:icon :icon="$lead->source->type->icon()" class="size-5 text-zinc-600 dark:text-zinc-300" />
         </div>
@@ -90,7 +90,7 @@
                 }).observe($el);
                 new MutationObserver(() => { $el.scrollTop = $el.scrollHeight; }).observe($el, { childList: true, subtree: true });
             "
-            class="flex {{ $compact ? 'max-h-48' : 'max-h-96' }} {{ $premium ? 'rounded-2xl border border-zinc-200/80 bg-[radial-gradient(circle_at_top_right,_rgba(219,234,254,0.85),_transparent_38%),linear-gradient(180deg,_rgba(250,250,250,0.9),_rgba(244,247,255,0.78))] p-3 sm:p-4 dark:border-zinc-700/80 dark:bg-[radial-gradient(circle_at_top_right,_rgba(30,58,138,0.22),_transparent_40%),linear-gradient(180deg,_rgba(24,24,27,0.9),_rgba(9,9,11,0.9))]' : '' }} flex-col gap-4 overflow-y-auto pe-1 contain-paint"
+            class="flex {{ $compact ? 'max-h-48' : 'max-h-96' }} {{ $premium ? 'rounded-2xl border border-white/80 bg-[radial-gradient(105%_82%_at_100%_0%,rgba(219,234,254,0.72)_0%,rgba(219,234,254,0)_62%),radial-gradient(86%_82%_at_0%_100%,rgba(237,233,254,0.52)_0%,rgba(237,233,254,0)_66%),linear-gradient(135deg,rgba(255,255,255,0.92)_0%,rgba(248,250,252,0.84)_52%,rgba(239,246,255,0.88)_100%)] p-3 shadow-inner shadow-slate-950/5 ring-1 ring-zinc-200/70 sm:p-4 dark:border-white/10 dark:bg-[radial-gradient(105%_82%_at_100%_0%,rgba(30,58,138,0.34)_0%,rgba(30,58,138,0)_62%),radial-gradient(86%_82%_at_0%_100%,rgba(76,29,149,0.18)_0%,rgba(76,29,149,0)_66%),linear-gradient(135deg,rgba(9,9,11,0.96)_0%,rgba(24,24,27,0.92)_52%,rgba(15,23,42,0.94)_100%)] dark:shadow-black/35 dark:ring-white/5' : '' }} flex-col gap-4 overflow-y-auto pe-1 contain-paint"
         >
             {{-- Messenger-style feed: what the customer sent (and every
             attachment, which only ever arrives inbound) sits on the left in

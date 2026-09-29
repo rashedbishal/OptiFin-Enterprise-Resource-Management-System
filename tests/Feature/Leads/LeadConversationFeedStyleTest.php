@@ -45,16 +45,16 @@ function conversationFeedHtml(): array
 }
 
 /**
- * The feed's rows in rendered order: alignment classes, bubble classes, bubble
- * text and the caption under it. Scoped to the feed rows so the composer
- * card's own copy of outbound messages is not picked up.
+ * The feed's rows in rendered order: outer alignment, message-column classes,
+ * bubble classes, bubble text and the caption under it. Scoped to the feed
+ * rows so the composer card's own copy of outbound messages is not picked up.
  *
- * @return list<array{row: string, bubble: string, raw: string, text: string, caption: string}>
+ * @return list<array{row: string, column: string, bubble: string, raw: string, text: string, caption: string}>
  */
 function feedRows(string $html): array
 {
     preg_match_all(
-        '/<div class="(flex max-w-\[85%\][^"]*)">(?:\s|<!--.*?-->)*<div class="([^"]*rounded-2xl[^"]*)"[^>]*>(.*?)<\/div>(?:\s|<!--.*?-->)*(?:<span[^>]*>(.*?)<\/span>)?/s',
+        '/<div class="(flex w-full items-end[^\"]*)">.*?<div class="(flex max-w-\[82%\][^\"]*)">(?:\s|<!--.*?-->)*<span[^>]*>.*?<\/span>(?:\s|<!--.*?-->)*<div class="([^\"]*rounded-2xl[^\"]*)"[^>]*>(.*?)<\/div>(?:\s|<!--.*?-->)*<span[^>]*>(.*?)<\/span>/s',
         $html,
         $matches,
         PREG_SET_ORDER,
@@ -62,10 +62,11 @@ function feedRows(string $html): array
 
     return array_map(fn (array $m): array => [
         'row' => $m[1],
-        'bubble' => $m[2],
-        'raw' => $m[3],
-        'text' => trim(preg_replace('/\s+/', ' ', strip_tags($m[3]))),
-        'caption' => trim(preg_replace('/\s+/', ' ', strip_tags($m[4] ?? ''))),
+        'column' => $m[2],
+        'bubble' => $m[3],
+        'raw' => $m[4],
+        'text' => trim(preg_replace('/\s+/', ' ', strip_tags($m[4]))),
+        'caption' => trim(preg_replace('/\s+/', ' ', strip_tags($m[5] ?? ''))),
     ], $matches);
 }
 
@@ -84,15 +85,16 @@ test('sent and received messages render as visibly different chat bubbles', func
     [$html] = conversationFeedHtml();
 
     expect($html)->toContain('contain-paint');
+    expect($html)->toContain('radial-gradient(105%_82%_at_100%_0%');
 
     $incoming = feedRow($html, 'Hello, is this still available?');
     $outgoing = feedRow($html, 'Yes, it is!');
 
-    expect($outgoing['bubble'])->toContain('bg-blue-600')->toContain('text-white')->toContain('rounded-br-md')->not->toContain('bg-zinc-100');
-    expect($incoming['bubble'])->toContain('bg-zinc-100')->toContain('rounded-bl-md')->not->toContain('bg-blue-600');
+    expect($outgoing['bubble'])->toContain('from-blue-600')->toContain('text-white')->toContain('rounded-br-md')->not->toContain('bg-zinc-100');
+    expect($incoming['bubble'])->toContain('bg-white')->toContain('rounded-bl-md')->not->toContain('from-blue-600');
 
-    expect(feedRow($html, 'Thanks a lot')['bubble'])->toContain('bg-zinc-100');
-    expect(feedRow($html, 'Sent but failed')['bubble'])->toContain('bg-blue-600');
+    expect(feedRow($html, 'Thanks a lot')['bubble'])->toContain('bg-white');
+    expect(feedRow($html, 'Sent but failed')['bubble'])->toContain('from-blue-600');
 
     // Assistive technology gets the sender, since colour alone would not say it.
     expect($incoming['text'])->toStartWith('Customer:');
@@ -102,11 +104,13 @@ test('sent and received messages render as visibly different chat bubbles', func
 test('outgoing messages sit on the right and incoming ones on the left, with the outgoing delivery status shown', function () {
     [$html] = conversationFeedHtml();
 
-    expect(feedRow($html, 'Yes, it is!'))->toMatchArray(['row' => 'flex max-w-[85%] flex-col gap-0.5 items-end self-end']);
+    expect(feedRow($html, 'Yes, it is!')['row'])->toContain('justify-end');
+    expect(feedRow($html, 'Yes, it is!')['column'])->toContain('items-end');
     expect(feedRow($html, 'Yes, it is!')['caption'])->toContain('Delivered');
 
     $incoming = feedRow($html, 'Hello, is this still available?');
-    expect($incoming['row'])->toContain('items-start')->toContain('self-start');
+    expect($incoming['row'])->toContain('justify-start');
+    expect($incoming['column'])->toContain('items-start');
     expect($incoming['caption'])->not->toContain('Delivered')->not->toContain('Sent');
     expect($incoming['caption'])->not->toContain('by');
 });
@@ -116,7 +120,7 @@ test('the conversation feed keeps its chronological order and renders the attach
 
     $rows = feedRows($html);
 
-    expect(array_map(fn (array $row): string => str_contains($row['row'], 'items-end') ? 'out' : 'in', $rows))
+    expect(array_map(fn (array $row): string => str_contains($row['row'], 'justify-end') ? 'out' : 'in', $rows))
         ->toBe(['in', 'out', 'out', 'in', 'in']);
     expect($rows[1]['text'])->toContain('Yes, it is!');
     expect($rows[2]['text'])->toContain('Sent but failed');
