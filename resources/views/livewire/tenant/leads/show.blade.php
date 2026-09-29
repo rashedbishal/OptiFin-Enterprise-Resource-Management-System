@@ -177,7 +177,7 @@
 
                 @include('livewire.tenant.leads.partials.message-composer-card')
 
-                @include('livewire.tenant.leads.partials.detail-card', ['lead' => $lead, 'timeline' => $this->timeline, 'bodyView' => $bodyView])
+                @include('livewire.tenant.leads.partials.detail-card', ['lead' => $lead, 'timeline' => $this->timeline, 'bodyView' => $bodyView, 'premium' => true])
             </div>
         </div>
     @else

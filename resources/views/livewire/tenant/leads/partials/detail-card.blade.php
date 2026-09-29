@@ -1,5 +1,6 @@
 @php
     $compact ??= false;
+    $premium ??= false;
 
     // Self-contained (like activity-card.blade.php) since this partial is
     // shared by two callers (show.blade.php, show-panel.blade.php) that
@@ -21,15 +22,35 @@
     $showSkeletonByDefault = $panel ? ! $initialLoadComplete : ! $tabContentReady;
 @endphp
 
-<flux:card>
-    <flux:heading size="lg" class="mb-4">{{ __('Details') }}</flux:heading>
+<flux:card class="{{ $premium ? 'overflow-hidden border-zinc-200/80 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-900' : '' }}">
+    <div class="{{ $premium ? '-mx-6 -mt-6 mb-5 flex items-center justify-between gap-3 border-b border-zinc-200/80 bg-linear-to-r from-zinc-50 via-white to-blue-50/70 px-6 py-4 dark:border-zinc-700/80 dark:from-zinc-900 dark:via-zinc-900 dark:to-blue-950/30' : '' }}">
+        <div class="flex min-w-0 items-center gap-3">
+            @if ($premium)
+                <div class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 shadow-lg shadow-blue-600/20">
+                    <flux:icon icon="chat-bubble-left-right" class="size-5 text-white" />
+                </div>
+            @endif
+            <div>
+                <flux:heading size="lg" class="{{ $premium ? 'tracking-tight' : 'mb-4' }}">{{ $premium ? __('Conversation') : __('Details') }}</flux:heading>
+                @if ($premium)
+                    <flux:text size="sm" variant="subtle">{{ __('Lead communication history') }}</flux:text>
+                @endif
+            </div>
+        </div>
+
+        @if ($premium && count($lead->messageTimeline()) > 0)
+            <span class="hidden shrink-0 rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-500 sm:inline-flex dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400">
+                {{ trans_choice(':count message|:count messages', count($lead->messageTimeline()), ['count' => count($lead->messageTimeline())]) }}
+            </span>
+        @endif
+    </div>
 
     {{-- Real content: hidden by default before initialLoadComplete, toggled
     by wire:loading otherwise — never a bare wire:loading/.remove, see
     leads.blade.php's long comment for why. --}}
     <div wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" class="{{ $showSkeletonByDefault ? '!hidden' : '' }} contents">
-    <div class="mb-4 flex items-center gap-3">
-        <div class="flex size-10 shrink-0 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-700">
+    <div class="{{ $premium ? 'mb-5 flex items-center gap-3 rounded-2xl border border-zinc-200/80 bg-zinc-50/80 p-3 dark:border-zinc-700/80 dark:bg-zinc-800/50' : 'mb-4 flex items-center gap-3' }}">
+        <div class="flex size-10 shrink-0 items-center justify-center {{ $premium ? 'rounded-xl bg-white shadow-sm ring-1 ring-zinc-200/80 dark:bg-zinc-800 dark:ring-zinc-700' : 'rounded-full bg-zinc-100 dark:bg-zinc-700' }}">
             <flux:icon :icon="$lead->source->type->icon()" class="size-5 text-zinc-600 dark:text-zinc-300" />
         </div>
         <div>
@@ -51,7 +72,7 @@
         on messageTimeline() specifically (not just "has any attachment"):
         an email lead can have attachments too, but it isn't a threaded
         conversation and should keep its own body/HTML rendering below. --}}
-        <flux:separator class="mb-4" />
+        <flux:separator class="{{ $premium ? 'mb-5' : 'mb-4' }}" />
 
         <div
             x-data
@@ -68,7 +89,7 @@
                 }).observe($el);
                 new MutationObserver(() => { $el.scrollTop = $el.scrollHeight; }).observe($el, { childList: true, subtree: true });
             "
-            class="flex {{ $compact ? 'max-h-48' : 'max-h-96' }} flex-col gap-2.5 overflow-y-auto pe-1 contain-paint"
+            class="flex {{ $compact ? 'max-h-48' : 'max-h-96' }} {{ $premium ? 'rounded-2xl border border-zinc-200/80 bg-[radial-gradient(circle_at_top_right,_rgba(219,234,254,0.85),_transparent_38%),linear-gradient(180deg,_rgba(250,250,250,0.9),_rgba(244,247,255,0.78))] p-3 sm:p-4 dark:border-zinc-700/80 dark:bg-[radial-gradient(circle_at_top_right,_rgba(30,58,138,0.22),_transparent_40%),linear-gradient(180deg,_rgba(24,24,27,0.9),_rgba(9,9,11,0.9))]' : '' }} flex-col gap-4 overflow-y-auto pe-1 contain-paint"
         >
             {{-- Messenger-style feed: what the customer sent (and every
             attachment, which only ever arrives inbound) sits on the left in
@@ -76,24 +97,54 @@
             blue bubble, with its delivery status under it. Presentation
             only — the order, the data and the scroll behavior above are
             unchanged. --}}
+            @php $previousMessageDate = null; @endphp
             @foreach ($timeline as $item)
                 @php
                     $outgoing = $item['type'] !== 'attachment' && $item['direction'] === \App\Enums\MessageDirection::Outbound;
                     $sentAt = $item['at'] ?? null;
                 @endphp
 
-                <div class="flex max-w-[85%] flex-col gap-0.5 {{ $outgoing ? 'items-end self-end' : 'items-start self-start' }}">
+                @if ($premium && $sentAt && (! $previousMessageDate || ! $sentAt->isSameDay($previousMessageDate)))
+                    <div class="flex items-center gap-3 py-1">
+                        <span class="h-px flex-1 bg-zinc-200/80 dark:bg-zinc-700/80"></span>
+                        <span class="rounded-full border border-zinc-200/80 bg-white/80 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-zinc-500 uppercase dark:border-zinc-700/80 dark:bg-zinc-800/80 dark:text-zinc-400">
+                            @if ($sentAt->isToday())
+                                {{ __('Today') }}
+                            @elseif ($sentAt->isYesterday())
+                                {{ __('Yesterday') }}
+                            @else
+                                {{ $sentAt->format('M j, Y') }}
+                            @endif
+                        </span>
+                        <span class="h-px flex-1 bg-zinc-200/80 dark:bg-zinc-700/80"></span>
+                    </div>
+                @endif
+                @php $previousMessageDate = $sentAt ?? $previousMessageDate; @endphp
+
+                <div class="flex w-full items-end gap-2.5 {{ $outgoing ? 'justify-end' : 'justify-start' }}">
+                    @if ($premium && ! $outgoing)
+                        <div class="mb-5 flex size-8 shrink-0 items-center justify-center rounded-xl border border-white bg-white text-zinc-500 shadow-sm ring-1 ring-zinc-200/70 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-700">
+                            <flux:icon :icon="$lead->source->type->icon()" class="size-4" />
+                        </div>
+                    @endif
+
+                <div class="flex max-w-[82%] flex-col gap-1 {{ $outgoing ? 'items-end' : 'items-start' }}">
+                    @if ($premium)
+                        <span class="px-1 text-[10px] font-bold tracking-wide text-zinc-400 uppercase dark:text-zinc-500">{{ $outgoing ? __('Your team') : $lead->source->name }}</span>
+                    @endif
                     @if ($item['type'] === 'text')
                         <div @class([
-                            'rounded-2xl px-3.5 py-2 text-sm break-words whitespace-pre-line',
-                            'rounded-br-md bg-blue-600 text-white' => $outgoing,
-                            'rounded-bl-md bg-zinc-100 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100' => ! $outgoing,
+                            'w-fit min-w-14 rounded-2xl px-3.5 py-2.5 text-sm leading-6 break-words whitespace-pre-line shadow-sm',
+                            'rounded-br-md bg-linear-to-br from-blue-600 to-indigo-600 text-white shadow-blue-600/20' => $outgoing && $premium,
+                            'rounded-br-md bg-blue-600 text-white' => $outgoing && ! $premium,
+                            'rounded-bl-md border border-zinc-200/80 bg-white text-zinc-900 shadow-zinc-950/5 dark:border-zinc-700/80 dark:bg-zinc-800 dark:text-zinc-100' => ! $outgoing && $premium,
+                            'rounded-bl-md bg-zinc-100 text-zinc-900 dark:bg-zinc-700 dark:text-zinc-100' => ! $outgoing && ! $premium,
                         ])><span class="sr-only">{{ $outgoing ? __('You') : __('Customer') }}:</span>{{ $item['text'] }}</div>
                     @elseif ($item['type'] === 'media')
                         @php
                             $mediaUrl = route('tenant-leads.message-attachment', [$lead, $item['media']['message_id']]);
                         @endphp
-                        <div class="rounded-2xl rounded-br-md bg-blue-600 p-1.5 text-sm break-words text-white">
+                        <div class="rounded-2xl rounded-br-md {{ $premium ? 'bg-linear-to-br from-blue-600 to-indigo-600 shadow-sm shadow-blue-600/20' : 'bg-blue-600' }} p-1.5 text-sm break-words text-white">
                             <span class="sr-only">{{ __('You') }}:</span>
                             @if ($item['media']['kind'] === 'image')
                                 <a href="{{ $mediaUrl }}" target="_blank" rel="noopener">
@@ -113,7 +164,7 @@
                             @endif
                         </div>
                     @else
-                        <div class="rounded-2xl rounded-bl-md bg-zinc-100 px-3.5 py-2 text-sm dark:bg-zinc-700">
+                        <div class="rounded-2xl rounded-bl-md {{ $premium ? 'border border-zinc-200/80 bg-white shadow-sm shadow-zinc-950/5 dark:border-zinc-700/80 dark:bg-zinc-800' : 'bg-zinc-100 dark:bg-zinc-700' }} px-3.5 py-2.5 text-sm">
                             @include('livewire.tenant.leads.partials.attachment-item', ['lead' => $lead, 'attachment' => $item['attachment']])
                         </div>
                     @endif
@@ -129,10 +180,11 @@
                         ])->filter()->implode(' · ');
                     @endphp
                     @if ($sentAt || $caption !== '')
-                        <span class="px-1 text-[11px] text-zinc-400 dark:text-zinc-500" @if ($sentAt) title="{{ $sentAt->format('M j, Y g:i A') }}" @endif>
+                        <span class="max-w-full px-1 text-end text-[11px] font-medium leading-4 text-zinc-400 dark:text-zinc-500" @if ($sentAt) title="{{ $sentAt->format('M j, Y g:i A') }}" @endif>
                             {{ collect([$sentAt?->diffForHumans(), $caption])->filter()->implode(' · ') }}
                         </span>
                     @endif
+                </div>
                 </div>
             @endforeach
         </div>
