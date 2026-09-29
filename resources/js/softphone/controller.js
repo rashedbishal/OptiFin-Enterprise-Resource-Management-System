@@ -217,6 +217,13 @@ export class SoftphoneController {
             // inbound call.
             accepted: raw.accepted === true,
             lead: { id: raw.lead?.id ?? null, name: raw.lead?.name ?? null, phone: raw.lead?.phone ?? null },
+            // WhatsApp Call Backup / Overflow Receiver — both server-
+            // computed (ListActiveLeadCalls); rendered as-is, never
+            // recomputed here. assignee stays null exactly when the server
+            // says so (a genuinely unassigned lead, or a stale/deleted
+            // assignee row) — never synthesized.
+            assignee: raw.assignee ? { id: raw.assignee.id ?? null, name: raw.assignee.name ?? null } : null,
+            receivingAs: typeof raw.receiving_as === 'string' ? raw.receiving_as : 'assignee',
             expiresAt: typeof raw.expires_in_seconds === 'number' ? receivedAt + raw.expires_in_seconds * 1000 : null,
             connectedAt: raw.connected_at ? Date.parse(raw.connected_at) || null : null,
         }));
@@ -752,6 +759,14 @@ export class SoftphoneController {
             const base = {
                 id: call.id,
                 lead: call.lead,
+                // WhatsApp Call Backup / Overflow Receiver — carried through
+                // from apply()'s own call record unchanged; every card mode
+                // below spreads `...base`, so this survives every state
+                // transition (ringing → connecting → connected, etc.) the
+                // same way `lead` already does, since it comes from the
+                // same source and is never recomputed per-mode.
+                assignee: call.assignee,
+                receivingAs: call.receivingAs,
                 remainingSeconds: call.expiresAt === null ? null : Math.max(0, Math.ceil((call.expiresAt - now) / 1000)),
                 elapsedSeconds: call.connectedAt === null ? null : Math.max(0, Math.floor((now - call.connectedAt) / 1000)),
                 busy: this.busy.has(call.id),
@@ -906,6 +921,17 @@ export class SoftphoneController {
         return {
             id: session.callId ?? session.leadId,
             lead,
+            // No server row exists yet for this instant-synthesized card
+            // (see this method's own docblock), so the real assignee is not
+            // yet known here — the moment the server row appears in
+            // this.calls on the next refresh, the loop above renders the
+            // real, server-computed value instead. This tab is inherently
+            // the one placing the call, so receivingAs is the one fact
+            // already knowable without a round-trip — the same category as
+            // `direction: 'outbound'` two lines below, not a routing
+            // decision made in JavaScript.
+            assignee: null,
+            receivingAs: 'agent_initiated',
             remainingSeconds: null,
             elapsedSeconds: null,
             busy: false,

@@ -3,6 +3,7 @@
 namespace App\Livewire\Tenant\Users;
 
 use App\Actions\Tenant\CreateTenantUser;
+use App\Enums\TenantUserType;
 use App\Models\Role;
 use App\Models\TenantUser;
 use Flux\Flux;
@@ -121,6 +122,28 @@ class Index extends Component
         Gate::authorize('update', $target);
 
         $target->update(['is_active' => ! $target->is_active]);
+    }
+
+    /**
+     * WhatsApp Call Backup / Overflow Receiver — Client-Admin-only toggle,
+     * same authorization/tenant-scoping shape as toggleActive() above and
+     * updating only this one field. A Client Admin row is never eligible
+     * (they already receive every AdminFallback call unconditionally, see
+     * App\Services\CallRouter) — the view already hides this action for
+     * them, and this guard is the server-side backstop for that rule, not
+     * merely a UI omission.
+     */
+    public function toggleBackupReceiver(string $id): void
+    {
+        $target = TenantUser::where('tenant_id', Auth::user()->tenant_id)->findOrFail($id);
+
+        Gate::authorize('update', $target);
+
+        if ($target->user_type === TenantUserType::ClientAdmin) {
+            return;
+        }
+
+        $target->update(['is_whatsapp_backup_receiver' => ! $target->is_whatsapp_backup_receiver]);
     }
 
     public function confirmDelete(string $id): void

@@ -2,6 +2,7 @@
 
 namespace App\Actions\Tenant;
 
+use App\Enums\CallRoutingMode;
 use App\Enums\CallStatus;
 use App\Models\LeadCall;
 use App\Models\TenantUser;
@@ -31,7 +32,7 @@ class ListActiveLeadCalls
     public const int LIMIT = 20;
 
     /**
-     * @return array<int, array{id: string, status: string, direction: string, claimed_by_me: bool, accepted: bool, lead: array{id: string, name: ?string, phone: ?string}, expires_in_seconds: ?int, connected_at: ?string}>
+     * @return array<int, array{id: string, status: string, direction: string, claimed_by_me: bool, accepted: bool, lead: array{id: string, name: ?string, phone: ?string}, assignee: ?array{id: string, name: string}, receiving_as: string, expires_in_seconds: ?int, connected_at: ?string}>
      */
     public function handle(TenantUser $user): array
     {
@@ -55,7 +56,7 @@ class ListActiveLeadCalls
                         ->where('claimed_by', $user->id)
                         ->where('connected_at', '>=', $cutoff));
             })
-            ->with('lead:id,name,phone')
+            ->with(['lead:id,name,phone', 'assigneeAtArrival:id,name'])
             ->orderByDesc('created_at')
             ->orderByDesc('id')
             ->limit(self::LIMIT)
@@ -88,6 +89,23 @@ class ListActiveLeadCalls
                 'name' => $call->lead->name,
                 'phone' => $call->lead->phone,
             ],
+            // WhatsApp Call Backup / Overflow Receiver — server-computed
+            // routing context, added purely so the softphone can tell a
+            // backup receiver whose lead they're covering without ever
+            // inferring it client-side. assignee reflects
+            // assignee_id_at_arrival (who this lead was assigned to when
+            // the call arrived — frozen, exactly like routing_mode itself,
+            // see CallRouter's own docblock) regardless of how the call was
+            // actually routed; null only when the lead genuinely had no
+            // assignee at arrival. Never more than id+name — see
+            // assigneeAtArrival()'s own :id,name eager-load above, the same
+            // minimal-columns discipline already used for `lead` on this
+            // same query.
+            'assignee' => $call->assigneeAtArrival === null ? null : [
+                'id' => $call->assigneeAtArrival->id,
+                'name' => $call->assigneeAtArrival->name,
+            ],
+            'receiving_as' => $this->receivingAs($call),
             'expires_in_seconds' => $this->expiresIn($call, $now),
             'connected_at' => $call->connected_at?->toIso8601String(),
         ])->values()->all();
@@ -105,5 +123,35 @@ class ListActiveLeadCalls
         }
 
         return max(0, (int) $now->diffInSeconds($call->ringing_expires_at, false));
+    }
+
+    /**
+     * WhatsApp Call Backup / Overflow Receiver — the current viewer's
+     * relationship to this call, derived purely from the frozen
+     * routing_mode CallRouter already decided at arrival (see its own
+     * docblock) — never from comparing ids client-side. Every row this
+     * method sees has already passed the routed/claimed filter above, so
+     * routing_mode alone is sufficient: Assignee only ever routes to the
+     * one assignee, BackupFallback only ever routes to eligible backups,
+     * AdminFallback only ever routes to admins, AgentInitiated only ever
+     * routes to the agent who placed it — there is no case where a viewer
+     * could pass the filter yet not match the mode's own meaning.
+     *
+     * CallRoutingMode::None is intentionally unreachable here: a None call
+     * has routed_user_ids=[] (see CallRouter), which can never satisfy this
+     * class's own whereJsonContains()/claimed_by filters for any user, so
+     * such a row can never appear in $calls at all. The match still needs a
+     * value for it (PHP enums require exhaustive handling); the fallback
+     * is defensive only, never actually exercised.
+     */
+    private function receivingAs(LeadCall $call): string
+    {
+        return match ($call->routing_mode) {
+            CallRoutingMode::Assignee => 'assignee',
+            CallRoutingMode::BackupFallback => 'backup',
+            CallRoutingMode::AdminFallback => 'admin_fallback',
+            CallRoutingMode::AgentInitiated => 'agent_initiated',
+            CallRoutingMode::None => 'admin_fallback',
+        };
     }
 }

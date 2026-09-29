@@ -4,6 +4,7 @@ use App\Actions\Tenant\ClaimLeadCall;
 use App\Actions\Tenant\RecordInboundCall;
 use App\Actions\Tenant\RejectLeadCall;
 use App\Enums\CallEndReason;
+use App\Enums\CallRoutingMode;
 use App\Enums\CallStatus;
 use App\Models\TenantUser;
 use App\Policies\LeadCallPolicy;
@@ -253,6 +254,23 @@ test('an undecryptable offer is treated as missing', function () {
 });
 
 // ── Races (compare-and-set) ─────────────────────────────────────────────────
+
+test('WhatsApp Call Backup / Overflow Receiver: two backup receivers routed to the same call race through the existing CAS, exactly one wins', function () {
+    // routed_user_ids already carries two users (Lc::make()'s default shape
+    // is itself "multiple routed recipients racing for one call" — the exact
+    // shape BackupFallback produces); routing_mode is set explicitly here
+    // only to document intent, since ClaimLeadCall/LeadCallPolicy never read
+    // it — authorization is routed_user_ids alone. No claim code changed for
+    // this to work.
+    $x = Lc::make(call: ['routing_mode' => CallRoutingMode::BackupFallback]);
+
+    Lc::interleaveAfterQuery('from "lead_sources"', fn () => claimAs($x, $x->other));
+
+    $result = claimAs($x, $x->agent);
+
+    expect($result->ok)->toBeFalse()->and($result->errorCode)->toBe('already_claimed');
+    expect($x->fresh()->claimed_by)->toBe($x->other->id)->and($x->fresh()->status)->toBe(CallStatus::Answering);
+});
 
 test('a claim that loses to another claimant between its checks gets a conflict and never overwrites', function () {
     $x = Lc::make();

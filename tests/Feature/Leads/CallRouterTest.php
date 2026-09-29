@@ -3,6 +3,8 @@
 use App\Enums\CallRoutingMode;
 use App\Enums\TenantUserType;
 use App\Models\Lead;
+use App\Models\LeadCall;
+use App\Models\LeadSource;
 use App\Models\TenantUser;
 use App\Services\CallRouter;
 use Illuminate\Support\Facades\DB;
@@ -40,6 +42,35 @@ function callRouterSecondAdmin($tenant, TenantUser $firstAdmin): TenantUser
         'tenant_id' => $tenant->id,
         'user_type' => TenantUserType::ClientAdmin,
         'role_id' => $firstAdmin->role_id,
+    ]);
+}
+
+/**
+ * A backup-flagged Client User who can take calls, for the WhatsApp Call
+ * Backup / Overflow Receiver tests below.
+ */
+function callRouterBackupReceiver($tenant): TenantUser
+{
+    $user = clientUserWithLeadPermission($tenant, ['view', 'update']);
+    $user->update(['is_whatsapp_backup_receiver' => true]);
+
+    return $user->fresh();
+}
+
+/**
+ * Leaves this user "busy": owning another active (Answering) LeadCall of the
+ * same tenant — the one concrete busy signal CallRouter uses.
+ */
+function callRouterMakeBusy(TenantUser $user): LeadCall
+{
+    $source = LeadSource::factory()->create(['tenant_id' => $user->tenant_id]);
+    $otherLead = Lead::factory()->create(['tenant_id' => $user->tenant_id, 'source_id' => $source->id]);
+
+    return LeadCall::factory()->answering()->create([
+        'tenant_id' => $user->tenant_id,
+        'lead_id' => $otherLead->id,
+        'lead_source_id' => $source->id,
+        'claimed_by' => $user->id,
     ]);
 }
 
@@ -152,4 +183,280 @@ test('routing is read-only: it changes no lead and no user', function () {
     app(CallRouter::class)->route($x['lead'], leadCreatedByThisCall: false);
 
     expect([Lead::count(), TenantUser::count(), $x['lead']->fresh()->updated_at->toIso8601String()])->toBe($before);
+});
+
+// ── WhatsApp Call Backup / Overflow Receiver (Phase 3) ──────────────────────
+
+test('1. an available, not-busy assignee is routed alone — a backup receiver in the tenant is never included', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+    callRouterBackupReceiver($x['tenant']);
+
+    $routing = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::Assignee);
+    expect($routing['routed_user_ids'])->toBe([$assignee->id]);
+});
+
+test('2. with zero users holding the backup-receiver flag, every pre-existing routing outcome is unchanged', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $assignee->update(['is_active' => false]);
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+
+    $routing = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+
+    // Identical to the pre-Phase-3 "an inactive assignee falls back to the
+    // admins" test above: no BackupFallback tier is ever reached when nobody
+    // in the tenant has the capability.
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::AdminFallback);
+    expect($routing['routed_user_ids'])->toBe([$x['admin']->id]);
+    expect($routing['assignee_id_at_arrival'])->toBe($assignee->id);
+});
+
+test('3. an inactive assignee with an eligible backup receiver routes to BackupFallback', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $assignee->update(['is_active' => false]);
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+    $backup = callRouterBackupReceiver($x['tenant']);
+
+    $routing = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::BackupFallback);
+    expect($routing['routed_user_ids'])->toBe([$backup->id]);
+    expect($routing['assignee_id_at_arrival'])->toBe($assignee->id);
+});
+
+test('4. an assignee lacking lead-management update permission with an eligible backup routes to BackupFallback', function () {
+    $x = callRouterScenario();
+    $viewOnly = clientUserWithLeadPermission($x['tenant'], ['view']);
+    $x['lead']->update(['assigned_to' => $viewOnly->id]);
+    $backup = callRouterBackupReceiver($x['tenant']);
+
+    $routing = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::BackupFallback);
+    expect($routing['routed_user_ids'])->toBe([$backup->id]);
+});
+
+test('5. an assignee already busy on another active call, with an eligible backup, routes to BackupFallback', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+    callRouterMakeBusy($assignee);
+    $backup = callRouterBackupReceiver($x['tenant']);
+
+    $routing = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::BackupFallback);
+    expect($routing['routed_user_ids'])->toBe([$backup->id]);
+});
+
+test('6. multiple eligible backup receivers are all routed simultaneously', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $assignee->update(['is_active' => false]);
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+    $backupA = callRouterBackupReceiver($x['tenant']);
+    $backupB = callRouterBackupReceiver($x['tenant']);
+
+    $routing = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::BackupFallback);
+    expect($routing['routed_user_ids'])->toBe(collect([$backupA->id, $backupB->id])->sort()->values()->all());
+});
+
+test('7. an inactive backup receiver is excluded', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $assignee->update(['is_active' => false]);
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+    $backup = callRouterBackupReceiver($x['tenant']);
+    $backup->update(['is_active' => false]);
+
+    $routing = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+
+    // No eligible backup after all → falls through to the existing,
+    // unmodified AdminFallback tier.
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::AdminFallback);
+    expect($routing['routed_user_ids'])->toBe([$x['admin']->id]);
+});
+
+test('8. a backup receiver lacking lead-management update permission is excluded', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $assignee->update(['is_active' => false]);
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+    $viewOnlyBackup = clientUserWithLeadPermission($x['tenant'], ['view']);
+    $viewOnlyBackup->update(['is_whatsapp_backup_receiver' => true]);
+
+    $routing = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::AdminFallback);
+    expect($routing['routed_user_ids'])->toBe([$x['admin']->id]);
+});
+
+test('9. a backup receiver already busy on another active call is excluded', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $assignee->update(['is_active' => false]);
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+    $busyBackup = callRouterBackupReceiver($x['tenant']);
+    callRouterMakeBusy($busyBackup);
+
+    $routing = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::AdminFallback);
+    expect($routing['routed_user_ids'])->toBe([$x['admin']->id]);
+});
+
+test('10. a backup receiver from another tenant is never routed to', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $assignee->update(['is_active' => false]);
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+    ['tenant' => $otherTenant] = tenantWithLeadManagement();
+    callRouterBackupReceiver($otherTenant);
+
+    $routing = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::AdminFallback);
+    expect($routing['routed_user_ids'])->toBe([$x['admin']->id]);
+});
+
+test('11. an ineligible assignee with no eligible backup anywhere falls through to the existing AdminFallback', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $assignee->update(['is_active' => false]);
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+
+    $routing = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::AdminFallback);
+    expect($routing['routed_user_ids'])->toBe([$x['admin']->id]);
+});
+
+test('12. an unassigned lead never runs backup routing, even when an eligible backup receiver exists', function () {
+    $x = callRouterScenario();
+    callRouterBackupReceiver($x['tenant']);
+
+    $routing = app(CallRouter::class)->route($x['lead'], leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::AdminFallback);
+    expect($routing['routed_user_ids'])->toBe([$x['admin']->id]);
+    expect($routing['assignee_id_at_arrival'])->toBeNull();
+});
+
+test('13. nobody eligible at all — assignee, backups, or admins — is still routing_mode None with an empty list', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $assignee->update(['is_active' => false]);
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+    callRouterDeactivate($x['admin']);
+
+    $routing = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::None);
+    expect($routing['routed_user_ids'])->toBe([]);
+});
+
+test('14. the assignee never appears as their own backup candidate', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $assignee->update(['is_whatsapp_backup_receiver' => true]);
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+    callRouterMakeBusy($assignee);
+    $otherBackup = callRouterBackupReceiver($x['tenant']);
+
+    $routing = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::BackupFallback);
+    expect($routing['routed_user_ids'])->toBe([$otherBackup->id])
+        ->and($routing['routed_user_ids'])->not->toContain($assignee->id);
+});
+
+test('15. routing a BackupFallback call changes no Lead and no TenantUser row', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $assignee->update(['is_active' => false]);
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+    callRouterBackupReceiver($x['tenant']);
+
+    $lead = $x['lead']->fresh();
+    $before = [Lead::count(), TenantUser::count(), $lead->assigned_to, $lead->updated_at->toIso8601String()];
+
+    $routing = app(CallRouter::class)->route($lead, leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::BackupFallback);
+    expect([Lead::count(), TenantUser::count(), $lead->fresh()->assigned_to, $lead->fresh()->updated_at->toIso8601String()])->toBe($before);
+});
+
+test('revoking is_whatsapp_backup_receiver stops the next call from routing to that user, without touching any already-frozen call', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $assignee->update(['is_active' => false]);
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+    $backup = callRouterBackupReceiver($x['tenant']);
+
+    $before = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+    expect($before['routing_mode'])->toBe(CallRoutingMode::BackupFallback);
+    expect($before['routed_user_ids'])->toBe([$backup->id]);
+
+    $backup->update(['is_whatsapp_backup_receiver' => false]);
+
+    $after = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+
+    // No eligible backup left → the next call falls through to the existing,
+    // unmodified AdminFallback tier, exactly as it would for a tenant that
+    // never had a backup receiver at all.
+    expect($after['routing_mode'])->toBe(CallRoutingMode::AdminFallback);
+    expect($after['routed_user_ids'])->toBe([$x['admin']->id]);
+});
+
+test('Phase 7 audit fix: the busy check for backup candidates is one batched query, not one per candidate', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $assignee->update(['is_active' => false]);
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+    foreach (range(1, 5) as $i) {
+        callRouterBackupReceiver($x['tenant']);
+    }
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    $routing = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+    $leadCallQueries = array_filter(array_column(DB::getQueryLog(), 'query'), fn (string $sql): bool => str_contains($sql, 'from "lead_calls"'));
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::BackupFallback);
+    expect($routing['routed_user_ids'])->toHaveCount(5);
+    // The assignee here is inactive, so rule 1's own isBusy() check is never
+    // reached at all (the TenantUser lookup itself already filters on
+    // is_active and returns null) -- the single lead_calls query below is
+    // entirely the batched check for the 5 backup candidates together,
+    // never one query per candidate.
+    expect($leadCallQueries)->toHaveCount(1);
+});
+
+test('Phase 7 audit fix: an active-but-busy assignee plus busy check still adds exactly one query per rule, never per candidate', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+    callRouterMakeBusy($assignee);
+    foreach (range(1, 5) as $i) {
+        callRouterBackupReceiver($x['tenant']);
+    }
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    $routing = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+    $leadCallQueries = array_filter(array_column(DB::getQueryLog(), 'query'), fn (string $sql): bool => str_contains($sql, 'from "lead_calls"'));
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::BackupFallback);
+    expect($routing['routed_user_ids'])->toHaveCount(5);
+    // One query for the assignee's own isBusy() (rule 1, reached this time
+    // since the assignee is active and permitted) plus one batched query
+    // for all 5 backup candidates together (rule 2) -- two total, not six.
+    expect($leadCallQueries)->toHaveCount(2);
 });

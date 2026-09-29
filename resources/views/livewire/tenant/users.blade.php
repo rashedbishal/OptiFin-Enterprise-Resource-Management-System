@@ -24,7 +24,14 @@
                     <flux:table.row wire:key="tenant-user-{{ $user->id }}">
                         <flux:table.cell>{{ $user->name }}</flux:table.cell>
                         <flux:table.cell>{{ $user->email }}</flux:table.cell>
-                        <flux:table.cell>{{ $user->role?->name ?? '—' }}</flux:table.cell>
+                        <flux:table.cell>
+                            {{ $user->role?->name ?? '—' }}
+                            @if ($user->is_whatsapp_backup_receiver)
+                                <flux:tooltip content="{{ __('Can receive WhatsApp calls for other assigned users') }}">
+                                    <flux:badge size="sm" color="indigo">{{ __('Backup Calls') }}</flux:badge>
+                                </flux:tooltip>
+                            @endif
+                        </flux:table.cell>
                         <flux:table.cell>
                             <flux:badge :color="$user->is_active ? 'green' : 'zinc'" size="sm">
                                 {{ $user->is_active ? __('Active') : __('Inactive') }}
@@ -36,6 +43,13 @@
                                 <flux:button size="sm" wire:click="toggleActive('{{ $user->id }}')">
                                     {{ $user->is_active ? __('Deactivate') : __('Activate') }}
                                 </flux:button>
+                                @if ($user->user_type !== \App\Enums\TenantUserType::ClientAdmin)
+                                    <flux:tooltip content="{{ __('Allows this user to receive eligible incoming WhatsApp calls when the assigned user is unavailable or already handling another call. It does not change lead assignment or grant outbound calling access.') }}">
+                                        <flux:button size="sm" wire:click="toggleBackupReceiver('{{ $user->id }}')">
+                                            {{ $user->is_whatsapp_backup_receiver ? __('Disable Backup Calls') : __('Enable Backup Calls') }}
+                                        </flux:button>
+                                    </flux:tooltip>
+                                @endif
                                 <flux:button size="sm" variant="danger" wire:click="confirmDelete('{{ $user->id }}')">
                                     {{ __('Delete') }}
                                 </flux:button>

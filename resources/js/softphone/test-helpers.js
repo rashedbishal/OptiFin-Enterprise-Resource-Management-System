@@ -98,6 +98,12 @@ export function rawCall(overrides = {}) {
         status: 'ringing',
         claimed_by_me: false,
         lead: { id: 'l1', name: 'Ada Lovelace', phone: '+15551230000' },
+        // WhatsApp Call Backup / Overflow Receiver — server-computed
+        // routing context; 'assignee' is the common-case default so every
+        // pre-existing test using rawCall() without overrides keeps
+        // representing a normal assigned call.
+        assignee: null,
+        receiving_as: 'assignee',
         expires_in_seconds: 45,
         connected_at: null,
         ...overrides,

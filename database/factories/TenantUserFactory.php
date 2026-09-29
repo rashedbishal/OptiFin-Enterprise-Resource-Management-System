@@ -73,4 +73,9 @@ class TenantUserFactory extends Factory
     {
         return $this->state(fn () => ['is_active' => false]);
     }
+
+    public function backupReceiver(): static
+    {
+        return $this->state(fn () => ['is_whatsapp_backup_receiver' => true]);
+    }
 }

@@ -504,6 +504,99 @@ describe('ringing cards', () => {
     });
 });
 
+describe('WhatsApp Call Backup / Overflow Receiver — assignee / receivingAs pass-through', () => {
+    it('renders the server-provided assignee and receivingAs on a ringing card exactly as sent, never recomputed', async () => {
+        const { controller, cards } = setup({
+            calls: [rawCall({ assignee: { id: 'u-assignee', name: 'User A' }, receiving_as: 'backup' })],
+        });
+        controller.start();
+        await flush();
+
+        expect(cards()[0].assignee).toEqual({ id: 'u-assignee', name: 'User A' });
+        expect(cards()[0].receivingAs).toBe('backup');
+    });
+
+    it('a normal assigned call carries assignee=null, receivingAs="assignee" — the fixture default, unchanged by this feature', async () => {
+        const { controller, cards } = setup({ calls: [rawCall()] });
+        controller.start();
+        await flush();
+
+        expect(cards()[0].assignee).toBeNull();
+        expect(cards()[0].receivingAs).toBe('assignee');
+    });
+
+    it('admin_fallback and agent_initiated pass through unchanged, exactly as the server sends them', async () => {
+        const { controller, cards } = setup({
+            calls: [
+                rawCall({ id: 'a', receiving_as: 'admin_fallback', assignee: { id: 'u1', name: 'Original Owner' } }),
+                rawCall({ id: 'b', receiving_as: 'agent_initiated' }),
+            ],
+        });
+        controller.start();
+        await flush();
+
+        expect(cards().find((card) => card.id === 'a')).toMatchObject({ receivingAs: 'admin_fallback', assignee: { id: 'u1', name: 'Original Owner' } });
+        expect(cards().find((card) => card.id === 'b')).toMatchObject({ receivingAs: 'agent_initiated' });
+    });
+
+    it('survives into the claimed/answering (lost-on-reload) card unchanged, the same way lead does', async () => {
+        const { controller, cards } = setup({
+            calls: [rawCall({ id: 'a', status: 'answering', claimed_by_me: true, assignee: { id: 'u-assignee', name: 'User A' }, receiving_as: 'backup' })],
+        });
+        controller.start();
+        await flush();
+
+        expect(cards()[0]).toMatchObject({ mode: MODE.LOST, assignee: { id: 'u-assignee', name: 'User A' }, receivingAs: 'backup' });
+    });
+
+    it('survives into the connected (lost-on-reload) card unchanged', async () => {
+        const { controller, cards } = setup({
+            calls: [rawCall({ id: 'a', status: 'connected', claimed_by_me: true, expires_in_seconds: null, connected_at: new Date().toISOString(), assignee: { id: 'u-assignee', name: 'User A' }, receiving_as: 'backup' })],
+        });
+        controller.start();
+        await flush();
+
+        expect(cards()[0]).toMatchObject({ mode: MODE.LOST, assignee: { id: 'u-assignee', name: 'User A' }, receivingAs: 'backup' });
+    });
+
+    it('survives a realtime-triggered refresh with the same values (reconnect/self-healing does not drop or stale the context)', async () => {
+        const { controller, cards, state, handlers } = setup({
+            calls: [rawCall({ assignee: { id: 'u-assignee', name: 'User A' }, receiving_as: 'backup' })],
+        });
+        controller.start();
+        await flush();
+        expect(cards()[0].receivingAs).toBe('backup');
+
+        state.calls = [rawCall({ assignee: { id: 'u-assignee', name: 'User A' }, receiving_as: 'backup' })];
+        handlers.onEvent({});
+        await flush();
+
+        expect(cards()[0].assignee).toEqual({ id: 'u-assignee', name: 'User A' });
+        expect(cards()[0].receivingAs).toBe('backup');
+    });
+
+    it('a missing/malformed assignee from the server never crashes and never synthesizes a fake user', async () => {
+        const { controller, cards } = setup({ calls: [rawCall({ assignee: null, receiving_as: 'admin_fallback' })] });
+        controller.start();
+        await flush();
+
+        expect(cards()[0].assignee).toBeNull();
+        expect(cards()[0].receivingAs).toBe('admin_fallback');
+    });
+
+    it('the synthesized pending-outbound card (before any server row exists) is agent_initiated with no assignee yet', async () => {
+        const { controller, api, cards } = setup({ calls: [] });
+        api.initiateOutbound.mockImplementation(() => new Promise(() => {}));
+        controller.start();
+        await flush();
+
+        controller.callOutbound('lead-1', { id: 'lead-1', name: 'Prospect', phone: '+15550001111' });
+        await flush();
+
+        expect(cards()[0]).toMatchObject({ assignee: null, receivingAs: 'agent_initiated', direction: 'outbound' });
+    });
+});
+
 describe('declining', () => {
     it('declines through the reject endpoint once, ignoring duplicate clicks', async () => {
         const { controller, api, state, cards } = setup({ calls: [rawCall()] });

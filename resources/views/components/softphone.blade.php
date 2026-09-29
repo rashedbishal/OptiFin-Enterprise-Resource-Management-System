@@ -93,6 +93,17 @@ cards. --}}
                 <div class="min-w-0 flex-1">
                     <div class="truncate font-semibold text-zinc-900 dark:text-white" x-text="card.lead.name || card.lead.phone || @js(__('Unknown caller'))"></div>
                     <div class="truncate text-sm text-zinc-500 dark:text-zinc-400" x-show="card.lead.name && card.lead.phone" x-text="card.lead.phone"></div>
+                    {{-- WhatsApp Call Backup / Overflow Receiver — additive
+                    only, never shown for the normal case (receivingAs ===
+                    'assignee', the current viewer IS the lead's own
+                    assignee) so a tenant that never uses this feature sees
+                    no change at all. assignee/receivingAs are both
+                    server-computed (ListActiveLeadCalls) and simply
+                    rendered here, never inferred client-side. --}}
+                    <div class="truncate text-xs text-zinc-500 dark:text-zinc-400" x-show="card.assignee && card.receivingAs !== 'assignee'">
+                        {{ __('Assigned to') }}: <span class="font-medium text-zinc-700 dark:text-zinc-300" x-text="card.assignee?.name"></span>
+                    </div>
+                    <div class="text-xs font-medium text-indigo-600 dark:text-indigo-400" x-show="card.receivingAs === 'backup'">{{ __('Receiving as: Backup') }}</div>
                     <div class="text-xs text-zinc-500 dark:text-zinc-400" x-show="card.mode === 'connected'" x-text="format(card.elapsedSeconds)"></div>
                 </div>
 
@@ -211,6 +222,10 @@ cards. --}}
                 <div class="mt-2">
                     <div class="text-xl font-semibold text-zinc-900 dark:text-white" x-text="card.lead.name || card.lead.phone || @js(__('Unknown caller'))"></div>
                     <div class="text-sm text-zinc-500 dark:text-zinc-400" x-show="card.lead.name && card.lead.phone" x-text="card.lead.phone"></div>
+                    <div class="text-xs text-zinc-500 dark:text-zinc-400" x-show="card.assignee && card.receivingAs !== 'assignee'">
+                        {{ __('Assigned to') }}: <span class="font-medium text-zinc-700 dark:text-zinc-300" x-text="card.assignee?.name"></span>
+                    </div>
+                    <div class="text-xs font-medium text-indigo-600 dark:text-indigo-400" x-show="card.receivingAs === 'backup'">{{ __('Receiving as: Backup') }}</div>
                 </div>
                 <span class="tabular-nums text-xs text-zinc-400 dark:text-zinc-500" x-show="card.remainingSeconds !== null" x-text="card.remainingSeconds + 's'"></span>
             </div>
@@ -282,6 +297,10 @@ cards. --}}
                 <div class="mt-2">
                     <div class="text-xl font-semibold text-zinc-900 dark:text-white" x-text="card.lead.name || card.lead.phone || @js(__('Unknown caller'))"></div>
                     <div class="text-sm text-zinc-500 dark:text-zinc-400" x-show="card.lead.name && card.lead.phone" x-text="card.lead.phone"></div>
+                    <div class="text-xs text-zinc-500 dark:text-zinc-400" x-show="card.assignee && card.receivingAs !== 'assignee'">
+                        {{ __('Assigned to') }}: <span class="font-medium text-zinc-700 dark:text-zinc-300" x-text="card.assignee?.name"></span>
+                    </div>
+                    <div class="text-xs font-medium text-indigo-600 dark:text-indigo-400" x-show="card.receivingAs === 'backup'">{{ __('Receiving as: Backup') }}</div>
                 </div>
             </div>
 
@@ -321,6 +340,10 @@ cards. --}}
                 <div class="mt-2">
                     <div class="text-xl font-semibold text-zinc-900 dark:text-white" x-text="card.lead.name || card.lead.phone || @js(__('Unknown caller'))"></div>
                     <div class="text-sm text-zinc-500 dark:text-zinc-400" x-show="card.lead.name && card.lead.phone" x-text="card.lead.phone"></div>
+                    <div class="text-xs text-zinc-500 dark:text-zinc-400" x-show="card.assignee && card.receivingAs !== 'assignee'">
+                        {{ __('Assigned to') }}: <span class="font-medium text-zinc-700 dark:text-zinc-300" x-text="card.assignee?.name"></span>
+                    </div>
+                    <div class="text-xs font-medium text-indigo-600 dark:text-indigo-400" x-show="card.receivingAs === 'backup'">{{ __('Receiving as: Backup') }}</div>
                 </div>
                 <span class="text-sm text-red-700 dark:text-red-300" x-text="card.error"></span>
             </div>
@@ -369,6 +392,10 @@ cards. --}}
                 <div class="mt-2">
                     <div class="text-xl font-semibold text-zinc-900 dark:text-white" x-text="card.lead.name || card.lead.phone || @js(__('Unknown caller'))"></div>
                     <div class="text-sm text-zinc-500 dark:text-zinc-400" x-show="card.lead.name && card.lead.phone" x-text="card.lead.phone"></div>
+                    <div class="text-xs text-zinc-500 dark:text-zinc-400" x-show="card.assignee && card.receivingAs !== 'assignee'">
+                        {{ __('Assigned to') }}: <span class="font-medium text-zinc-700 dark:text-zinc-300" x-text="card.assignee?.name"></span>
+                    </div>
+                    <div class="text-xs font-medium text-indigo-600 dark:text-indigo-400" x-show="card.receivingAs === 'backup'">{{ __('Receiving as: Backup') }}</div>
                 </div>
                 <span class="tabular-nums text-lg text-zinc-500 dark:text-zinc-400" x-text="format(card.elapsedSeconds)"></span>
             </div>

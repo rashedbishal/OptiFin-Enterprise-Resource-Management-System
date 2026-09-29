@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\Tenant\ListActiveLeadCalls;
+use App\Enums\CallRoutingMode;
 use App\Enums\CallStatus;
 use App\Models\Lead;
 use App\Models\LeadCall;
@@ -61,7 +62,7 @@ test('a ringing call routed to the user is listed with exactly the approved fiel
     $calls = lalList($x->agent);
 
     expect($calls)->toHaveCount(1);
-    expect(array_keys($calls[0]))->toBe(['id', 'status', 'direction', 'claimed_by_me', 'accepted', 'lead', 'expires_in_seconds', 'connected_at']);
+    expect(array_keys($calls[0]))->toBe(['id', 'status', 'direction', 'claimed_by_me', 'accepted', 'lead', 'assignee', 'receiving_as', 'expires_in_seconds', 'connected_at']);
     expect($calls[0])->toMatchArray([
         'id' => $x->call->id,
         'status' => 'ringing',
@@ -69,6 +70,12 @@ test('a ringing call routed to the user is listed with exactly the approved fiel
         'claimed_by_me' => false,
         'accepted' => false,
         'lead' => ['id' => $x->lead->id, 'name' => 'Ada Lovelace', 'phone' => '+15551230000'],
+        // Lc::make()'s default LeadCall row has no assignee_id_at_arrival
+        // and the factory's default routing_mode is AdminFallback — see
+        // WhatsApp Call Backup / Overflow Receiver tests below for the
+        // Assignee/BackupFallback/AgentInitiated cases.
+        'assignee' => null,
+        'receiving_as' => 'admin_fallback',
         'connected_at' => null,
     ]);
     expect($calls[0]['expires_in_seconds'])->toBeInt()->toBeGreaterThan(0)->toBeLessThanOrEqual(60);
@@ -250,4 +257,107 @@ test('the call routes still resolve next to the new active route', function () {
 
     $this->actingAs($x->agent)->postJson(route('tenant-lead-calls.claim', $x->call->id))->assertOk();
     expect($x->fresh()->status)->toBe(CallStatus::Answering);
+});
+
+// ── WhatsApp Call Backup / Overflow Receiver — assignee / receiving_as ─────
+
+test('1. an Assignee-routed call reports receiving_as=assignee and its own name as the assignee', function () {
+    $x = Lc::make();
+    $x->call->update(['routing_mode' => CallRoutingMode::Assignee, 'assignee_id_at_arrival' => $x->agent->id, 'routed_user_ids' => [$x->agent->id]]);
+
+    $call = lalList($x->agent)[0];
+
+    expect($call['receiving_as'])->toBe('assignee');
+    expect($call['assignee'])->toBe(['id' => $x->agent->id, 'name' => $x->agent->name]);
+});
+
+test('2. a BackupFallback call reports receiving_as=backup and the ORIGINAL assignee, not the viewer', function () {
+    $x = Lc::make();
+    // $x->admin is the original assignee, deliberately NOT routed; $x->agent
+    // is the backup receiver actually viewing the list.
+    $x->call->update(['routing_mode' => CallRoutingMode::BackupFallback, 'assignee_id_at_arrival' => $x->admin->id, 'routed_user_ids' => [$x->agent->id]]);
+
+    $call = lalList($x->agent)[0];
+
+    expect($call['receiving_as'])->toBe('backup');
+    expect($call['assignee'])->toBe(['id' => $x->admin->id, 'name' => $x->admin->name]);
+});
+
+test('4. an AgentInitiated (outbound) call reports receiving_as=agent_initiated', function () {
+    $x = Lc::make();
+    $outbound = LeadCall::factory()->connected()->create([
+        'tenant_id' => $x->tenant->id,
+        'lead_id' => $x->lead->id,
+        'lead_source_id' => $x->source->id,
+        'direction' => 'outbound',
+        'external_call_id' => 'wacid.OUTBOUND-ACTIVE-1',
+        'routing_mode' => CallRoutingMode::AgentInitiated,
+        'assignee_id_at_arrival' => $x->admin->id,
+        'routed_user_ids' => [$x->agent->id],
+        'claimed_by' => $x->agent->id,
+    ]);
+
+    $call = collect(lalList($x->agent))->firstWhere('id', $outbound->id);
+
+    expect($call['receiving_as'])->toBe('agent_initiated');
+    expect($call['assignee'])->toBe(['id' => $x->admin->id, 'name' => $x->admin->name]);
+});
+
+test('10. a since-deleted assignee resolves to a null assignee, never a crash, never a fake user', function () {
+    $x = Lc::make();
+    // assignee_id_at_arrival is a real, schema-enforced foreign key
+    // (nullOnDelete — see 2026_09_21_070000_create_lead_calls_table.php), so
+    // a genuinely "stale" reference cannot dangle: deleting the referenced
+    // TenantUser automatically nulls this column at the database level.
+    // This proves that path resolves gracefully, not a fabricated id.
+    $deletedAssignee = clientUserWithLeadPermission($x->tenant, ['view', 'update']);
+    $x->call->update([
+        'routing_mode' => CallRoutingMode::AdminFallback,
+        'assignee_id_at_arrival' => $deletedAssignee->id,
+        'routed_user_ids' => [$x->agent->id],
+    ]);
+    $deletedAssignee->delete();
+
+    $call = lalList($x->agent)[0];
+
+    expect($call['assignee'])->toBeNull();
+    expect($call['receiving_as'])->toBe('admin_fallback');
+});
+
+test('11. multiple eligible backup receivers all see the identical original-assignee context', function () {
+    $x = Lc::make();
+    $x->call->update(['routing_mode' => CallRoutingMode::BackupFallback, 'assignee_id_at_arrival' => $x->admin->id, 'routed_user_ids' => [$x->agent->id, $x->other->id]]);
+
+    $forAgent = lalList($x->agent)[0];
+    $forOther = lalList($x->other)[0];
+
+    expect($forAgent['assignee'])->toBe(['id' => $x->admin->id, 'name' => $x->admin->name]);
+    expect($forOther['assignee'])->toBe($forAgent['assignee']);
+    expect($forOther['receiving_as'])->toBe($forAgent['receiving_as']);
+});
+
+test('12. reading the active list with assignee context never changes Lead.assigned_to', function () {
+    $x = Lc::make();
+    $x->call->update(['routing_mode' => CallRoutingMode::BackupFallback, 'assignee_id_at_arrival' => $x->admin->id, 'routed_user_ids' => [$x->agent->id]]);
+    $before = $x->lead->fresh()->assigned_to;
+
+    lalList($x->agent);
+
+    expect($x->lead->fresh()->assigned_to)->toBe($before);
+});
+
+test('the assignee eager-load adds exactly one query, same discipline as the existing lead eager-load', function () {
+    $x = Lc::make();
+    $x->call->update(['routing_mode' => CallRoutingMode::BackupFallback, 'assignee_id_at_arrival' => $x->admin->id, 'routed_user_ids' => [$x->agent->id]]);
+    foreach (range(1, 3) as $i) {
+        $lead = Lead::factory()->create(['tenant_id' => $x->tenant->id, 'source_id' => $x->source->id]);
+        lalCall($x, ['lead_id' => $lead->id, 'routing_mode' => CallRoutingMode::BackupFallback, 'assignee_id_at_arrival' => $x->admin->id, 'routed_user_ids' => [$x->agent->id]]);
+    }
+
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+    lalList($x->agent);
+    $assigneeQueries = array_filter(array_column(DB::getQueryLog(), 'query'), fn (string $sql): bool => str_contains($sql, 'from "tenant_users"') && str_contains($sql, 'in ('));
+
+    expect($assigneeQueries)->toHaveCount(1);
 });

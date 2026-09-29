@@ -3,6 +3,7 @@
 namespace App\Concerns;
 
 use App\Enums\CallEndReason;
+use App\Enums\CallRoutingMode;
 use App\Enums\CallStatus;
 use App\Enums\LeadSourceType;
 use App\Models\LeadCall;
@@ -169,6 +170,53 @@ trait InteractsWithLeadCalls
             'fbtrace_id' => $api?->fbtraceId,
             'duration_ms' => $api?->durationMs,
             'tenant_user_id' => $user->id,
+            // WhatsApp Call Backup / Overflow Receiver — see actedAs()'s own
+            // docblock for the full derivation reasoning.
+            'acted_as' => $this->actedAs($call),
         ]);
+    }
+
+    /**
+     * WhatsApp Call Backup / Overflow Receiver — the acting user's
+     * relationship to this call for THIS log line, derived purely from the
+     * call's own frozen routing_mode (App\Services\CallRouter's routing
+     * snapshot, set once at arrival/placement and never recomputed — see
+     * that class's own docblock). Never reads $user at all: every caller of
+     * logCallAction() has already passed authorizeFor() (Gate::authorize
+     * ('answer', $call), which requires $user->id to be in
+     * $call->routed_user_ids) before logging, or — for the handful of
+     * pre-authorization refusal logs above that call — the acting user was
+     * never granted anything either way, so there is no "who acted"
+     * ambiguity to resolve differently in that case; the call's own
+     * routing_mode is what the log entry is about.
+     *
+     * routing_mode alone is sufficient and unambiguous, exactly like
+     * App\Actions\Tenant\ListActiveLeadCalls::receivingAs() (same
+     * reasoning, same value set, deliberately kept consistent): Assignee
+     * only ever routes to the one assignee, BackupFallback only ever routes
+     * to eligible backups (the original assignee is explicitly excluded —
+     * see CallRouter), AdminFallback only ever routes to admins,
+     * AgentInitiated only ever routes to the one agent who placed it. A
+     * claimed_by actor was themselves necessarily drawn from
+     * routed_user_ids at claim time (ClaimLeadCall's own CAS requires
+     * authorizeFor() first), so this stays correct for every action taken
+     * after a claim too — hangup, accept, cancel — never assuming the
+     * current actor is the original assignee merely because they are
+     * acting on the call.
+     *
+     * CallRoutingMode::None is unreachable in practice (a None call is
+     * never rung and never actionable — see ListActiveLeadCalls' identical
+     * note); the fallback exists only because PHP's match requires
+     * exhaustive case handling.
+     */
+    private function actedAs(LeadCall $call): string
+    {
+        return match ($call->routing_mode) {
+            CallRoutingMode::Assignee => 'assignee',
+            CallRoutingMode::BackupFallback => 'backup',
+            CallRoutingMode::AdminFallback => 'admin_fallback',
+            CallRoutingMode::AgentInitiated => 'agent_initiated',
+            CallRoutingMode::None => 'admin_fallback',
+        };
     }
 }

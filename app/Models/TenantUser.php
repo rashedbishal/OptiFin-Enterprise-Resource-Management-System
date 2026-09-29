@@ -28,10 +28,11 @@ use Spatie\Activitylog\Traits\LogsActivity;
  * @property string $password
  * @property string $role_id
  * @property bool $is_active
+ * @property bool $is_whatsapp_backup_receiver
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['tenant_id', 'name', 'email', 'password', 'user_type', 'role_id', 'is_active', 'last_assigned_at'])]
+#[Fillable(['tenant_id', 'name', 'email', 'password', 'user_type', 'role_id', 'is_active', 'is_whatsapp_backup_receiver', 'last_assigned_at'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class TenantUser extends Authenticatable
 {
@@ -46,6 +47,7 @@ class TenantUser extends Authenticatable
         return [
             'user_type' => TenantUserType::class,
             'is_active' => 'boolean',
+            'is_whatsapp_backup_receiver' => 'boolean',
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'last_assigned_at' => 'datetime',
@@ -87,7 +89,7 @@ class TenantUser extends Authenticatable
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['name', 'email', 'is_active', 'role_id'])
+            ->logOnly(['name', 'email', 'is_active', 'role_id', 'is_whatsapp_backup_receiver'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs();
     }

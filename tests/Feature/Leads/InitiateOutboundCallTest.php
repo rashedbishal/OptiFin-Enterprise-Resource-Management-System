@@ -87,6 +87,22 @@ test('a user without lead-management update permission is refused', function () 
     expect(LeadCall::count())->toBe(0);
 });
 
+test('WhatsApp Call Backup / Overflow Receiver: is_whatsapp_backup_receiver alone never authorizes outbound calling on someone else\'s lead', function () {
+    // Full lead-management update permission, and flagged as a backup
+    // receiver — but neither the lead's assignee nor a Client Admin. Outbound
+    // placement goes through LeadPolicy::update() (unchanged by Phase 3),
+    // not the inbound routed_user_ids snapshot, so this must still be denied
+    // exactly like any other non-assignee, non-admin user today.
+    $x = iocScenario();
+    $backupReceiver = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $backupReceiver->update(['is_whatsapp_backup_receiver' => true]);
+    iocFakePermitted();
+
+    expect(fn () => app(InitiateOutboundCall::class)->handle($backupReceiver, $x['lead'], Wa::sdp()))
+        ->toThrow(AuthorizationException::class);
+    expect(LeadCall::count())->toBe(0);
+});
+
 test('a lead with no WhatsApp source is refused, no Meta call attempted', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
     $agent = clientUserWithLeadPermission($tenant, ['view', 'update']);
