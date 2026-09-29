@@ -17,7 +17,8 @@ test('compact cards share a consistent height and their lists scroll internally'
         ->assertSeeHtml('grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] items-stretch gap-6')
         ->assertSeeHtml('data-test="lead-deals-list" class="min-h-0 flex flex-1 flex-col gap-3.5 overflow-y-auto overscroll-contain pe-1"')
         ->assertSeeHtml('data-test="lead-tasks-list" class="min-h-0 flex flex-1 flex-col gap-3.5 overflow-y-auto overscroll-contain pe-1"')
-        ->assertSeeHtml('data-test="lead-notes-list" class="min-h-0 flex max-h-[48rem] flex-1 flex-col gap-3 overflow-y-auto overscroll-contain pe-1"')
+        ->assertSeeHtml('h-[36rem] flex flex-col gap-4')
+        ->assertSeeHtml('data-test="lead-notes-list" class="min-h-0 flex flex-1 flex-col gap-3 overflow-y-auto pe-1"')
         ->assertSeeHtml('min-h-32 overflow-hidden rounded-xl');
 });
 
