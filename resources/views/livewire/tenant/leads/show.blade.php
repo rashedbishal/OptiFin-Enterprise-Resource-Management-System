@@ -172,7 +172,7 @@
             {{-- Calls, channel reply, and lead details share available desktop
             width. auto-fit leaves no empty tracks when a lead has no calls
             or no conversational channel. --}}
-            <div class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,22rem),1fr))] items-stretch gap-6">
+            <div class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] items-stretch gap-6 lg:grid-cols-3">
                 @include('livewire.tenant.leads.partials.calls-card', ['scrollable' => true])
 
                 @include('livewire.tenant.leads.partials.message-composer-card')

@@ -171,6 +171,9 @@ test('the button and confirmation show the counts, and disappear once there is n
 
     $component = Livewire::actingAs($admin)->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->assertSee('Delete conversation')
+        ->assertDontSee('permanently deletes 5 messages and 2 files');
+
+    $component->call('confirmDeleteConversation')
         ->assertSee('permanently deletes 5 messages and 2 files');
 
     $component->set('deletePassword', 'password')->call('confirmDeleteConversation')->set('deletePassword', 'password')->call('deleteConversationConfirmed')
