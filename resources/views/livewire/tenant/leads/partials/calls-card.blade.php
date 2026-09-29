@@ -4,11 +4,17 @@
     // is the Show component instance — the same "call $this->x directly in a
     // shared partial" pattern consent-card.blade.php uses.
     //
-    // Shown for a WhatsApp lead (so the empty state explains where calls will
-    // appear) or for any lead that already has calls.
+    // Shown for any lead that already has calls, or that has a callable
+    // WhatsApp source right now — resolved via $outboundSource below, not
+    // just the Lead's own source type, since ResolveLeadWhatsAppSource also
+    // resolves through an existing WhatsApp Conversation on a lead whose own
+    // source is a different channel. Checking only $lead->source's type here
+    // used to hide the entire card (and so the Request Permission button)
+    // for exactly that lead until its first LeadCall existed.
     $scrollable ??= false;
     $calls = $this->leadCalls;
-    $showCalls = $calls->isNotEmpty() || $lead->source?->type === \App\Enums\LeadSourceType::Whatsapp;
+    $outboundSource = $this->callableWhatsappSource();
+    $showCalls = $calls->isNotEmpty() || $outboundSource !== null;
 @endphp
 
 @if ($showCalls)
@@ -39,6 +45,50 @@
             </div>
         @endif
 
+        @php
+            // WhatsApp Outbound Calling — local permission state is
+            // bookkeeping/UI only (see LeadCallPermission's own docblock) —
+            // checkCallPermission()/requestCallPermission() are what
+            // actually re-verify live. Shown in both card modes: the Lead
+            // detail page's own calls-card (show.blade.php) renders
+            // scrollable too, not just a separate compact dashboard widget,
+            // so nesting this only under the non-scrollable header (as an
+            // earlier version of this merge did) hid the panel there
+            // entirely.
+            $permission = $outboundSource ? $this->callPermission : null;
+            $callGranted = $permission?->effectivelyGranted() === true;
+        @endphp
+
+        @if ($outboundSource)
+            <div class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-200 p-3 dark:border-zinc-700" data-test="outbound-call-panel">
+                @if ($callGranted)
+                    <flux:badge size="sm" color="green">{{ __('Call permission granted') }}</flux:badge>
+                @elseif ($permission?->status === \App\Enums\LeadCallPermissionStatus::Requested)
+                    <flux:badge size="sm" color="amber">{{ __('Permission request pending') }}</flux:badge>
+                @elseif ($permission?->status === \App\Enums\LeadCallPermissionStatus::Rejected)
+                    <flux:badge size="sm" color="red">{{ __('Permission previously declined') }}</flux:badge>
+                @else
+                    <flux:badge size="sm" color="zinc">{{ __('Calling permission required') }}</flux:badge>
+                @endif
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <flux:button size="sm" variant="ghost" wire:click="checkCallPermission" wire:loading.attr="disabled" wire:target="checkCallPermission" data-test="check-call-permission-button">
+                        {{ __('Check permission') }}
+                    </flux:button>
+
+                    @if ($callGranted)
+                        <div x-data x-on:click="window.dispatchEvent(new CustomEvent('softphone:call', { detail: { leadId: '{{ $lead->id }}', leadName: @js($lead->name), leadPhone: @js($lead->phone) } }))">
+                            <flux:button size="sm" variant="primary" icon="phone" data-test="outbound-call-button">{{ __('Call') }}</flux:button>
+                        </div>
+                    @else
+                        <flux:button size="sm" variant="primary" wire:click="requestCallPermission" wire:loading.attr="disabled" wire:target="requestCallPermission" data-test="request-call-permission-button">
+                            {{ __('Request permission') }}
+                        </flux:button>
+                    @endif
+                </div>
+            </div>
+        @endif
+
         <div @class([
             'flex flex-col',
             'gap-4' => ! $scrollable,
@@ -48,6 +98,7 @@
             @php
                 $duration = \App\Support\LeadCallPresenter::duration($call->duration_seconds);
                 $reason = \App\Support\LeadCallPresenter::endReason($call->end_reason);
+                $outbound = $call->direction === \App\Enums\CallDirection::Outbound;
             @endphp
 
             <div @class([
@@ -59,7 +110,10 @@
                     'flex flex-wrap items-center justify-between gap-2',
                     'border-b border-zinc-200/70 pb-2.5 dark:border-zinc-700/70' => $scrollable,
                 ])>
-                    <flux:badge size="sm" :color="\App\Support\LeadCallPresenter::statusColor($call->status)">{{ $call->status->label() }}</flux:badge>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <flux:badge size="sm" :icon="$outbound ? 'phone-arrow-up-right' : 'phone-arrow-down-left'" color="zinc">{{ $call->direction->label() }}</flux:badge>
+                        <flux:badge size="sm" :color="\App\Support\LeadCallPresenter::statusColor($call->status)">{{ $call->status->label() }}</flux:badge>
+                    </div>
                     <flux:text size="sm" variant="subtle" class="{{ $scrollable ? 'font-medium text-zinc-500 dark:text-zinc-400' : '' }}" title="{{ $call->created_at->toDayDateTimeString() }}">{{ $call->created_at->diffForHumans() }}</flux:text>
                 </div>
 
@@ -77,7 +131,7 @@
                         <flux:text size="sm" class="{{ $scrollable ? 'rounded-lg border border-zinc-200/70 bg-zinc-50/80 px-2.5 py-1.5 font-medium text-zinc-700 dark:border-zinc-700/60 dark:bg-zinc-800/50 dark:text-zinc-300' : '' }}">{{ __('Duration') }}: {{ $duration }}</flux:text>
                     @endif
                     @if ($call->claimedBy)
-                        <flux:text size="sm" class="{{ $scrollable ? 'rounded-lg border border-zinc-200/70 bg-zinc-50/80 px-2.5 py-1.5 font-medium text-zinc-700 dark:border-zinc-700/60 dark:bg-zinc-800/50 dark:text-zinc-300' : '' }}">{{ __('Answered by') }}: {{ $call->claimedBy->name }}</flux:text>
+                        <flux:text size="sm" class="{{ $scrollable ? 'rounded-lg border border-zinc-200/70 bg-zinc-50/80 px-2.5 py-1.5 font-medium text-zinc-700 dark:border-zinc-700/60 dark:bg-zinc-800/50 dark:text-zinc-300' : '' }}">{{ $outbound ? __('Called by') : __('Answered by') }}: {{ $call->claimedBy->name }}</flux:text>
                     @endif
                 </div>
 

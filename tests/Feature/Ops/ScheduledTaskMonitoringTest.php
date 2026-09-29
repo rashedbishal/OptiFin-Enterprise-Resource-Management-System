@@ -75,6 +75,34 @@ test('exactly the 9 approved commands are scheduled, and every one of them repor
     Notification::assertSentOnDemandTimes(OpsAlertNotification::class, 9);
 });
 
+// F5 remediation (forensic audit Batch C) — leads:cleanup-attachments,
+// leads:recalculate-scores and leads:detect-duplicates previously had no
+// overlap protection at all, unlike every other command in routes/console.php.
+// $monitored()'s own docblock explains why a run skipped by
+// withoutOverlapping() is never reported to ScheduledTaskMonitor as a
+// failure — that behavior is already covered above ("a successful run
+// sends no failure alert..." doesn't call finish() for a skipped run at
+// all, since schedule:run never invokes Event::finish() for one). These
+// two tests verify only the schedule DEFINITION itself: the attribute is
+// actually set on exactly the intended commands, and deliberately not on
+// the two commands the remediation plan explicitly excluded.
+test('F5: cleanup-attachments, recalculate-scores and detect-duplicates now guard against overlapping runs', function () {
+    $events = scheduledEventsByCommand();
+
+    foreach (['leads:cleanup-attachments', 'leads:recalculate-scores', 'leads:detect-duplicates'] as $command) {
+        expect($events[$command]->withoutOverlapping)->toBeTrue();
+        expect($events[$command]->expiresAt)->toBe(1440);
+    }
+});
+
+test('F5: leads:send-alert-notifications and tasks:send-alert-notifications remain deliberately without an overlap guard', function () {
+    $events = scheduledEventsByCommand();
+
+    foreach (['leads:send-alert-notifications', 'tasks:send-alert-notifications'] as $command) {
+        expect($events[$command]->withoutOverlapping)->toBeFalse();
+    }
+});
+
 test('a failure is logged with only the command name, exit code and a timestamp', function () {
     Log::spy();
 

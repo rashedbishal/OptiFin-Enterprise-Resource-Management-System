@@ -9,6 +9,7 @@ use App\Models\Conversation;
 use App\Models\Lead;
 use App\Models\LeadSource;
 use App\Models\Message;
+use App\Services\LeadMergeService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
@@ -395,4 +396,131 @@ test('the resend button disappears once the original failed message has been res
     $component->call('resendMessage', $failed->id);
 
     $component->assertDontSee(__('Resend'));
+});
+
+// F11 remediation (forensic audit Batch B) — sendMessage()/resendMessage()
+// must refuse against a lead merged away AFTER this Show component was
+// mounted, the same "leadIsMutable()" guard every other mutation method on
+// this component already carries (see Show::leadIsMutable()'s own
+// docblock: a component mounted before a merge keeps acting on the
+// now-retired row until the page is next loaded). Kept as their own tests
+// here rather than added to StaleMergedLeadShowTest.php's shared
+// staleMergedMutations() data provider: that file's scenario deliberately
+// uses a non-conversational (Manual) source for every other mutation row,
+// so folding these two in would mean changing that shared setup for every
+// existing row, not just adding two — asserted via the identical
+// dispatched-toast-payload shape that file's own staleMergedToasts()
+// helper checks (see PlatformLeadSourceDeletionTest.php's toastAssertsText()
+// for the same established "assert the actual dispatched toast payload,
+// not assertSee()" convention, reproduced inline here since these
+// convenience helpers are scoped to their own test files by this
+// codebase's own convention, not shared across files).
+function assertMergedLeadToastDispatched($component): void
+{
+    $component->assertDispatched('toast-show', function (string $event, array $params): bool {
+        return ($params['slots']['text'] ?? null) === 'This lead has been merged and can no longer be changed.'
+            && ($params['dataset']['variant'] ?? null) === 'danger';
+    });
+}
+
+test('sendMessage is refused, with the standard merged-lead toast, against a lead merged away mid-session', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => ['phone_number_id' => '1', 'access_token' => 'token'],
+    ]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+    Conversation::factory()->create([
+        'tenant_id' => $tenant->id, 'lead_id' => $lead->id, 'lead_source_id' => $source->id, 'last_inbound_at' => now(),
+    ]);
+    $survivor = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+
+    $component = Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->call('completeInitialLoad');
+
+    // Merged away by someone else, in a separate request, after this
+    // component was already mounted — $component's own $this->lead is now
+    // stale, exactly the scenario leadIsMutable() exists for.
+    app(LeadMergeService::class)->merge($survivor, $lead->fresh(), $clientAdmin, []);
+
+    Http::fake();
+
+    $component
+        ->set('newMessageBody', 'This should never be sent')
+        ->call('sendMessage');
+
+    assertMergedLeadToastDispatched($component);
+
+    Http::assertNothingSent();
+    expect(Message::where('lead_id', $lead->id)->where('direction', MessageDirection::Outbound)->exists())->toBeFalse();
+});
+
+test('resendMessage is refused, with the standard merged-lead toast, against a lead merged away mid-session', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => ['phone_number_id' => '1', 'access_token' => 'token'],
+    ]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+    $conversation = Conversation::factory()->create([
+        'tenant_id' => $tenant->id, 'lead_id' => $lead->id, 'lead_source_id' => $source->id, 'last_inbound_at' => now(),
+    ]);
+    $failed = Message::factory()->outbound()->withStatus(MessageStatus::Failed)->create([
+        'tenant_id' => $tenant->id,
+        'conversation_id' => $conversation->id,
+        'lead_id' => $lead->id,
+        'channel' => MessageChannel::Whatsapp,
+        'body' => 'Original text',
+        'failure_reason' => 'Recipient not on WhatsApp',
+    ]);
+    $survivor = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+
+    $component = Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->call('completeInitialLoad');
+
+    app(LeadMergeService::class)->merge($survivor, $lead->fresh(), $clientAdmin, []);
+
+    Http::fake();
+
+    $component->call('resendMessage', $failed->id);
+
+    assertMergedLeadToastDispatched($component);
+
+    Http::assertNothingSent();
+
+    $failed->refresh();
+    expect($failed->resend_message_id)->toBeNull();
+    // $failed->lead_id itself is reparented onto the survivor by the merge
+    // (Message::class is a lead_id-keyed CHILD_MODELS entry — see
+    // LeadMergeService's own docblock), so the meaningful assertion is a
+    // total count, not a query scoped to the pre-merge lead id.
+    expect(Message::count())->toBe(1);
+});
+
+test('sendMessage still works normally for a lead that has not been merged', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => ['phone_number_id' => '1', 'access_token' => 'token'],
+    ]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+    Conversation::factory()->create([
+        'tenant_id' => $tenant->id, 'lead_id' => $lead->id, 'lead_source_id' => $source->id, 'last_inbound_at' => now(),
+    ]);
+
+    Http::fake(['graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.STILLWORKS']]], 200)]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->call('completeInitialLoad')
+        ->set('newMessageBody', 'Still mutable, still works')
+        ->call('sendMessage')
+        ->assertHasNoErrors();
+
+    expect(Message::where('lead_id', $lead->id)->where('direction', MessageDirection::Outbound)->exists())->toBeTrue();
 });

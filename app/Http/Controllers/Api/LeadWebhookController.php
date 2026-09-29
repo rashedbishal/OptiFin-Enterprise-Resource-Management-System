@@ -47,6 +47,26 @@ use Throwable;
 class LeadWebhookController extends Controller
 {
     /**
+     * F2 remediation (forensic audit Batch C) — set whenever a
+     * LockTimeoutException is caught anywhere while processing THIS
+     * request's chat-message or Lead Ads items (Messenger, Instagram,
+     * WhatsApp, and processFacebookLeadAd()'s own existing catch — see each
+     * one's own comment). A lock timeout is genuinely different in kind
+     * from an ordinary processing failure: it means this delivery's own
+     * dedupe check never even ran, so nothing durable was recorded and the
+     * event was never actually processed one way or the other — unlike an
+     * ordinary failure (a DB error, a malformed payload), which this app's
+     * existing, unchanged policy deliberately still acknowledges with 200
+     * to avoid Meta disabling the subscription after repeated failures on
+     * the SAME broken item. Reset at the top of each public webhook entry
+     * point below (facebookMessenger()/instagram()/whatsapp()) rather than
+     * relied upon to start false by construction, since that's the
+     * explicit, self-documenting contract this flag is read against at the
+     * end of each of those three methods.
+     */
+    private bool $hadLockTimeoutThisRequest = false;
+
+    /**
      * Verify a Facebook Page webhook subscription challenge — shared by
      * Messenger and Lead Ads, so this accepts whichever of the two is
      * configured for the tenant (a tenant may only have one set up).
@@ -79,8 +99,10 @@ class LeadWebhookController extends Controller
      * transient DB hiccup, or a lock timeout under contention (see
      * withDedupeLock()) must not surface as a 404/500 here.
      */
-    public function facebookMessenger(Request $request, string $tenant_code): JsonResponse
+    public function facebookMessenger(Request $request, string $tenant_code, ?string $webhook_token = null): JsonResponse
     {
+        $this->hadLockTimeoutThisRequest = false;
+
         $entries = $request->array('entry');
 
         if ($this->exceedsInboundMessageCap($this->countMessagingItems($entries))) {
@@ -94,7 +116,7 @@ class LeadWebhookController extends Controller
 
             foreach ($entries as $entry) {
                 foreach (($entry['messaging'] ?? []) as $messaging) {
-                    $source ??= $this->resolveSource($tenant_code, LeadSourceType::FacebookMessenger);
+                    $source ??= $this->resolveSource($tenant_code, LeadSourceType::FacebookMessenger, $webhook_token);
 
                     // REL-1 fix: this item's own sender/message identifiers
                     // are resolved BEFORE the per-item try block below, not
@@ -174,6 +196,16 @@ class LeadWebhookController extends Controller
                                 $this->createPendingAttachmentAndDispatch($lead, LeadSourceType::FacebookMessenger, $attachment, $senderId, $source, $sentAt);
                             }
                         });
+                    } catch (LockTimeoutException) {
+                        // F2 remediation — see this class's own
+                        // $hadLockTimeoutThisRequest docblock. Logged at
+                        // warning (recoverable via provider retry), not
+                        // error (this item's own dedupe check never ran,
+                        // so nothing was silently corrupted — just not yet
+                        // processed).
+                        $this->hadLockTimeoutThisRequest = true;
+
+                        Log::warning("Facebook Messenger webhook item lock timed out for tenant [{$tenant_code}], sender [{$senderId}], message [{$externalMessageId}]; requesting a provider retry.");
                     } catch (Throwable $e) {
                         Log::error("Facebook Messenger webhook item processing failed for tenant [{$tenant_code}], sender [{$senderId}], message [{$externalMessageId}]: {$e->getMessage()}");
                     }
@@ -181,7 +213,7 @@ class LeadWebhookController extends Controller
 
                 foreach (($entry['changes'] ?? []) as $change) {
                     if (($change['field'] ?? null) === 'leadgen') {
-                        $this->handleFacebookLeadAd($tenant_code, $change['value'] ?? []);
+                        $this->handleFacebookLeadAd($tenant_code, $change['value'] ?? [], $webhook_token);
                     }
                 }
             }
@@ -189,7 +221,15 @@ class LeadWebhookController extends Controller
             Log::error("Facebook Messenger webhook processing failed for tenant [{$tenant_code}]: {$e->getMessage()}");
         }
 
-        return response()->json(['status' => 'ok']);
+        // F2 remediation — a 503 tells Meta this delivery genuinely needs
+        // retrying (a lock-contention loss, not a processing bug); every
+        // other outcome — success, or an ordinary per-item/whole-request
+        // processing failure logged above — keeps this method's existing,
+        // unchanged 200 policy, so Meta never sees repeated non-2xx
+        // responses for a source that's simply misconfigured or broken.
+        return $this->hadLockTimeoutThisRequest
+            ? response()->json(['status' => 'retry'], 503)
+            : response()->json(['status' => 'ok']);
     }
 
     /**
@@ -208,8 +248,10 @@ class LeadWebhookController extends Controller
      * Always acknowledges with 200, even when processing fails — see
      * facebookMessenger()'s docblock for why.
      */
-    public function instagram(Request $request, string $tenant_code): JsonResponse
+    public function instagram(Request $request, string $tenant_code, ?string $webhook_token = null): JsonResponse
     {
+        $this->hadLockTimeoutThisRequest = false;
+
         $entries = $request->array('entry');
 
         if ($this->exceedsInboundMessageCap($this->countMessagingItems($entries))) {
@@ -219,7 +261,7 @@ class LeadWebhookController extends Controller
         }
 
         try {
-            $source = $this->resolveSource($tenant_code, LeadSourceType::Instagram);
+            $source = $this->resolveSource($tenant_code, LeadSourceType::Instagram, $webhook_token);
 
             foreach ($entries as $entry) {
                 foreach (($entry['messaging'] ?? []) as $messaging) {
@@ -286,6 +328,12 @@ class LeadWebhookController extends Controller
                                 $this->createPendingAttachmentAndDispatch($lead, LeadSourceType::Instagram, $attachment, $senderId, $source, $sentAt);
                             }
                         });
+                    } catch (LockTimeoutException) {
+                        // F2 remediation — see facebookMessenger()'s
+                        // identical comment for the full reasoning.
+                        $this->hadLockTimeoutThisRequest = true;
+
+                        Log::warning("Instagram webhook item lock timed out for tenant [{$tenant_code}], sender [{$senderId}], message [{$externalMessageId}]; requesting a provider retry.");
                     } catch (Throwable $e) {
                         Log::error("Instagram webhook item processing failed for tenant [{$tenant_code}], sender [{$senderId}], message [{$externalMessageId}]: {$e->getMessage()}");
                     }
@@ -295,7 +343,10 @@ class LeadWebhookController extends Controller
             Log::error("Instagram webhook processing failed for tenant [{$tenant_code}]: {$e->getMessage()}");
         }
 
-        return response()->json(['status' => 'ok']);
+        // F2 remediation — see facebookMessenger()'s identical comment.
+        return $this->hadLockTimeoutThisRequest
+            ? response()->json(['status' => 'retry'], 503)
+            : response()->json(['status' => 'ok']);
     }
 
     /**
@@ -314,8 +365,10 @@ class LeadWebhookController extends Controller
      * subscription after enough non-200 responses or timeouts, so failures
      * here are logged for our own visibility rather than surfaced to Meta.
      */
-    public function whatsapp(Request $request, string $tenant_code): JsonResponse
+    public function whatsapp(Request $request, string $tenant_code, ?string $webhook_token = null): JsonResponse
     {
+        $this->hadLockTimeoutThisRequest = false;
+
         // Privacy/retention fix (L1-shaped finding): a minimal, non-payload
         // diagnostic summary — never the raw request body, headers, message
         // text, or full phone number, none of which any code/test/runbook
@@ -339,7 +392,7 @@ class LeadWebhookController extends Controller
         }
 
         try {
-            $source = $this->resolveSource($tenant_code, LeadSourceType::Whatsapp);
+            $source = $this->resolveSource($tenant_code, LeadSourceType::Whatsapp, $webhook_token);
             $entries = $request->array('entry');
             $callsWithinCap = $this->whatsappCallsWithinCap($entries, $tenant_code);
 
@@ -454,6 +507,18 @@ class LeadWebhookController extends Controller
                             } else {
                                 $handleMessage();
                             }
+                        } catch (LockTimeoutException) {
+                            // F2 remediation (forensic audit Batch C) — see
+                            // facebookMessenger()'s identical
+                            // $hadLockTimeoutThisRequest comment for the
+                            // full reasoning.
+                            $this->hadLockTimeoutThisRequest = true;
+
+                            Log::channel('whatsapp')->warning('WA ITEM LOCK TIMED OUT', [
+                                'tenant_code' => $tenant_code,
+                                'sender_id' => $senderId,
+                                'external_message_id' => $externalMessageId,
+                            ]);
                         } catch (Throwable $e) {
                             Log::channel('whatsapp')->error('WA ITEM PROCESSING FAILED', [
                                 'tenant_code' => $tenant_code,
@@ -481,7 +546,10 @@ class LeadWebhookController extends Controller
             ]);
         }
 
-        return response()->json(['status' => 'ok']);
+        // F2 remediation — see facebookMessenger()'s identical comment.
+        return $this->hadLockTimeoutThisRequest
+            ? response()->json(['status' => 'retry'], 503)
+            : response()->json(['status' => 'ok']);
     }
 
     /**
@@ -853,12 +921,45 @@ class LeadWebhookController extends Controller
      * resolve (a tenant_code enumeration oracle). Throwable-catching callers
      * (resolveSourceOrNull(), the always-200 chat handlers) are unaffected:
      * an HttpException is caught exactly as the model exception was.
+     *
+     * F1 remediation (forensic audit Batch A) — $webhookToken is null for
+     * every call from the legacy tenant_code-only route (this branch is
+     * BYTE-FOR-BYTE unchanged from before this remediation: same query, same
+     * abort semantics, same tenant_code-alone resolution — the deprecation
+     * window this batch's approved plan requires). When the new,
+     * token-bearing route supplies one instead, resolution is pinned to the
+     * ONE LeadSource whose webhook_token_hash matches — by hash equality
+     * against the incoming plaintext, the exact same "hash the incoming
+     * value, indexed equality lookup" idiom resolveWebsiteForm() already
+     * uses, and for the identical reason documented on that method: the
+     * token itself carries the entropy, so a deterministic hash needs no
+     * additional timing-safe comparison. A mismatched hash, a hash
+     * belonging to a source of the WRONG type (WhatsApp's token can never
+     * resolve a Facebook source, since webhook_token_hash is a single,
+     * globally-unique column checked together with `type` in the same
+     * query), or a hash belonging to another tenant's source (the same
+     * `$source->tenant_id !== $tenant->id` cross-check resolveWebsiteForm()
+     * uses) are all the SAME plain 404 as every other failure here — never
+     * a fallback to the tenant_code-alone resolution, which would silently
+     * defeat the point of supplying a token at all.
      */
-    private function resolveSource(string $tenantCode, LeadSourceType $type): LeadSource
+    private function resolveSource(string $tenantCode, LeadSourceType $type, ?string $webhookToken = null): LeadSource
     {
         $tenant = Tenant::where('tenant_code', $tenantCode)
             ->where('status', TenantStatus::Active)
             ->first();
+
+        if ($webhookToken !== null) {
+            $source = LeadSource::query()
+                ->where('webhook_token_hash', hash('sha256', $webhookToken))
+                ->where('type', $type)
+                ->where('is_active', true)
+                ->first();
+
+            abort_if($tenant === null || $source === null || $source->tenant_id !== $tenant->id, 404);
+
+            return $source;
+        }
 
         $source = $tenant === null ? null : LeadSource::query()
             ->where('tenant_id', $tenant->id)
@@ -871,10 +972,10 @@ class LeadWebhookController extends Controller
         return $source;
     }
 
-    private function resolveSourceOrNull(string $tenantCode, LeadSourceType $type): ?LeadSource
+    private function resolveSourceOrNull(string $tenantCode, LeadSourceType $type, ?string $webhookToken = null): ?LeadSource
     {
         try {
-            return $this->resolveSource($tenantCode, $type);
+            return $this->resolveSource($tenantCode, $type, $webhookToken);
         } catch (Throwable) {
             return null;
         }
@@ -1958,10 +2059,10 @@ class LeadWebhookController extends Controller
      *
      * @param  array<string, mixed>  $value
      */
-    private function handleFacebookLeadAd(string $tenantCode, array $value): void
+    private function handleFacebookLeadAd(string $tenantCode, array $value, ?string $webhookToken = null): void
     {
         try {
-            $this->processFacebookLeadAd($tenantCode, $value);
+            $this->processFacebookLeadAd($tenantCode, $value, $webhookToken);
         } catch (Throwable $e) {
             Log::error("Facebook lead ad processing failed for tenant [{$tenantCode}]: {$e->getMessage()}");
         }
@@ -1970,7 +2071,7 @@ class LeadWebhookController extends Controller
     /**
      * @param  array<string, mixed>  $value
      */
-    private function processFacebookLeadAd(string $tenantCode, array $value): void
+    private function processFacebookLeadAd(string $tenantCode, array $value, ?string $webhookToken = null): void
     {
         $leadgenId = $value['leadgen_id'] ?? null;
 
@@ -1980,7 +2081,7 @@ class LeadWebhookController extends Controller
             return;
         }
 
-        $source = $this->resolveSourceOrNull($tenantCode, LeadSourceType::FacebookLeadAds);
+        $source = $this->resolveSourceOrNull($tenantCode, LeadSourceType::FacebookLeadAds, $webhookToken);
 
         if ($source === null) {
             Log::error("Facebook lead ad [{$leadgenId}] received for tenant [{$tenantCode}], but no active Facebook Lead Ads source is configured.");
@@ -2054,6 +2155,19 @@ class LeadWebhookController extends Controller
             // this is recovered by the next natural redelivery once the
             // lock is no longer contended — never a manual/automatic retry
             // from here.
+            //
+            // F2 remediation (forensic audit Batch C) — this comment's own
+            // "Expect Meta to retry" was not actually true before this
+            // fix: handleFacebookLeadAd() swallows this exception and the
+            // enclosing facebookMessenger() request still returned 200,
+            // which Meta interprets as delivered — it would never have
+            // retried. Setting the same request-scoped flag
+            // facebookMessenger()'s per-item catches also set makes the
+            // outer response 503 instead, so Meta's own retry behavior
+            // now matches what this comment already assumed. Nothing else
+            // about this method's own fail-closed reasoning changes.
+            $this->hadLockTimeoutThisRequest = true;
+
             Log::error("Facebook lead ad [{$leadgenId}] for tenant [{$tenantCode}]: dedupe lock timed out under contention; this delivery was dropped, not processed. Expect Meta to retry.");
         }
     }

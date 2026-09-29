@@ -9,8 +9,14 @@ use Illuminate\Database\QueryException;
  * Builds a stdClass shaped like an `imap_fetchstructure()` node.
  *
  * @param  array<int, object>  $parts
+ * @param  int|string|null  $bytes  F10 remediation — passed through verbatim
+ *                                  (including a deliberately non-numeric
+ *                                  string, for testing that case) so a test
+ *                                  can simulate a real server's reported
+ *                                  BODYSTRUCTURE `bytes` field, or its
+ *                                  absence.
  */
-function mimePart(int $type, ?string $subtype, int $encoding = 0, array $parts = [], ?string $filename = null): object
+function mimePart(int $type, ?string $subtype, int $encoding = 0, array $parts = [], ?string $filename = null, int|string|null $bytes = null): object
 {
     $part = new stdClass;
     $part->type = $type;
@@ -28,11 +34,15 @@ function mimePart(int $type, ?string $subtype, int $encoding = 0, array $parts =
         $part->dparameters = [$param];
     }
 
+    if ($bytes !== null) {
+        $part->bytes = $bytes;
+    }
+
     return $part;
 }
 
 /**
- * @return array<int, array{part_number: string, encoding: int, mime: string, filename: ?string}>
+ * @return array<int, array{part_number: string, encoding: int, mime: string, filename: ?string, bytes: ?int}>
  */
 function findAttachmentParts(object $structure): array
 {
@@ -40,6 +50,17 @@ function findAttachmentParts(object $structure): array
     $method = new ReflectionMethod($job, 'findAttachmentParts');
 
     return $method->invoke($job, $structure);
+}
+
+/**
+ * F10 remediation (forensic audit Batch B).
+ */
+function isDefinitelyOversized(?int $reportedBytes): bool
+{
+    $job = new ProcessEmailLeadSource(new LeadSource);
+    $method = new ReflectionMethod($job, 'isDefinitelyOversized');
+
+    return $method->invoke($job, $reportedBytes);
 }
 
 /**
@@ -177,7 +198,7 @@ test('a forwarded message with one attachment finds it alongside the nested plai
     ]);
 
     expect(findAttachmentParts($structure))->toBe([
-        ['part_number' => '2', 'encoding' => 3, 'mime' => 'application/pdf', 'filename' => 'invoice.pdf'],
+        ['part_number' => '2', 'encoding' => 3, 'mime' => 'application/pdf', 'filename' => 'invoice.pdf', 'bytes' => null],
     ]);
 });
 
@@ -189,8 +210,8 @@ test('several attached files in one message are all returned, in order', functio
     ]);
 
     expect(findAttachmentParts($structure))->toBe([
-        ['part_number' => '2', 'encoding' => 3, 'mime' => 'image/png', 'filename' => 'photo.png'],
-        ['part_number' => '3', 'encoding' => 3, 'mime' => 'application/pdf', 'filename' => 'invoice.pdf'],
+        ['part_number' => '2', 'encoding' => 3, 'mime' => 'image/png', 'filename' => 'photo.png', 'bytes' => null],
+        ['part_number' => '3', 'encoding' => 3, 'mime' => 'application/pdf', 'filename' => 'invoice.pdf', 'bytes' => null],
     ]);
 });
 
@@ -201,8 +222,65 @@ test('a text/plain part with a filename is treated as an attachment, not the mes
     ]);
 
     expect(findAttachmentParts($structure))->toBe([
-        ['part_number' => '2', 'encoding' => 0, 'mime' => 'text/plain', 'filename' => 'notes.txt'],
+        ['part_number' => '2', 'encoding' => 0, 'mime' => 'text/plain', 'filename' => 'notes.txt', 'bytes' => null],
     ]);
+});
+
+// F10 remediation (forensic audit Batch B) — pre-fetch attachment size guard
+
+test('findAttachmentParts extracts a numeric bytes value from the structure verbatim', function () {
+    $structure = mimePart(type: 1, subtype: 'MIXED', parts: [
+        mimePart(type: 0, subtype: 'PLAIN', encoding: 0),
+        mimePart(type: 3, subtype: 'PDF', encoding: 3, filename: 'invoice.pdf', bytes: 12345),
+    ]);
+
+    expect(findAttachmentParts($structure))->toBe([
+        ['part_number' => '2', 'encoding' => 3, 'mime' => 'application/pdf', 'filename' => 'invoice.pdf', 'bytes' => 12345],
+    ]);
+});
+
+test('findAttachmentParts falls back to a null bytes value when the structure carries a non-numeric one', function () {
+    // A real IMAP server is not expected to send this, but the extension
+    // exposes structure fields as loosely-typed stdClass properties with no
+    // guarantee about their shape — this proves a malformed value is never
+    // blindly cast, only ever treated as "no usable metadata".
+    $structure = mimePart(type: 1, subtype: 'MIXED', parts: [
+        mimePart(type: 0, subtype: 'PLAIN', encoding: 0),
+        mimePart(type: 3, subtype: 'PDF', encoding: 3, filename: 'invoice.pdf', bytes: 'not-a-number'),
+    ]);
+
+    expect(findAttachmentParts($structure))->toBe([
+        ['part_number' => '2', 'encoding' => 3, 'mime' => 'application/pdf', 'filename' => 'invoice.pdf', 'bytes' => null],
+    ]);
+});
+
+test('a reported size clearly over the limit, even after the pre-fetch headroom multiplier, is definitely oversized', function () {
+    // MAX_ATTACHMENT_BYTES is 25 MiB; comfortably past even the most
+    // generous plausible encoding inflation.
+    expect(isDefinitelyOversized(100 * 1024 * 1024))->toBeTrue();
+});
+
+test('a reported size only slightly over the raw byte limit stays within the base64-inflation headroom and is not rejected pre-fetch', function () {
+    // 25 MiB decoded, base64-encoded, is roughly 33% larger on the wire —
+    // comfortably under the 1.34x headroom, so this must NOT be rejected
+    // before the real, authoritative post-decode check gets to see it.
+    $rawBase64Size = (int) ceil(25 * 1024 * 1024 * 4 / 3);
+
+    expect(isDefinitelyOversized($rawBase64Size))->toBeFalse();
+});
+
+test('a reported size that unambiguously exceeds even the base64-inflation headroom is rejected pre-fetch', function () {
+    $wellPastHeadroom = (int) ceil(25 * 1024 * 1024 * 1.34) + 1;
+
+    expect(isDefinitelyOversized($wellPastHeadroom))->toBeTrue();
+});
+
+test('a normal-sized reported attachment is never rejected pre-fetch', function () {
+    expect(isDefinitelyOversized(2 * 1024 * 1024))->toBeFalse();
+});
+
+test('a missing (null) reported size is never rejected pre-fetch, falling back to the existing post-decode check', function () {
+    expect(isDefinitelyOversized(null))->toBeFalse();
 });
 
 test('attachment type category is classified from the mime type', function () {

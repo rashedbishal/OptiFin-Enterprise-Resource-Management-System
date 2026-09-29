@@ -132,6 +132,34 @@
                                         <flux:input :value="$source->config['api_key'] ?? ''" readonly copyable size="sm" class="font-mono" />
                                     </div>
                                 @endif
+
+                                {{-- F1/F4 remediation (forensic audit Batch A) — only
+                                rendered for the four Meta-webhook types
+                                (LeadSource::META_WEBHOOK_TYPES). $url above already
+                                reflects whichever routing shape this source
+                                currently has (token-bearing once generated, legacy
+                                tenant_code-only until then — see
+                                LeadSource::webhookUrl()'s own docblock), so this
+                                block only adds the two things that URL alone can't
+                                convey: the token action, and the app_secret
+                                warning, which are deliberately independent
+                                properties of the same source and must never be
+                                conflated as "one implies the other". --}}
+                                @if (in_array($source->type, \App\Models\LeadSource::META_WEBHOOK_TYPES, true))
+                                    <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                        @if ($source->webhook_token_hash === null)
+                                            <flux:button size="xs" wire:click="generateWebhookToken('{{ $source->id }}')">{{ __('Generate secure webhook URL') }}</flux:button>
+                                        @else
+                                            <flux:button size="xs" wire:click="confirmRegenerateWebhookToken('{{ $source->id }}')">{{ __('Regenerate token') }}</flux:button>
+                                        @endif
+
+                                        @if ($this->missingAppSecretWarning($source))
+                                            <flux:badge size="sm" color="amber" icon="exclamation-triangle">
+                                                {{ __('No App Secret — signature verification is OFF for this source') }}
+                                            </flux:badge>
+                                        @endif
+                                    </div>
+                                @endif
                             @else
                                 <flux:text class="text-xs">{{ __('Polled every :min min', ['min' => $source->config['fetch_interval_minutes'] ?? 15]) }}</flux:text>
                             @endif
@@ -307,4 +335,34 @@
         confirm-action="removeStatusConfirmed"
         :confirm-label="__('Remove')"
     />
+
+    <x-confirm-modal
+        wire:model.self="showRegenerateTokenModal"
+        :title="__('Regenerate this source\'s webhook token?')"
+        :description="__('The current webhook URL will stop working immediately — update it at Meta before regenerating, or inbound webhooks for this source will fail until you do.')"
+        confirm-action="regenerateWebhookTokenConfirmed"
+        :confirm-label="__('Regenerate')"
+    />
+
+    {{-- F1 remediation (forensic audit Batch A) — the one-time reveal for a
+    just-(re)generated webhook token, mirroring
+    resources/views/livewire/tenant/website-forms.blade.php's own
+    showTokenModal exactly: not dismissible by clicking outside, since this
+    is the only moment the plaintext is ever shown again. --}}
+    <flux:modal wire:model.self="showTokenModal" :dismissible="false" class="md:w-[36rem]">
+        <div class="flex flex-col gap-4">
+            <flux:heading size="lg">{{ __('Webhook URL for :name', ['name' => $revealedTokenSourceName]) }}</flux:heading>
+            <flux:text variant="subtle">
+                {{ __('Copy this URL now — the token in it will not be shown again. Paste it into Meta\'s App Dashboard as this source\'s callback URL.') }}
+            </flux:text>
+            <flux:input readonly value="{{ $revealedWebhookUrl }}" copyable class="font-mono text-xs" />
+            <div>
+                <flux:text size="xs" variant="subtle">{{ __('Token only:') }}</flux:text>
+                <flux:input readonly value="{{ $revealedToken }}" copyable size="sm" class="font-mono" />
+            </div>
+            <div class="flex justify-end">
+                <flux:button variant="primary" wire:click="$set('showTokenModal', false)">{{ __('Done') }}</flux:button>
+            </div>
+        </div>
+    </flux:modal>
 </div>

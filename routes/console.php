@@ -34,10 +34,15 @@ $monitored('leads:fetch-emails')->everyMinute()->withoutOverlapping()
 // individual retries, so this only needs to run often enough to notice a
 // newly-due record promptly, not to race the backoff itself.
 $monitored('leads:retry-failed-emails')->everyFifteenMinutes()->withoutOverlapping();
-$monitored('leads:cleanup-attachments')->daily();
+// F5 remediation (forensic audit Batch C) — these three previously had no
+// overlap protection at all, unlike every other command in this file. Same
+// $monitored() wrapper, same withoutOverlapping() call every already-guarded
+// command here already uses — see that helper's own docblock for why a run
+// skipped by withoutOverlapping() is never reported as a failure.
+$monitored('leads:cleanup-attachments')->daily()->withoutOverlapping();
 $monitored('leads:send-alert-notifications')->dailyAt('08:00');
-$monitored('leads:recalculate-scores')->daily();
-$monitored('leads:detect-duplicates')->daily();
+$monitored('leads:recalculate-scores')->daily()->withoutOverlapping();
+$monitored('leads:detect-duplicates')->daily()->withoutOverlapping();
 $monitored('tasks:send-alert-notifications')->dailyAt('08:00');
 $monitored('leads:nurture-inactive-leads')->dailyAt('08:00')->withoutOverlapping();
 // WhatsApp calling Step 6 — ends calls whose terminate webhook never arrived.

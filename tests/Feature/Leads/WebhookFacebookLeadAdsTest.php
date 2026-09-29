@@ -131,7 +131,14 @@ test('a duplicate leadgen webhook delivery is not processed twice', function () 
     expect(Lead::where('tenant_id', $tenant->id)->count())->toBe(1);
 });
 
-test('a dedupe lock timeout drops the delivery instead of creating a lead, with a distinguishable log entry, and never 500s', function () {
+test('a dedupe lock timeout drops the delivery instead of creating a lead, with a distinguishable log entry, and now returns 503 so Meta actually retries', function () {
+    // F2 remediation (forensic audit Batch C) — this test's own original
+    // name/assertion ("never 500s" -> assertOk()) predates the fix: the
+    // response was previously 200 despite this method's own long-standing
+    // comment already claiming "Expect Meta to retry", which was not
+    // actually true (Meta never retries a 200). The Log::error(...) call
+    // and its message are completely unchanged by this remediation — only
+    // the response status changes, to make that comment's own claim true.
     ['tenant' => $tenant] = tenantWithLeadManagement();
 
     LeadSource::factory()->create([
@@ -160,7 +167,9 @@ test('a dedupe lock timeout drops the delivery instead of creating a lead, with 
 
     Log::shouldReceive('error')->once()->with(Mockery::pattern('/dedupe lock timed out under contention/'));
 
-    $this->postJson(route('api.webhook.facebook', $tenant->tenant_code), leadgenPayload('leadgen-lock-timeout'))->assertOk();
+    $this->postJson(route('api.webhook.facebook', $tenant->tenant_code), leadgenPayload('leadgen-lock-timeout'))
+        ->assertStatus(503)
+        ->assertExactJson(['status' => 'retry']);
 
     // Dropped, not created — and critically, never treated as a duplicate
     // skip (that path logs 'already processed', a different message, and

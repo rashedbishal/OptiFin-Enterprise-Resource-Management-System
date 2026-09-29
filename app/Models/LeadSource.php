@@ -21,6 +21,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $singleton_type
  * @property string $name
  * @property array<string, mixed>|null $config
+ * @property string|null $webhook_token_hash
  * @property bool $is_active
  * @property Carbon|null $last_synced_at
  * @property Carbon|null $last_signature_rejection_at
@@ -36,7 +37,7 @@ use Illuminate\Support\Carbon;
 #[Fillable([
     'tenant_id', 'type', 'name', 'config', 'is_active', 'last_synced_at',
     'last_signature_rejection_at', 'last_signature_rejection_reason', 'token_expires_at',
-    'calling_enabled', 'calling_meta_status', 'calling_meta_checked_at',
+    'calling_enabled', 'calling_meta_status', 'calling_meta_checked_at', 'webhook_token_hash',
 ])]
 class LeadSource extends Model
 {
@@ -79,6 +80,24 @@ class LeadSource extends Model
     public const array SINGLETON_TYPES = [
         LeadSourceType::Manual,
         LeadSourceType::CsvImport,
+    ];
+
+    /**
+     * F1 remediation (forensic audit Batch A) — the LeadSourceTypes whose
+     * inbound webhook can be authenticated by an opaque per-source token
+     * (webhook_token_hash) rather than routing on tenant_code alone. The
+     * same four types VerifyMetaWebhookSignature's own app_secret opt-in
+     * already covers — Email/LinkedInLeadGen/WebsiteForm/Manual/CsvImport
+     * either have no webhook at all or already have their own, separate
+     * credential (WebsiteForm.token_hash, the legacy website-form api_key).
+     *
+     * @var array<int, LeadSourceType>
+     */
+    public const array META_WEBHOOK_TYPES = [
+        LeadSourceType::FacebookMessenger,
+        LeadSourceType::FacebookLeadAds,
+        LeadSourceType::Whatsapp,
+        LeadSourceType::Instagram,
     ];
 
     protected static function booted(): void
@@ -142,6 +161,18 @@ class LeadSource extends Model
      * host (e.g. `localhost`) than the public URL Meta/webhooks must call
      * (e.g. an ngrok tunnel) — `route(absolute: true)` reflects whatever
      * host the *current* request came in on, which is the wrong value here.
+     *
+     * F1 remediation (forensic audit Batch A) — for a META_WEBHOOK_TYPES
+     * source that already has a webhook_token_hash, this now returns the
+     * opaque, token-bearing URL (api.webhook.{platform}.token) instead of
+     * the legacy tenant_code-only one: the token-bearing route is what the
+     * admin should actually configure at Meta going forward. A source of
+     * one of those same four types that has NOT yet been given a token
+     * (every source that existed before this migration, until it's next
+     * created/edited — see LeadSources::ensureWebhookToken()) still
+     * correctly returns the legacy URL here, since that is genuinely the
+     * only URL that currently works for it — this method must never claim
+     * a security property a given row doesn't actually have.
      */
     public function webhookUrl(): ?string
     {
@@ -173,7 +204,27 @@ class LeadSource extends Model
             return null;
         }
 
-        return rtrim((string) config('app.url'), '/').route($routeName, $this->tenant->tenant_code, absolute: false);
+        if (! in_array($this->type, self::META_WEBHOOK_TYPES, true) || $this->webhook_token_hash === null) {
+            return rtrim((string) config('app.url'), '/').route($routeName, $this->tenant->tenant_code, absolute: false);
+        }
+
+        // The plaintext token is never persisted (see
+        // LeadSources::ensureWebhookToken()'s own docblock), so it can never
+        // be recovered here — this row already has a token, but this method
+        // can only render the URL's own SHAPE, not a working copy of it,
+        // exactly like WebsiteForms\Index::submissionUrl() already does for
+        // the same reason: a safe, unencoded sentinel is passed to route()
+        // so it appears verbatim (never URL-encoded) in the output, then
+        // swapped for the literal placeholder text the admin sees. The real
+        // URL is only ever shown once, at generation time, via
+        // LeadSources::$revealedToken.
+        $sentinel = 'WEBHOOKTOKENPLACEHOLDER';
+
+        return str_replace(
+            $sentinel,
+            '{token}',
+            rtrim((string) config('app.url'), '/').route($routeName.'.token', [$this->tenant->tenant_code, $sentinel], absolute: false),
+        );
     }
 
     /**

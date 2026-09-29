@@ -2472,6 +2472,22 @@ class Show extends Component
             return;
         }
 
+        // F11 remediation (forensic audit Batch B) — every other mutation
+        // method on this component checks this right after its own Gate
+        // check; the composer's send/resend actions were the two
+        // exceptions, closed here. See leadIsMutable()'s own docblock: a
+        // Show component already mounted for a lead before it gets merged
+        // away keeps acting on the now-retired row until the page is next
+        // loaded, and this is the explicit, consistent guard against that,
+        // rather than relying only on the incidental fact that
+        // LeadMergeService reparents Conversation/Message rows onto the
+        // survivor (which independently makes $conversation resolve to
+        // null below for a merged lead, but was never this method's own,
+        // intentional defense).
+        if (! $this->leadIsMutable()) {
+            return;
+        }
+
         if (! $this->passesOutboundRateLimits()) {
             return;
         }
@@ -2637,6 +2653,13 @@ class Show extends Component
         if (Gate::denies('update', $this->lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
 
+            return;
+        }
+
+        // F11 remediation (forensic audit Batch B) — see sendMessage()'s
+        // identical comment for why this belongs here, consistent with
+        // every other mutation method on this component.
+        if (! $this->leadIsMutable()) {
             return;
         }
 

@@ -80,6 +80,16 @@ class ProcessEmailLeadSource implements ShouldQueue
     private const MAX_RETRY_ATTEMPTS = 5;
 
     /**
+     * F9 remediation (forensic audit Batch B) — safety bound on how many
+     * merged_into_lead_id hops resolveActiveSurvivor() will follow before
+     * refusing to resolve further, mirroring CreateLeadFromImport::
+     * MAX_MERGE_CHAIN_DEPTH's identical constant exactly (real chains are a
+     * handful of hops; this only ever guards against a genuine loop or
+     * pathological chain).
+     */
+    private const int MAX_MERGE_CHAIN_DEPTH = 25;
+
+    /**
      * EMAIL-LOSS-1 — retry backoff in minutes, multiplied by the attempt
      * count already made (attempt 1 failed -> retry in 15m; attempt 2
      * failed -> retry in 30m; ...). Matches this source's own default
@@ -582,9 +592,7 @@ class ProcessEmailLeadSource implements ShouldQueue
         // LeadWebhookController::appendFacebookMessage()). Skipped entirely
         // when the address couldn't be parsed at all, since there's nothing
         // reliable to match a later email against.
-        $existingLead = $email !== null
-            ? Lead::query()->where('source_id', $this->source->id)->where('email', $email)->first()
-            : null;
+        $existingLead = $email !== null ? $this->resolveExistingLeadForEmail($email) : null;
 
         if ($existingLead instanceof Lead) {
             $this->appendEmailMessage($existingLead, $header, $body, $email);
@@ -633,6 +641,97 @@ class ProcessEmailLeadSource implements ShouldQueue
         $this->runPostPersistSteps($lead, eventAlreadyDispatched: false, isNewLead: $isNewLead, inbox: $inbox, messageNumber: $messageNumber, structure: $structure, sentAt: $sentAt);
 
         return $lead;
+    }
+
+    /**
+     * F9 remediation (forensic audit Batch B) — a merged-away lead (see
+     * App\Services\LeadMergeService) must never be selected as the target
+     * to append a follow-up email onto: it's retired, excluded from every
+     * normal view, and its own email column is left untouched by the merge
+     * that retired it, so a naive `where('email', $email)` lookup with no
+     * merged_into_lead_id filter can silently attach new correspondence to
+     * a dead record instead of the real, active lead a rep is actually
+     * looking at.
+     *
+     * The active-lead branch is the common case and needs no chain
+     * resolution. Only when EVERY match for this address on this source is
+     * merged away does this follow merged_into_lead_id up to the active
+     * survivor at the top of its chain — the same identity-resolution
+     * behavior App\Actions\Tenant\CreateLeadFromImport::
+     * resolveActiveSurvivorId() already established for CSV import,
+     * reimplemented locally here (not extracted into a shared helper: the
+     * two callers have different failure contracts — that one throws to
+     * fail an import row, this one falls through to createLeadFromEmail()'s
+     * own existing "no active match, create a new lead" branch, which is
+     * already the correct, safe behavior for an unresolvable chain).
+     */
+    private function resolveExistingLeadForEmail(string $email): ?Lead
+    {
+        $active = Lead::query()
+            ->where('source_id', $this->source->id)
+            ->where('email', $email)
+            ->whereNull('merged_into_lead_id')
+            ->first();
+
+        if ($active instanceof Lead) {
+            return $active;
+        }
+
+        $mergedAway = Lead::query()
+            ->where('source_id', $this->source->id)
+            ->where('email', $email)
+            ->whereNotNull('merged_into_lead_id')
+            ->first(['id', 'merged_into_lead_id']);
+
+        return $mergedAway instanceof Lead ? $this->resolveActiveSurvivor($mergedAway) : null;
+    }
+
+    /**
+     * Follows merged_into_lead_id from a merged-away lead to the active
+     * lead at the top of its chain (a merge can chain — a survivor can
+     * itself later be merged away, and a merge never re-points earlier
+     * losers) — bounded and cycle-safe, mirroring CreateLeadFromImport::
+     * resolveActiveSurvivorId()'s identical safety properties exactly. A
+     * broken chain (a loop, a pointer that no longer resolves, or an
+     * implausibly deep chain) returns null rather than risk attaching a
+     * follow-up email to the wrong lead — the caller's own existing
+     * "no match, create a new lead" fallback handles that safely.
+     */
+    private function resolveActiveSurvivor(Lead $mergedLead): ?Lead
+    {
+        $visited = [$mergedLead->id];
+        $current = $mergedLead;
+
+        while ($current->merged_into_lead_id !== null) {
+            $nextId = $current->merged_into_lead_id;
+
+            if (in_array($nextId, $visited, true) || count($visited) > self::MAX_MERGE_CHAIN_DEPTH) {
+                Log::warning("Email lead processing could not resolve a merged lead to its active survivor on lead source [{$this->source->id}].", [
+                    'lead_id' => $mergedLead->id,
+                    'reason' => in_array($nextId, $visited, true) ? 'cycle' : 'too_deep',
+                ]);
+
+                return null;
+            }
+
+            $visited[] = $nextId;
+            $current = Lead::where('tenant_id', $this->source->tenant_id)->whereKey($nextId)->first(['id', 'merged_into_lead_id']);
+
+            if ($current === null) {
+                Log::warning("Email lead processing could not resolve a merged lead to its active survivor on lead source [{$this->source->id}] — target missing.", [
+                    'lead_id' => $mergedLead->id,
+                ]);
+
+                return null;
+            }
+        }
+
+        // $current only ever carried id/merged_into_lead_id from the loop's
+        // own scoped selects (or, on zero iterations, $mergedLead itself,
+        // fetched the same minimal way by resolveExistingLeadForEmail()) —
+        // re-fetched here with every column createLeadFromEmail()'s own
+        // append path actually needs.
+        return Lead::find($current->id);
     }
 
     /**
@@ -883,7 +982,7 @@ class ProcessEmailLeadSource implements ShouldQueue
     }
 
     /**
-     * @return array<int, array{part_number: string, encoding: int, mime: string, filename: ?string}>
+     * @return array<int, array{part_number: string, encoding: int, mime: string, filename: ?string, bytes: ?int}>
      */
     private function findAttachmentParts(object $structure, string $prefix = ''): array
     {
@@ -918,6 +1017,17 @@ class ProcessEmailLeadSource implements ShouldQueue
                 'encoding' => (int) ($part->encoding ?? 0),
                 'mime' => $this->partMimeType($part),
                 'filename' => $filename,
+                // F10 remediation (forensic audit Batch B) — the mail
+                // server's own reported octet size of this part's RAW,
+                // still-encoded body (RFC 3501 BODYSTRUCTURE), already
+                // present on the exact structure object this method is
+                // handed — no second IMAP round trip needed to get it. Not
+                // every server/part reliably populates this, so it's kept
+                // optional here rather than assumed; see
+                // saveAttachmentPart()'s own early-reject guard for how a
+                // missing/non-numeric value is handled (never treated as
+                // "definitely small").
+                'bytes' => isset($part->bytes) && is_numeric($part->bytes) ? (int) $part->bytes : null,
             ];
         }
 
@@ -950,11 +1060,48 @@ class ProcessEmailLeadSource implements ShouldQueue
     }
 
     /**
-     * @param  array{part_number: string, encoding: int, mime: string, filename: ?string}  $part
+     * F10 remediation (forensic audit Batch B) — the structure's own
+     * reported RAW (still-encoded) part size, scaled up generously before
+     * comparing against MAX_ATTACHMENT_BYTES: base64 (encoding 3, the
+     * common case for a real binary attachment) inflates the true decoded
+     * size by roughly 4/3, and quoted-printable/plain encodings only ever
+     * shrink or match it — a single, uniformly generous multiplier covers
+     * every encoding without needing to branch on which one a given part
+     * uses, and stays deliberately conservative (reject only what is
+     * UNAMBIGUOUSLY over the limit) precisely because the existing
+     * post-decode check a few lines below remains the authoritative,
+     * unchanged final guard — this constant only decides whether it's
+     * worth downloading the part AT ALL before that check can run.
+     */
+    private const float ATTACHMENT_PRE_FETCH_REJECT_MULTIPLIER = 1.34;
+
+    /**
+     * @param  array{part_number: string, encoding: int, mime: string, filename: ?string, bytes: ?int}  $part
      */
     private function saveAttachmentPart(Connection $inbox, int $messageNumber, array $part, Lead $lead, CarbonInterface $sentAt): void
     {
         $type = $this->attachmentTypeCategory($part['mime']);
+
+        // F10 remediation — a part whose mail-server-reported raw size is
+        // ALREADY unambiguously over the limit is rejected here, before
+        // fetchDecodedPart() ever downloads or decodes a single byte of it.
+        // See isDefinitelyOversized()'s own docblock for the exact,
+        // independently-unit-tested boundary — kept as its own pure method
+        // (no IMAP calls) specifically so this decision can be tested
+        // without a real mailbox connection, the same reason every other
+        // pure-logic method on this class already exists as its own
+        // reflectable method (see tests/Unit/
+        // ProcessEmailLeadSourceBodyExtractionTest.php).
+        if ($this->isDefinitelyOversized($part['bytes'])) {
+            $lead->attachments()->create([
+                'type' => $type,
+                'status' => LeadAttachmentStatus::Failed,
+                'failure_reason' => 'Attachment exceeds the '.self::MAX_ATTACHMENT_BYTES.'-byte limit (rejected before download based on its reported size).',
+                'sent_at' => $sentAt,
+            ]);
+
+            return;
+        }
 
         try {
             $bytes = $this->fetchDecodedPart($inbox, $messageNumber, $part['part_number'], $part['encoding']);
@@ -1004,6 +1151,23 @@ class ProcessEmailLeadSource implements ShouldQueue
             'status' => LeadAttachmentStatus::Downloaded,
             'sent_at' => $sentAt,
         ]);
+    }
+
+    /**
+     * F10 remediation (forensic audit Batch B) — true only when
+     * $reportedBytes is a real, present value AND unambiguously exceeds
+     * MAX_ATTACHMENT_BYTES even after the generous
+     * ATTACHMENT_PRE_FETCH_REJECT_MULTIPLIER headroom (see that constant's
+     * own docblock for why). Null — missing or non-numeric structure
+     * metadata, per findAttachmentParts()'s own docblock — always returns
+     * false: an absent value is never treated as "definitely small" (that
+     * would be guessing), it simply means this pre-fetch guard has nothing
+     * to check, and the existing, unchanged post-decode check remains the
+     * one that decides.
+     */
+    private function isDefinitelyOversized(?int $reportedBytes): bool
+    {
+        return $reportedBytes !== null && $reportedBytes > self::MAX_ATTACHMENT_BYTES * self::ATTACHMENT_PRE_FETCH_REJECT_MULTIPLIER;
     }
 
     private function attachmentTypeCategory(string $mime): string

@@ -74,6 +74,33 @@ class LeadSources extends Component
     public ?string $confirmingRemoveStatusId = null;
 
     /**
+     * F1/F4 remediation (forensic audit Batch A) — the one-time reveal for a
+     * just-generated/regenerated webhook token, same shape and same
+     * "shown once, never re-derivable" reasoning as
+     * WebsiteForms\Index::$revealedToken/$showTokenModal: the plaintext is
+     * never persisted (see LeadSource.webhook_token_hash's own migration
+     * docblock), so this is the only moment it's ever visible again.
+     */
+    public bool $showTokenModal = false;
+
+    public string $revealedToken = '';
+
+    public string $revealedTokenSourceName = '';
+
+    /**
+     * The complete, working webhook URL for the token just (re)generated —
+     * built here, once, at generation time, since it's the only moment this
+     * component ever has the plaintext token in hand; LeadSource::
+     * webhookUrl() can only ever render the URL's SHAPE afterward (it has
+     * only the hash) — see that method's own docblock.
+     */
+    public string $revealedWebhookUrl = '';
+
+    public bool $showRegenerateTokenModal = false;
+
+    public ?string $regeneratingTokenId = null;
+
+    /**
      * Starts false on every fresh mount so the very first paint can skip
      * the leadSources() query and show a skeleton instead — same technique
      * as App\Livewire\Tenant\Leads\Index::$initialLoadComplete, scaled
@@ -534,7 +561,7 @@ class LeadSources extends Component
                 $config['api_key'] = (string) Str::uuid();
             }
 
-            $this->tenant->leadSources()->create([
+            $source = $this->tenant->leadSources()->create([
                 'type' => $type,
                 'name' => $validated['name'],
                 'config' => $config,
@@ -542,8 +569,146 @@ class LeadSources extends Component
             ]);
         }
 
+        // F1 remediation (forensic audit Batch A) — requirement #5: a
+        // Meta-webhook-type source gets its opaque token the moment it's
+        // created OR next re-saved, whichever comes first, covering both
+        // a brand-new source and one that existed before this remediation
+        // shipped. A no-op for a source that already has one (see
+        // ensureWebhookToken()'s own guard) and for every non-Meta type.
+        $this->ensureWebhookToken($source);
+
         $this->showModal = false;
         Flux::toast(variant: 'success', text: __('Lead source saved.'));
+    }
+
+    /**
+     * F1 remediation (forensic audit Batch A) — generates this source's
+     * opaque webhook token the first time it's needed: a brand-new
+     * META_WEBHOOK_TYPES source (from save()'s create branch) or an
+     * existing one that predates this remediation (from save()'s update
+     * branch, or from the explicit "Generate secure webhook URL" action on
+     * a row that has none yet). A source that already has a token is left
+     * completely untouched — this is never called from a path that should
+     * silently invalidate an already-configured, already-working token;
+     * see regenerateWebhookTokenConfirmed() for the one explicit,
+     * admin-confirmed action that does that on purpose.
+     *
+     * Mirrors WebsiteForms\Index::save()'s own token-generation block
+     * exactly: Str::random(40) plaintext, only its SHA-256 hash persisted
+     * (raw update(), not mass assignment through the Livewire form's own
+     * $config array, so a tampered submission can never set this column
+     * directly), the plaintext held only in this request's own
+     * $revealedToken for the one-time reveal modal — never logged, never
+     * written anywhere else.
+     */
+    private function ensureWebhookToken(LeadSource $source): void
+    {
+        if (! in_array($source->type, LeadSource::META_WEBHOOK_TYPES, true) || $source->webhook_token_hash !== null) {
+            return;
+        }
+
+        $this->applyNewWebhookToken($source);
+    }
+
+    /**
+     * Shared by ensureWebhookToken() and regenerateWebhookTokenConfirmed():
+     * generates and persists a fresh token's hash, and builds the one-time
+     * reveal state (plaintext token + the complete working URL) from it —
+     * one place, so the two callers can never construct that state
+     * differently.
+     */
+    private function applyNewWebhookToken(LeadSource $source): void
+    {
+        $plaintextToken = Str::random(40);
+
+        $source->update(['webhook_token_hash' => hash('sha256', $plaintextToken)]);
+
+        $routeName = match ($source->type) {
+            LeadSourceType::FacebookMessenger, LeadSourceType::FacebookLeadAds => 'api.webhook.facebook.token',
+            LeadSourceType::Whatsapp => 'api.webhook.whatsapp.token',
+            LeadSourceType::Instagram => 'api.webhook.instagram.token',
+            default => null,
+        };
+
+        $this->revealedToken = $plaintextToken;
+        $this->revealedTokenSourceName = $source->name;
+        $this->revealedWebhookUrl = $routeName === null
+            ? ''
+            : rtrim((string) config('app.url'), '/').route($routeName, [$this->tenant->tenant_code, $plaintextToken], absolute: false);
+        $this->showTokenModal = true;
+    }
+
+    /**
+     * The explicit "Generate secure webhook URL" action on a row that has
+     * no token yet — unlike regenerateWebhookTokenConfirmed(), this never
+     * invalidates anything (there is nothing to invalidate), so it needs no
+     * confirmation step, only the same authorization check every other
+     * mutation on this page already opens with.
+     */
+    public function generateWebhookToken(string $id): void
+    {
+        Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
+
+        $this->ensureWebhookToken($this->tenant->leadSources()->findOrFail($id));
+    }
+
+    /**
+     * The explicit, admin-triggered action for a source that already has a
+     * webhook_token_hash — offered as its own confirmed action (never
+     * folded into save()) precisely because, unlike ensureWebhookToken(),
+     * this DOES invalidate an already-working credential: the old token
+     * stops resolving the instant this commits, the same "no grace-period
+     * overlap" behavior WebsiteForms\Index::regenerateConfirmed() already
+     * documents for its own identical action.
+     */
+    public function confirmRegenerateWebhookToken(string $id): void
+    {
+        Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
+
+        $this->regeneratingTokenId = $this->tenant->leadSources()->findOrFail($id)->id;
+        $this->showRegenerateTokenModal = true;
+    }
+
+    public function regenerateWebhookTokenConfirmed(): void
+    {
+        Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
+
+        $this->showRegenerateTokenModal = false;
+
+        if ($this->regeneratingTokenId === null) {
+            return;
+        }
+
+        $source = $this->tenant->leadSources()->findOrFail($this->regeneratingTokenId);
+        $this->regeneratingTokenId = null;
+
+        $this->applyNewWebhookToken($source);
+
+        Flux::toast(variant: 'success', text: __('Webhook token regenerated. The old token no longer works.'));
+    }
+
+    /**
+     * F4 remediation (forensic audit Batch A) — surfaces exactly the gap
+     * the audit found: an active Meta-webhook-type source whose config has
+     * no app_secret is currently accepting inbound webhook requests with NO
+     * signature verification at all (see
+     * App\Http\Middleware\VerifyMetaWebhookSignature's own opt-in
+     * docblock). Deliberately does NOT treat "has a webhook_token_hash" as
+     * a substitute for this warning — the token closes the tenant_code-
+     * enumeration gap (F1), it is not a signature and was never meant to
+     * imply this source is fully secured on its own; an admin must still
+     * be told the app_secret gap explicitly, not left to infer it's covered
+     * by the unrelated token.
+     */
+    public function missingAppSecretWarning(LeadSource $source): bool
+    {
+        if (! $source->is_active || ! in_array($source->type, LeadSource::META_WEBHOOK_TYPES, true)) {
+            return false;
+        }
+
+        $appSecret = $source->config['app_secret'] ?? null;
+
+        return ! is_string($appSecret) || $appSecret === '';
     }
 
     public function toggleActive(string $id): void

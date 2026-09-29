@@ -145,6 +145,126 @@ class AppServiceProvider extends ServiceProvider
 
             return Limit::perMinute(60)->by('legacy-website-form-per-source:'.$sourceId);
         });
+
+        $this->configureMetaWebhookRateLimiting();
+    }
+
+    /**
+     * F8 remediation (forensic audit Batch A) — the Facebook/WhatsApp/
+     * Instagram webhook POST routes previously had NO rate limiting at all
+     * (unlike the legacy-website-form-* pair just above, which SEC-2 already
+     * covered). Same two-tier shape and same ThrottleRequestsFailOpen
+     * evaluation as that precedent — see this method's own limiters for
+     * the one deliberate difference from it.
+     *
+     * Starting thresholds (60/min per-source-IP, 300/min per-source) are
+     * intentionally more generous than legacy-website-form's own 20/60,
+     * per the approved remediation plan: Meta's own redelivery traffic for
+     * a genuinely busy source must not itself trip this limiter and risk
+     * Meta disabling the subscription after sustained non-2xx responses —
+     * see routes/api.php's own docblock for why throttling runs before
+     * signature verification, not after.
+     */
+    protected function configureMetaWebhookRateLimiting(): void
+    {
+        $facebookTypes = [LeadSourceType::FacebookMessenger, LeadSourceType::FacebookLeadAds];
+
+        RateLimiter::for('meta-webhook-facebook-per-source-ip', function (Request $request) use ($facebookTypes): Limit {
+            return self::metaWebhookLimit($request, 'facebook', $facebookTypes, perMinute: 60, byIp: true);
+        });
+
+        RateLimiter::for('meta-webhook-facebook-per-source', function (Request $request) use ($facebookTypes): Limit {
+            return self::metaWebhookLimit($request, 'facebook', $facebookTypes, perMinute: 300, byIp: false);
+        });
+
+        RateLimiter::for('meta-webhook-whatsapp-per-source-ip', function (Request $request): Limit {
+            return self::metaWebhookLimit($request, 'whatsapp', [LeadSourceType::Whatsapp], perMinute: 60, byIp: true);
+        });
+
+        RateLimiter::for('meta-webhook-whatsapp-per-source', function (Request $request): Limit {
+            return self::metaWebhookLimit($request, 'whatsapp', [LeadSourceType::Whatsapp], perMinute: 300, byIp: false);
+        });
+
+        RateLimiter::for('meta-webhook-instagram-per-source-ip', function (Request $request): Limit {
+            return self::metaWebhookLimit($request, 'instagram', [LeadSourceType::Instagram], perMinute: 60, byIp: true);
+        });
+
+        RateLimiter::for('meta-webhook-instagram-per-source', function (Request $request): Limit {
+            return self::metaWebhookLimit($request, 'instagram', [LeadSourceType::Instagram], perMinute: 300, byIp: false);
+        });
+    }
+
+    /**
+     * @param  array<int, LeadSourceType>  $types
+     */
+    private static function metaWebhookLimit(Request $request, string $platform, array $types, int $perMinute, bool $byIp): Limit
+    {
+        $sourceId = self::resolveMetaWebhookSourceId($request, $types);
+
+        if ($sourceId === null) {
+            // F8 remediation — deliberately NOT Limit::none() (Unlimited),
+            // unlike legacy-website-form-per-source(-ip)'s own unresolvable
+            // fallback just above: an attacker probing many nonexistent
+            // tenant_codes or tokens against these routes must still be
+            // throttled, not exempted — this enumeration/guessing surface is
+            // exactly what this remediation batch exists to close (see F1).
+            // Keyed on platform + IP alone (there is no source to key on),
+            // at the same 20/min ceiling the legacy per-source-ip tier uses.
+            return Limit::perMinute(20)->by('meta-webhook-unresolvable:'.$platform.'|'.$request->ip());
+        }
+
+        $key = 'meta-webhook-'.$platform.'-per-source'.($byIp ? '-ip' : '').':'.$sourceId;
+
+        return Limit::perMinute($perMinute)->by($byIp ? $key.'|'.$request->ip() : $key);
+    }
+
+    /**
+     * Resolves the specific LeadSource a Meta webhook request targets, for
+     * rate-limiting purposes only — deliberately NOT reused by
+     * LeadWebhookController::resolveSource() itself (this runs in route
+     * middleware, before the controller is ever invoked, mirroring
+     * resolveLegacyWebsiteFormSourceId()'s own reasoning immediately below).
+     *
+     * When the request carries a webhook_token route segment (the new,
+     * token-bearing URL shape), resolution is pinned to that ONE source by
+     * its hash — never falls back to "any active source of this platform
+     * type" the way the legacy, token-less shape does, so a wrong/foreign
+     * token can never accidentally share another source's rate-limit
+     * bucket. A `null` return (unresolvable tenant, or a token that matches
+     * no active source of the requested type(s) for that tenant) is handled
+     * by the caller, never treated as unlimited here.
+     *
+     * @param  array<int, LeadSourceType>  $types
+     */
+    private static function resolveMetaWebhookSourceId(Request $request, array $types): ?string
+    {
+        $tenantCode = (string) $request->route('tenant_code');
+
+        $tenant = Tenant::where('tenant_code', $tenantCode)
+            ->where('status', TenantStatus::Active)
+            ->first();
+
+        if ($tenant === null) {
+            return null;
+        }
+
+        $webhookToken = $request->route('webhook_token');
+
+        if (is_string($webhookToken) && $webhookToken !== '') {
+            $source = LeadSource::where('webhook_token_hash', hash('sha256', $webhookToken))
+                ->whereIn('type', $types)
+                ->where('is_active', true)
+                ->first();
+
+            return $source !== null && $source->tenant_id === $tenant->id ? $source->id : null;
+        }
+
+        $source = LeadSource::where('tenant_id', $tenant->id)
+            ->whereIn('type', $types)
+            ->where('is_active', true)
+            ->first();
+
+        return $source?->id;
     }
 
     /**
