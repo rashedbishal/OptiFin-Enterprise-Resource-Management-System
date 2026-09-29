@@ -15,7 +15,7 @@
         $canUpdate = $this->canUpdate;
     @endphp
 
-    <flux:card class="flex flex-col gap-4">
+    <flux:card class="h-full max-h-[30rem] flex flex-col gap-4">
         <div class="flex items-center justify-between gap-2">
             <flux:heading size="lg">{{ __(':channel Reply', ['channel' => $channel->label()]) }}</flux:heading>
 
@@ -71,7 +71,7 @@
         @if ($this->outboundMessages->isNotEmpty())
             <flux:separator />
 
-            <div class="flex flex-col gap-2">
+            <div class="min-h-0 flex flex-1 flex-col gap-2 overflow-y-auto overscroll-contain pe-1">
                 @foreach ($this->outboundMessages as $message)
                     <div class="flex items-start justify-between gap-2" wire:key="outbound-message-{{ $message->id }}">
                         <div>
