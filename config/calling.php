@@ -236,6 +236,48 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | WhatsApp Call Backup / Overflow Receiver, Phase 2 — Reverb Presence
+    |--------------------------------------------------------------------------
+    |
+    | reverb_presence_enabled: the rollout gate for App\Services\
+    | ReverbPresenceQuery. Defaults FALSE deliberately — enabling it is a
+    | two-sided deploy (a `presence-tenant-softphone.{tenantId}` channel the
+    | softphone frontend must actually be joining) and turning this on
+    | before the frontend ships would make CallRouter ask Reverb about a
+    | channel nobody has joined yet, read every assignee as Absent, and
+    | silently overflow every assigned call to backups. While false,
+    | App\Services\SoftphonePresence never calls Reverb at all — every
+    | routing decision uses the pre-existing softphone_last_seen_at
+    | heartbeat unchanged, exactly as before this phase shipped. Flip this
+    | to true only once the frontend join is confirmed live in that
+    | environment.
+    |
+    | reverb_presence_timeout_seconds / reverb_presence_connect_timeout_
+    | seconds: this query runs synchronously inside CallRouter, on the
+    | inbound WhatsApp webhook's hot path — the one path in this whole
+    | calling module that previously made zero synchronous external calls
+    | (RecordInboundCall never touches Meta's Graph API; only the agent-
+    | triggered claim/answer/accept/reject actions do, at the much more
+    | generous api_timeout_seconds/api_connect_timeout_seconds above, which
+    | are sized for a real internet round-trip to Meta). Reverb is this
+    | app's own server, typically same-host or same-network, so a healthy
+    | response is milliseconds, not seconds — these are kept far tighter
+    | than the Meta API timeouts on purpose, so a Reverb hiccup can add at
+    | most ~1.5s to webhook processing before ReverbPresenceQuery reports
+    | QueryFailed and SoftphonePresence falls back to the heartbeat check.
+    | Never raise these to "wait out" a slow Reverb — that defeats the
+    | point of having a fallback at all.
+    |
+    */
+
+    'reverb_presence_enabled' => (bool) env('CALLING_REVERB_PRESENCE_ENABLED', false),
+
+    'reverb_presence_timeout_seconds' => (float) env('CALLING_REVERB_PRESENCE_TIMEOUT_SECONDS', 1.5),
+
+    'reverb_presence_connect_timeout_seconds' => (float) env('CALLING_REVERB_PRESENCE_CONNECT_TIMEOUT_SECONDS', 0.5),
+
+    /*
+    |--------------------------------------------------------------------------
     | WhatsApp Outbound Calling — Call Permission
     |--------------------------------------------------------------------------
     |

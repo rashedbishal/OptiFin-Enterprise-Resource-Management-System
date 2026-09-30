@@ -46,7 +46,7 @@ export function registerSoftphone(alpine) {
                     api: createApi({ urls: config.urls }),
                     createMedia: media(this.$refs.remoteAudio),
                     ownership: createOwnership(),
-                    subscribe: ({ onEvent, onReconnect }) => subscribeToCalls({ echo: window.Echo, userId: config.userId, onEvent, onReconnect }),
+                    subscribe: ({ onEvent, onReconnect }) => subscribeToCalls({ echo: window.Echo, userId: config.userId, tenantId: config.tenantId, onEvent, onReconnect }),
                     texts: config.texts ?? {},
                     pollMs: config.pollMs,
                     heartbeatMs: config.heartbeatMs,

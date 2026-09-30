@@ -2,6 +2,7 @@
 
 use App\Actions\Platform\AssignModuleToTenant;
 use App\Actions\Platform\CreateClient;
+use App\Contracts\ReverbChannelUsersGateway;
 use App\Enums\ModuleScope;
 use App\Models\LeadStatus;
 use App\Models\Module;
@@ -14,6 +15,7 @@ use App\Models\TenantUser;
 use Database\Seeders\PermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
+use Tests\Support\FakeReverbChannelUsersGateway;
 use Tests\TestCase;
 
 /*
@@ -127,4 +129,23 @@ function clientUserWithLeadPermission(Tenant $tenant, array $permissions = ['vie
 function leadStatus(string $slug): LeadStatus
 {
     return LeadStatus::where('slug', $slug)->firstOrFail();
+}
+
+/**
+ * WhatsApp Call Backup / Overflow Receiver, Phase 2 — binds
+ * FakeReverbChannelUsersGateway in place of the real Pusher-backed gateway
+ * (so no test ever makes a real network call — see that class's own
+ * docblock) and turns on `calling.reverb_presence_enabled`, which defaults
+ * false in every other test. Call this only in tests that are specifically
+ * exercising the Reverb presence path; every other test keeps running
+ * against the pre-existing softphone_last_seen_at fallback untouched.
+ */
+function fakeReverbPresence(): FakeReverbChannelUsersGateway
+{
+    config(['calling.reverb_presence_enabled' => true]);
+
+    $fake = new FakeReverbChannelUsersGateway;
+    app()->instance(ReverbChannelUsersGateway::class, $fake);
+
+    return $fake;
 }

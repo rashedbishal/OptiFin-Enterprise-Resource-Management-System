@@ -592,3 +592,140 @@ test('the exact reported production scenario: a stale assignee (User A) triggers
 
     expect(app(ListActiveLeadCalls::class)->handle($userA->fresh()))->toBe([]);
 });
+
+// ── WhatsApp Call Backup / Overflow Receiver, Phase 2 — Reverb presence ────
+//
+// CallRouter itself is untouched this phase (it still only ever calls
+// $this->presence->isAvailable($assignee) — see its own docblock); these
+// tests prove the Reverb-aware SoftphonePresence correctly drives routing
+// through the unchanged CallRouter, via fakeReverbPresence() (tests/Pest.php)
+// — never a real Reverb server.
+
+test('Reverb reports the assignee present -> Assignee, even with a stale heartbeat', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $assignee->forceFill(['softphone_last_seen_at' => now()->subDays(1)])->save();
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+    callRouterBackupReceiver($x['tenant']);
+
+    fakeReverbPresence()->returningMembers([$assignee->id]);
+
+    $routing = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::Assignee);
+    expect($routing['routed_user_ids'])->toBe([$assignee->id]);
+});
+
+test('Reverb reports the assignee absent -> BackupFallback when an eligible backup exists', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $assignee->forceFill(['softphone_last_seen_at' => now()])->save();
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+    $backup = callRouterBackupReceiver($x['tenant']);
+
+    fakeReverbPresence()->returningMembers([]);
+
+    $routing = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::BackupFallback);
+    expect($routing['routed_user_ids'])->toBe([$backup->id]);
+    expect($routing['routed_user_ids'])->not->toContain($assignee->id);
+});
+
+test('Reverb reports the assignee absent, no eligible backup -> AdminFallback', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+
+    fakeReverbPresence()->returningMembers([]);
+
+    $routing = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::AdminFallback);
+    expect($routing['routed_user_ids'])->toBe([$x['admin']->id]);
+});
+
+test('an unassigned lead never queries Reverb at all -> still AdminFallback, never BackupFallback', function () {
+    $x = callRouterScenario();
+    callRouterBackupReceiver($x['tenant']);
+    $fake = fakeReverbPresence()->returningMembers([]);
+
+    $routing = app(CallRouter::class)->route($x['lead'], leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::AdminFallback);
+    expect($routing['routed_user_ids'])->toBe([$x['admin']->id]);
+    expect($fake->queriedChannels)->toBe([]);
+});
+
+test('backup receiver eligibility is unaffected by Reverb presence — a backup is never itself presence-checked', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+    $backup = callRouterBackupReceiver($x['tenant']);
+
+    // The fake only ever "knows about" the assignee — the backup is never
+    // in its member list, yet must still be routed to once the assignee is
+    // absent. If eligibleBackupReceivers() ever started presence-checking
+    // backups too, this would wrongly fall through to AdminFallback instead.
+    fakeReverbPresence()->returningMembers([]);
+
+    $routing = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::BackupFallback);
+    expect($routing['routed_user_ids'])->toBe([$backup->id]);
+});
+
+test('performance: exactly one Reverb presence lookup per routing decision, never one per backup candidate', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+    foreach (range(1, 5) as $i) {
+        callRouterBackupReceiver($x['tenant']);
+    }
+
+    $fake = fakeReverbPresence()->returningMembers([]);
+
+    $routing = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::BackupFallback);
+    expect($routing['routed_user_ids'])->toHaveCount(5);
+    // Exactly one query — for the assignee. Never one per backup candidate,
+    // and never a second one for the backup tier itself.
+    expect($fake->queriedChannels)->toHaveCount(1);
+});
+
+test('a Reverb outage never fails routing — it silently falls through to AdminFallback\'s pre-existing behavior via the timestamp fallback', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+
+    fakeReverbPresence()->failing();
+
+    // No exception, no 500 — routing still resolves, using the unchanged
+    // timestamp fallback (null heartbeat -> available -> Assignee).
+    $routing = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::Assignee);
+    expect($routing['routed_user_ids'])->toBe([$assignee->id]);
+});
+
+test('Reverb presence is tenant-scoped: an assignee in tenant A is never affected by tenant B\'s membership data', function () {
+    $x = callRouterScenario();
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $x['lead']->update(['assigned_to' => $assignee->id]);
+
+    $otherTenant = tenantWithLeadManagement();
+    $foreignUserWithSameShapeId = clientUserWithLeadPermission($otherTenant['tenant'], ['view', 'update']);
+
+    // The fake "knows about" a member from a DIFFERENT tenant only — proving
+    // presence for tenant A's assignee is decided by tenant A's own channel
+    // query (asserted below), not by whatever the fake happens to return.
+    $fake = fakeReverbPresence()->returningMembers([$foreignUserWithSameShapeId->id]);
+
+    $routing = app(CallRouter::class)->route($x['lead']->fresh(), leadCreatedByThisCall: false);
+
+    // Absent (the assignee's own id was never in the returned list) -> falls
+    // through exactly like any other Absent case.
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::AdminFallback);
+    expect($fake->queriedChannels)->toBe(['presence-tenant-softphone.'.$x['tenant']->id]);
+});

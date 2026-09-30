@@ -143,3 +143,47 @@ test('a tenant user cannot authenticate on another tenant\'s lead-import channel
 
     $response->assertForbidden();
 });
+
+// ── WhatsApp Call Backup / Overflow Receiver, Phase 2 — softphone presence ──
+
+test('a tenant user can join their own tenant\'s softphone presence channel', function () {
+    $tenant = Tenant::factory()->create();
+    $user = TenantUser::factory()->create(['tenant_id' => $tenant->id]);
+
+    $response = $this->actingAs($user)->post('/broadcasting/auth', [
+        'channel_name' => 'presence-tenant-softphone.'.$tenant->id,
+        'socket_id' => '1234.1234',
+    ]);
+
+    $response->assertOk();
+});
+
+test('a tenant user cannot join another tenant\'s softphone presence channel', function () {
+    $tenant = Tenant::factory()->create();
+    $user = TenantUser::factory()->create(['tenant_id' => $tenant->id]);
+    $otherTenant = Tenant::factory()->create();
+
+    $response = $this->actingAs($user)->post('/broadcasting/auth', [
+        'channel_name' => 'presence-tenant-softphone.'.$otherTenant->id,
+        'socket_id' => '1234.1234',
+    ]);
+
+    $response->assertForbidden();
+});
+
+test('the softphone presence channel exposes only the member id, never a name, role, permission or phone number', function () {
+    $tenant = Tenant::factory()->create();
+    $user = TenantUser::factory()->create(['tenant_id' => $tenant->id, 'name' => 'Sentinel Presence Name']);
+
+    $response = $this->actingAs($user)->post('/broadcasting/auth', [
+        'channel_name' => 'presence-tenant-softphone.'.$tenant->id,
+        'socket_id' => '1234.1234',
+    ]);
+
+    $response->assertOk();
+    $channelData = json_decode($response->json('channel_data'), true);
+
+    expect($channelData['user_id'])->toBe($user->id);
+    expect($channelData['user_info'])->toBe(['id' => $user->id]);
+    expect(json_encode($channelData))->not->toContain('Sentinel Presence Name');
+});

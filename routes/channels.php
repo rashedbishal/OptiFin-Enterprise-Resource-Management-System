@@ -26,3 +26,22 @@ Broadcast::channel('lead-import.{leadImport}', function (TenantUser $user, LeadI
 Broadcast::channel('tenant-user.{tenantUserId}', function (TenantUser $user, string $tenantUserId) {
     return (string) $user->id === $tenantUserId;
 });
+
+// WhatsApp Call Backup / Overflow Receiver, Phase 2 — a presence channel
+// (wire name presence-tenant-softphone.{tenantId}, per
+// Illuminate\Broadcasting\PresenceChannel's own "presence-" prefixing), so
+// App\Services\ReverbPresenceQuery can ask Reverb's HTTP API who is
+// currently a member. Additive: the pre-existing tenant-user.{id} private
+// channel above is untouched and still carries .call.updated — this one
+// exists purely to establish membership, never to carry an event. Returning
+// an array (rather than a bool, like every other channel here) is what
+// makes this a presence channel; only the id is exposed — no name, no
+// role, no permission, nothing a member list could leak beyond "this user
+// is online."
+Broadcast::channel('tenant-softphone.{tenantId}', function (TenantUser $user, string $tenantId) {
+    if ($user->tenant_id !== $tenantId) {
+        return false;
+    }
+
+    return ['id' => $user->id];
+});

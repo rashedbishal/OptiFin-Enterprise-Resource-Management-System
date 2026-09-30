@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Contracts\ReverbChannelUsersGateway;
 use App\Enums\LeadSourceType;
 use App\Enums\MessageChannel;
 use App\Enums\TenantStatus;
@@ -15,6 +16,7 @@ use App\Observers\LeadObserver;
 use App\Observers\PlatformUserObserver;
 use App\Observers\RoleObserver;
 use App\Observers\TenantUserObserver;
+use App\Services\PusherReverbChannelUsersGateway;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
@@ -32,7 +34,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // WhatsApp Call Backup / Overflow Receiver, Phase 2 — the one binding
+        // App\Services\ReverbPresenceQuery resolves through; tests rebind
+        // this to a fake so nothing here ever makes a real network call.
+        $this->app->bind(ReverbChannelUsersGateway::class, PusherReverbChannelUsersGateway::class);
     }
 
     /**

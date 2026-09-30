@@ -4,8 +4,16 @@
     // Everything the softphone's JavaScript needs and nothing secret: the user's
     // own id (for their private Echo channel), the call URLs (only the call id is
     // ever substituted) and the few strings it shows. No token, no phone number id.
+    //
+    // WhatsApp Call Backup / Overflow Receiver, Phase 2 — tenantId is the
+    // caller's own tenant (never another user's, never client-suppliable:
+    // Auth::user()->tenant_id, same trust boundary as $userId above), used
+    // only to join this tenant's `tenant-softphone.{tenantId}` presence
+    // channel (see resources/js/softphone/realtime.js). It carries no other
+    // meaning and is never sent back to any endpoint.
     $softphoneConfig = [
         'userId' => (string) $userId,
+        'tenantId' => (string) auth()->user()->tenant_id,
         'pollMs' => (int) config('calling.softphone_poll_seconds', 5) * 1000,
         'heartbeatMs' => (int) config('calling.softphone_heartbeat_seconds', 15) * 1000,
         'staleMs' => (int) config('calling.softphone_staleness_seconds', 20) * 1000,
