@@ -29,6 +29,7 @@ use Spatie\Activitylog\Traits\LogsActivity;
  * @property string $role_id
  * @property bool $is_active
  * @property bool $is_whatsapp_backup_receiver
+ * @property Carbon|null $softphone_last_seen_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
@@ -48,6 +49,7 @@ class TenantUser extends Authenticatable
             'user_type' => TenantUserType::class,
             'is_active' => 'boolean',
             'is_whatsapp_backup_receiver' => 'boolean',
+            'softphone_last_seen_at' => 'datetime',
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'last_assigned_at' => 'datetime',

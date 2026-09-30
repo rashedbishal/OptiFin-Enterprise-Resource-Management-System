@@ -212,6 +212,30 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | WhatsApp Call Backup / Overflow Receiver — Assignee Presence
+    |--------------------------------------------------------------------------
+    |
+    | softphone_presence_stale_seconds: how long tenant_users.
+    | softphone_last_seen_at may go untouched before App\Services\
+    | SoftphonePresence considers that user unreachable, which
+    | App\Services\CallRouter then treats as ineligible for routing_mode=
+    | Assignee (falling through to BackupFallback instead — see its own
+    | docblock). The timestamp is refreshed by the softphone's own existing
+    | GET calls/active poll, so its cadence is what this has to tolerate:
+    | softphone_heartbeat_seconds (15) in the normal/healthy state, as fast
+    | as softphone_poll_seconds (5) once degraded — 3x the healthy
+    | heartbeat (45) forgives up to two consecutive missed cycles (a
+    | backgrounded tab being throttled, one slow request, a brief network
+    | blip) without misreading a present agent as gone, while still leaving
+    | most of ring_ttl_seconds's 60-second window for a backup receiver to
+    | notice and answer once the assignee genuinely has gone stale.
+    |
+    */
+
+    'softphone_presence_stale_seconds' => (int) env('CALLING_SOFTPHONE_PRESENCE_STALE_SECONDS', 45),
+
+    /*
+    |--------------------------------------------------------------------------
     | WhatsApp Outbound Calling — Call Permission
     |--------------------------------------------------------------------------
     |

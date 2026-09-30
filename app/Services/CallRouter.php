@@ -19,8 +19,10 @@ use App\Models\TenantUser;
  *
  * Rules:
  *  1. The lead's current assignee, when there is one and they are active,
- *     can take calls, and are not already busy on another active call → mode
- *     Assignee, routed to that one user.
+ *     can take calls, are not already busy on another active call, and are
+ *     currently present at their softphone (WhatsApp Call Backup / Overflow
+ *     Receiver — see SoftphonePresence) → mode Assignee, routed to that one
+ *     user.
  *  2. Otherwise, when the lead has an assignee (WhatsApp Call Backup /
  *     Overflow Receiver): every active TenantUser of the same tenant with
  *     is_whatsapp_backup_receiver=true who can take calls and is not
@@ -46,13 +48,21 @@ use App\Models\TenantUser;
  * already-claimed Answering/Connected LeadCall — the one concrete signal this
  * app has for "currently occupied," deliberately not the broader `active()`
  * scope (which also includes Ringing/Initiated, states a candidate can be
- * routed into without yet being claimed). There is no online/offline
- * presence system anywhere in this app, and this router does not add one —
- * a mid-ring change in a routed user's eligibility never re-routes an
- * already-ringing call; routing is frozen at this method's return.
+ * routed into without yet being claimed). Beyond that there is still no
+ * general online/offline presence system in this app, and this router does
+ * not add one — the one narrow exception (rule 1 only) is SoftphonePresence,
+ * which tells whether the ASSIGNEE specifically still has a softphone tab
+ * open, so an assignee who is otherwise eligible but not actually reachable
+ * falls through to rule 2 instead of soaking up every call themselves.
+ * Backup and admin candidates are deliberately never presence-checked — see
+ * eligibleBackupReceivers()'s own note. A mid-ring change in a routed user's
+ * eligibility (including presence) never re-routes an already-ringing call;
+ * routing is frozen at this method's return.
  */
 class CallRouter
 {
+    public function __construct(private readonly SoftphonePresence $presence) {}
+
     /**
      * @return array{routing_mode: CallRoutingMode, routed_user_ids: array<int, string>, assignee_id_at_arrival: ?string}
      */
@@ -67,7 +77,7 @@ class CallRouter
                 ->where('is_active', true)
                 ->find($assigneeId);
 
-            if ($assignee instanceof TenantUser && $this->canTakeCalls($assignee) && ! $this->isBusy($assignee)) {
+            if ($assignee instanceof TenantUser && $this->canTakeCalls($assignee) && ! $this->isBusy($assignee) && $this->presence->isAvailable($assignee)) {
                 return [
                     'routing_mode' => CallRoutingMode::Assignee,
                     'routed_user_ids' => [$assignee->id],
@@ -125,6 +135,15 @@ class CallRouter
      * ran one lead_calls query per backup candidate (confirmed: 5
      * candidates → 5 queries), an N+1 this method's own candidate count can
      * scale with. Behavior is unchanged; only the query shape is batched.
+     *
+     * Deliberately NOT presence-checked: opting in to is_whatsapp_backup_
+     * receiver is itself the signal this user is willing to take overflow
+     * calls, unlike an assignee who never opted into being reachable at all
+     * times. A backup receiver's own softphone tab still has to be open to
+     * actually see the ring (same as every other routed user, assignee
+     * included — SoftphonePresence only ever changes whether rule 1 fires,
+     * never who is eligible under rule 2), but they are never excluded from
+     * routed_user_ids for being presence-stale the way an assignee is.
      *
      * @return array<int, string>
      */

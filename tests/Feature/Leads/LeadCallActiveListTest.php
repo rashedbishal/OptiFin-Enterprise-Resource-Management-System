@@ -259,6 +259,50 @@ test('the call routes still resolve next to the new active route', function () {
     expect($x->fresh()->status)->toBe(CallStatus::Answering);
 });
 
+// ── WhatsApp Call Backup / Overflow Receiver — softphone presence heartbeat ─
+
+test('the active-calls poll touches only the authenticated caller\'s own softphone_last_seen_at', function () {
+    $x = Lc::make();
+    expect($x->agent->softphone_last_seen_at)->toBeNull();
+    expect($x->other->softphone_last_seen_at)->toBeNull();
+
+    $this->actingAs($x->agent)->getJson(route('tenant-lead-calls.active'))->assertOk();
+
+    expect($x->agent->fresh()->softphone_last_seen_at)->not->toBeNull();
+    expect($x->agent->fresh()->softphone_last_seen_at->diffInSeconds(now()))->toBeLessThan(5);
+    // Nobody else's row is touched by one user's own poll — no id is ever
+    // accepted from the browser for this, only $request->user().
+    expect($x->other->fresh()->softphone_last_seen_at)->toBeNull();
+});
+
+test('the heartbeat cannot be spoofed for another user or another tenant — it only ever follows the authenticated session', function () {
+    $x = Lc::make();
+    $otherTenant = Lc::make();
+
+    $this->actingAs($x->other)->getJson(route('tenant-lead-calls.active'))->assertOk();
+
+    expect($x->agent->fresh()->softphone_last_seen_at)->toBeNull();
+    expect($otherTenant->agent->fresh()->softphone_last_seen_at)->toBeNull();
+    expect($x->other->fresh()->softphone_last_seen_at)->not->toBeNull();
+});
+
+test('an unauthenticated request touches nothing and is still refused', function () {
+    $x = Lc::make();
+
+    $this->getJson(route('tenant-lead-calls.active'))->assertUnauthorized();
+
+    expect($x->agent->fresh()->softphone_last_seen_at)->toBeNull();
+});
+
+test('the heartbeat never changes the returned call list', function () {
+    $x = Lc::make();
+
+    $before = $this->actingAs($x->agent)->getJson(route('tenant-lead-calls.active'))->json('data.calls');
+    $after = $this->actingAs($x->agent)->getJson(route('tenant-lead-calls.active'))->json('data.calls');
+
+    expect($after)->toEqual($before);
+});
+
 // ── WhatsApp Call Backup / Overflow Receiver — assignee / receiving_as ─────
 
 test('1. an Assignee-routed call reports receiving_as=assignee and its own name as the assignee', function () {
