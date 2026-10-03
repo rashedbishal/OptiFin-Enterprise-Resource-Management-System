@@ -1,0 +1,1549 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:modules\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Actions/Platform/RemoveModuleFromTenant.php
+
+		-
+			message: '#^Parameter \#1 \$admins of method App\\Console\\Commands\\SendLeadAlertNotifications\:\:recipients\(\) expects Illuminate\\Database\\Eloquent\\Collection\<int, App\\Models\\TenantUser\>, Illuminate\\Database\\Eloquent\\Collection\<int, Illuminate\\Database\\Eloquent\\Model\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Console/Commands/SendLeadAlertNotifications.php
+
+		-
+			message: '#^Parameter \#1 \$admins of method App\\Console\\Commands\\SendTaskAlertNotifications\:\:recipients\(\) expects Illuminate\\Database\\Eloquent\\Collection\<int, App\\Models\\TenantUser\>, Illuminate\\Database\\Eloquent\\Collection\<int, Illuminate\\Database\\Eloquent\\Model\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Console/Commands/SendTaskAlertNotifications.php
+
+		-
+			message: '#^Parameter \#1 \$user of static method App\\Services\\NotificationUrlResolver\:\:resolve\(\) expects App\\Models\\TenantUser, App\\Models\\PlatformUser\|App\\Models\\TenantUser\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Http/Controllers/NotificationRedirectController.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:hasModule\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: app/Http/Middleware/EnsureModuleAccess.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Http/Middleware/EnsureTenantActive.php
+
+		-
+			message: '#^Method App\\Jobs\\ProcessEmailLeadSource\:\:appendEmailMessage\(\) has parameter \$body with no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Jobs/ProcessEmailLeadSource.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:notify\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Listeners/SendNewLeadNotification.php
+
+		-
+			message: '#^Method App\\Livewire\\Platform\\Admins\\Index\:\:admins\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Platform/Admins/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Platform\\Admins\\Index\:\:roles\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Platform/Admins/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Platform\\Clients\\Index\:\:clients\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Platform/Clients/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Platform\\Clients\\LeadSources\:\:allCurrencies\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Platform/Clients/LeadSources.php
+
+		-
+			message: '#^Method App\\Livewire\\Platform\\Clients\\LeadSources\:\:allLeadStatuses\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Platform/Clients/LeadSources.php
+
+		-
+			message: '#^Method App\\Livewire\\Platform\\Clients\\LeadSources\:\:leadSources\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Platform/Clients/LeadSources.php
+
+		-
+			message: '#^Method App\\Livewire\\Platform\\Clients\\LeadSources\:\:selectedCurrencies\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Platform/Clients/LeadSources.php
+
+		-
+			message: '#^Method App\\Livewire\\Platform\\Clients\\LeadSources\:\:selectedLeadStatuses\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Platform/Clients/LeadSources.php
+
+		-
+			message: '#^Method App\\Livewire\\Platform\\Clients\\LeadSources\:\:typeOptions\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Livewire/Platform/Clients/LeadSources.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Platform\\Clients\\Show\:\:\$assignedModuleIds\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Livewire/Platform/Clients/Show.php
+
+		-
+			message: '#^Cannot access property \$value on string\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: app/Livewire/Platform/Clients/Show.php
+
+		-
+			message: '#^Method App\\Livewire\\Platform\\Clients\\Show\:\:assignedModuleIds\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Platform/Clients/Show.php
+
+		-
+			message: '#^Method App\\Livewire\\Platform\\Clients\\Show\:\:modules\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Platform/Clients/Show.php
+
+		-
+			message: '#^Method App\\Livewire\\Platform\\Dashboard\:\:recentAdmins\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Platform/Dashboard.php
+
+		-
+			message: '#^Method App\\Livewire\\Platform\\Dashboard\:\:recentClients\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Platform/Dashboard.php
+
+		-
+			message: '#^Method App\\Livewire\\Platform\\LeadManagement\\Settings\:\:currencies\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Platform/LeadManagement/Settings.php
+
+		-
+			message: '#^Method App\\Livewire\\Platform\\LeadManagement\\Settings\:\:statuses\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Platform/LeadManagement/Settings.php
+
+		-
+			message: '#^Method App\\Livewire\\Platform\\Modules\\Index\:\:modules\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Platform/Modules/Index.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between ''active''\|''inactive'' and App\\Enums\\ModuleStatus\:\:Active will always evaluate to false\.$#'
+			identifier: identical.alwaysFalse
+			count: 1
+			path: app/Livewire/Platform/Modules/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Platform\\Roles\\Index\:\:modules\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Platform/Roles/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Platform\\Roles\\Index\:\:permissions\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Platform/Roles/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Platform\\Roles\\Index\:\:roles\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Platform/Roles/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$email_verified_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Settings/Profile.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\Dashboard\:\:\$tenant\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Livewire/Tenant/Dashboard.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Dashboard.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\Dashboard\:\:assignedModules\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/Dashboard.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\Dashboard\:\:tenant\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/Dashboard.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Livewire/Tenant/LeadCustomFields/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 6
+			path: app/Livewire/Tenant/LeadCustomFields/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Livewire/Tenant/LeadCustomFields/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\LeadCustomFields\\Index\:\:definitions\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/LeadCustomFields/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/LeadImports/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/LeadImports/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Livewire/Tenant/LeadImports/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\LeadImports\\Index\:\:imports\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/LeadImports/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/LeadImports/Show.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\LeadImports\\Show\:\:rows\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/LeadImports/Show.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 6
+			path: app/Livewire/Tenant/LeadManagement/Dashboard.php
+
+		-
+			message: '#^Call to an undefined method App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:isClientAdmin\(\)\.$#'
+			identifier: method.notFound
+			count: 3
+			path: app/Livewire/Tenant/LeadManagement/Dashboard.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\LeadReports\\Index\:\:\$rangeError\.$#'
+			identifier: property.notFound
+			count: 7
+			path: app/Livewire/Tenant/LeadReports/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\LeadReports\\Index\:\:\$volumeCount\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/LeadReports/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant\.$#'
+			identifier: property.notFound
+			count: 8
+			path: app/Livewire/Tenant/LeadReports/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$leadStatuses\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/LeadReports/Index.php
+
+		-
+			message: '#^Call to an undefined method App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:isClientAdmin\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Livewire/Tenant/LeadReports/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\LeadReports\\Index\:\:assignmentBreakdown\(\) should return Illuminate\\Support\\Collection\<int, array\{assignee\: App\\Models\\TenantUser\|null, count\: int\}\> but returns Illuminate\\Support\\Collection\<int, array\{assignee\: App\\Models\\TenantUser\|null, count\: int\}\>\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Livewire/Tenant/LeadReports/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\LeadReports\\Index\:\:sourceCostSummary\(\) should return array\{rows\: Illuminate\\Support\\Collection\<int, array\{source\: App\\Models\\LeadSource, currency\: App\\Models\\Currency, total_cost\: string, lead_count\: int, cost_per_lead\: float\|null\}\>, excluded_months\: array\<int, string\>, totals_by_currency\: Illuminate\\Support\\Collection\<int, array\{currency\: App\\Models\\Currency, total\: string\}\>\} but returns array\{rows\: Illuminate\\Support\\Collection\<int, array\{source\: App\\Models\\LeadSource, currency\: App\\Models\\Currency, total_cost\: string, lead_count\: int, cost_per_lead\: float\|null\}\>, excluded_months\: array\<int, string\>, totals_by_currency\: Illuminate\\Support\\Collection\<int, array\{currency\: App\\Models\\Currency, total\: string\}\>\}\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Livewire/Tenant/LeadReports/Index.php
+
+		-
+			message: '#^Parameter \#1 \$tenant of method App\\Services\\LeadReportingService\:\:assignmentBreakdown\(\) expects App\\Models\\Tenant, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/LeadReports/Index.php
+
+		-
+			message: '#^Parameter \#1 \$tenant of method App\\Services\\LeadReportingService\:\:dailyVolumeBreakdown\(\) expects App\\Models\\Tenant, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/LeadReports/Index.php
+
+		-
+			message: '#^Parameter \#1 \$tenant of method App\\Services\\LeadReportingService\:\:firstResponseSummary\(\) expects App\\Models\\Tenant, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/LeadReports/Index.php
+
+		-
+			message: '#^Parameter \#1 \$tenant of method App\\Services\\LeadReportingService\:\:sourceBreakdown\(\) expects App\\Models\\Tenant, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/LeadReports/Index.php
+
+		-
+			message: '#^Parameter \#1 \$tenant of method App\\Services\\LeadReportingService\:\:sourceCostSummary\(\) expects App\\Models\\Tenant, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/LeadReports/Index.php
+
+		-
+			message: '#^Parameter \#1 \$tenant of method App\\Services\\LeadReportingService\:\:statusBreakdown\(\) expects App\\Models\\Tenant, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/LeadReports/Index.php
+
+		-
+			message: '#^Parameter \#1 \$tenant of method App\\Services\\LeadReportingService\:\:volumeCount\(\) expects App\\Models\\Tenant, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/LeadReports/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Livewire/Tenant/LeadScoring/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 4
+			path: app/Livewire/Tenant/LeadScoring/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Livewire/Tenant/LeadScoring/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\LeadScoring\\Index\:\:rules\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/LeadScoring/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Livewire/Tenant/LeadSourceCosts/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 4
+			path: app/Livewire/Tenant/LeadSourceCosts/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 7
+			path: app/Livewire/Tenant/LeadSourceCosts/Index.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:currencies\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Livewire/Tenant/LeadSourceCosts/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\LeadSourceCosts\\Index\:\:costs\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/LeadSourceCosts/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/LeadSources/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\LeadSources\\Index\:\:leadSources\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/LeadSources/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Livewire/Tenant/LeadTags/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 4
+			path: app/Livewire/Tenant/LeadTags/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Livewire/Tenant/LeadTags/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\LeadTags\\Index\:\:tags\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/LeadTags/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\Leads\\Index\:\:\$activeCustomFieldDefinitions\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\Leads\\Index\:\:\$boardLeads\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\Leads\\Index\:\:\$canDeleteLeads\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\Leads\\Index\:\:\$canUpdateLeads\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\Leads\\Index\:\:\$isClientAdmin\.$#'
+			identifier: property.notFound
+			count: 25
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\Leads\\Index\:\:\$leads\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\Leads\\Index\:\:\$tenantCurrencies\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\Leads\\Index\:\:\$tenantLeadStatuses\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant\.$#'
+			identifier: property.notFound
+			count: 18
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 18
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$followup_alert_days_before\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$followup_alert_enabled\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$leadStatuses\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$lead_nurturing_inactive_days\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$lead_nurturing_notify_enabled\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$lead_nurturing_task_enabled\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$meeting_alert_days_before\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$meeting_alert_enabled\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$task_alert_days_before\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$task_alert_enabled\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Call to an undefined method App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:isClientAdmin\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:currencies\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:initialLeadStatus\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\Leads\\Index\:\:assignableUsers\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\Leads\\Index\:\:facebookLeadAdsSources\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\Leads\\Index\:\:leads\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\Leads\\Index\:\:onLeadReceived\(\) has parameter \$payload with no type specified\.$#'
+			identifier: missingType.parameter
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\Leads\\Index\:\:tenantCurrencies\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Parameter \#1 \$tenant of method App\\Actions\\Tenant\\CreateManualLead\:\:handle\(\) expects App\\Models\\Tenant, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Parameter \#1 \$tenant of static method App\\Support\\LeadValidationRules\:\:currencyId\(\) expects App\\Models\\Tenant, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 2
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Parameter \#1 \$tenant of static method App\\Support\\LeadValidationRules\:\:statusId\(\) expects App\\Models\\Tenant, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Parameter \#2 \$actor of method App\\Services\\LeadAdminNotifier\:\:notifyExcept\(\) expects App\\Models\\TenantUser, App\\Models\\PlatformUser\|App\\Models\\TenantUser\|null given\.$#'
+			identifier: argument.type
+			count: 2
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Parameter \#2 \$changedBy of class App\\Notifications\\FollowUpUpdatedNotification constructor expects App\\Models\\TenantUser, App\\Models\\PlatformUser\|App\\Models\\TenantUser\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Parameter \#2 \$changedBy of class App\\Notifications\\MeetingUpdatedNotification constructor expects App\\Models\\TenantUser, App\\Models\\PlatformUser\|App\\Models\\TenantUser\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Parameter \#2 \$deletedBy of method App\\Actions\\Tenant\\RecordLeadDeletionAudit\:\:handle\(\) expects App\\Models\\TenantUser\|null, App\\Models\\PlatformUser\|App\\Models\\TenantUser\|null given\.$#'
+			identifier: argument.type
+			count: 2
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Parameter \#3 \$assignedBy of method App\\Services\\LeadAssignmentService\:\:assign\(\) expects App\\Models\\TenantUser\|null, App\\Models\\PlatformUser\|App\\Models\\TenantUser\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Parameter \#3 \$createdBy of method App\\Actions\\Tenant\\CreateManualLead\:\:handle\(\) expects App\\Models\\TenantUser, App\\Models\\PlatformUser\|App\\Models\\TenantUser\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Parameter \#4 \$assignee of method App\\Actions\\Tenant\\CreateManualLead\:\:handle\(\) expects App\\Models\\TenantUser\|null, App\\Models\\PlatformUser\|App\\Models\\TenantUser\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Parameter \#4 \$changedBy of class App\\Events\\LeadStatusChanged constructor expects App\\Models\\TenantUser, App\\Models\\PlatformUser\|App\\Models\\TenantUser\|null given\.$#'
+			identifier: argument.type
+			count: 2
+			path: app/Livewire/Tenant/Leads/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\Leads\\Show\:\:\$activeConversation\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\Leads\\Show\:\:\$activeCustomFieldDefinitions\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\Leads\\Show\:\:\$assignableUsers\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\Leads\\Show\:\:\$consentHistory\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\Leads\\Show\:\:\$deals\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\Leads\\Show\:\:\$messagingChannel\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\Leads\\Show\:\:\$tenantCurrencies\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\Leads\\Show\:\:\$tenantTags\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\Currency\|Illuminate\\Database\\Eloquent\\Collection\<int, App\\Models\\Currency\>\:\:\$code\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$action\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$action_date\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$assignedBy\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$assignedTo\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$assignment_note\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$changedBy\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$changed_fields\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$created_at\.$#'
+			identifier: property.notFound
+			count: 5
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$newStatus\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$note\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$oldStatus\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$tenantUser\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Call to an undefined method App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:isClientAdmin\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\Leads\\Show\:\:activity\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\Leads\\Show\:\:assignableUsers\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\Leads\\Show\:\:leadNotes\(\) should return Illuminate\\Support\\Collection\<int, App\\Models\\LeadNote\> but returns Illuminate\\Database\\Eloquent\\Collection\<int, Illuminate\\Database\\Eloquent\\Model\>\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\Leads\\Show\:\:priorityOptions\(\) return type has no value type specified in iterable type array\.$#'
+			identifier: missingType.iterableValue
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\Leads\\Show\:\:tenantCurrencies\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\Leads\\Show\:\:tenantTags\(\) return type with generic class Illuminate\\Support\\Collection does not specify its types\: TKey, TValue$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Parameter \#1 \$array of function usort contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Parameter \#2 \$actor of method App\\Services\\LeadAdminNotifier\:\:notifyExcept\(\) expects App\\Models\\TenantUser, App\\Models\\PlatformUser\|App\\Models\\TenantUser\|null given\.$#'
+			identifier: argument.type
+			count: 3
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Parameter \#2 \$assignedBy of class App\\Notifications\\TaskAssignedNotification constructor expects App\\Models\\TenantUser\|null, App\\Models\\PlatformUser\|App\\Models\\TenantUser\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Parameter \#2 \$callback of function usort contains unresolvable type\.$#'
+			identifier: argument.unresolvableType
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Parameter \#2 \$cancelledBy of class App\\Notifications\\FollowUpCancelledNotification constructor expects App\\Models\\TenantUser, App\\Models\\PlatformUser\|App\\Models\\TenantUser\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Parameter \#2 \$cancelledBy of class App\\Notifications\\MeetingCancelledNotification constructor expects App\\Models\\TenantUser, App\\Models\\PlatformUser\|App\\Models\\TenantUser\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Parameter \#2 \$changedBy of class App\\Notifications\\FollowUpUpdatedNotification constructor expects App\\Models\\TenantUser, App\\Models\\PlatformUser\|App\\Models\\TenantUser\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Parameter \#2 \$changedBy of class App\\Notifications\\MeetingUpdatedNotification constructor expects App\\Models\\TenantUser, App\\Models\\PlatformUser\|App\\Models\\TenantUser\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Parameter \#2 \$deletedBy of method App\\Actions\\Tenant\\RecordLeadDeletionAudit\:\:handle\(\) expects App\\Models\\TenantUser\|null, App\\Models\\PlatformUser\|App\\Models\\TenantUser\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Parameter \#3 \$assignedBy of method App\\Services\\LeadAssignmentService\:\:assign\(\) expects App\\Models\\TenantUser\|null, App\\Models\\PlatformUser\|App\\Models\\TenantUser\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Parameter \#3 \$performedBy of method App\\Services\\LeadMergeService\:\:merge\(\) expects App\\Models\\TenantUser, App\\Models\\PlatformUser\|App\\Models\\TenantUser\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Parameter \#3 \$triggeredBy of method App\\Services\\LeadScoringService\:\:computeFor\(\) expects App\\Models\\TenantUser\|null, App\\Models\\PlatformUser\|App\\Models\\TenantUser\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Parameter \#4 \$changedBy of class App\\Events\\LeadStatusChanged constructor expects App\\Models\\TenantUser, App\\Models\\PlatformUser\|App\\Models\\TenantUser\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Parameter \$changedBy of method App\\Actions\\Tenant\\RecordLeadConsent\:\:handle\(\) expects string\|null, int\|string\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>code" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>name" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\Leads\\SourceLeads\:\:\$isClientAdmin\.$#'
+			identifier: property.notFound
+			count: 4
+			path: app/Livewire/Tenant/Leads/SourceLeads.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/SourceLeads.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 5
+			path: app/Livewire/Tenant/Leads/SourceLeads.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$leadStatuses\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/SourceLeads.php
+
+		-
+			message: '#^Call to an undefined method App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:isClientAdmin\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Livewire/Tenant/Leads/SourceLeads.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\Leads\\SourceLeads\:\:assignableUsers\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/Leads/SourceLeads.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\Leads\\SourceLeads\:\:leads\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/Leads/SourceLeads.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/ModulePlaceholder.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:hasModule\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Livewire/Tenant/ModulePlaceholder.php
+
+		-
+			message: '#^Parameter \#1 \$user of static method App\\Services\\NotificationUrlResolver\:\:resolve\(\) expects App\\Models\\TenantUser, App\\Models\\PlatformUser\|App\\Models\\TenantUser\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/NotificationBell.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Livewire/Tenant/Roles/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Livewire/Tenant/Roles/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$activeModules\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Roles/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Livewire/Tenant/Roles/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\Roles\\Index\:\:availableModules\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/Roles/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\Roles\\Index\:\:permissions\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/Roles/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\Roles\\Index\:\:roles\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/Roles/Index.php
+
+		-
+			message: '#^Parameter \#1 \$tenant of method App\\Actions\\Tenant\\CreateTenantRole\:\:handle\(\) expects App\\Models\\Tenant, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/Roles/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Livewire/Tenant/Users/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 6
+			path: app/Livewire/Tenant/Users/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/Users/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\Users\\Index\:\:roles\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/Users/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\Users\\Index\:\:users\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/Users/Index.php
+
+		-
+			message: '#^Parameter \#1 \$tenant of method App\\Actions\\Tenant\\CreateTenantUser\:\:handle\(\) expects App\\Models\\Tenant, Illuminate\\Database\\Eloquent\\Model\|null given\.$#'
+			identifier: argument.type
+			count: 1
+			path: app/Livewire/Tenant/Users/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\WebsiteForms\\Index\:\:\$activeCustomFieldDefinitions\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/WebsiteForms/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Livewire/Tenant/WebsiteForms/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 7
+			path: app/Livewire/Tenant/WebsiteForms/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Livewire/Tenant/WebsiteForms/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$tenant_code\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/WebsiteForms/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\WebsiteForms\\Index\:\:activeCustomFieldDefinitions\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/WebsiteForms/Index.php
+
+		-
+			message: '#^Method App\\Livewire\\Tenant\\WebsiteForms\\Index\:\:forms\(\) has no return type specified\.$#'
+			identifier: missingType.return
+			count: 1
+			path: app/Livewire/Tenant/WebsiteForms/Index.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>policy_url" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: app/Livewire/Tenant/WebsiteForms/Index.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>policy_version" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: app/Livewire/Tenant/WebsiteForms/Index.php
+
+		-
+			message: '#^Anonymous function should return string but returns string\|false\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Models/Lead.php
+
+		-
+			message: '#^Call to function is_array\(\) with array\<string, mixed\> will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: app/Models/Lead.php
+
+		-
+			message: '#^Call to function is_string\(\) with string will always evaluate to true\.$#'
+			identifier: function.alreadyNarrowedType
+			count: 1
+			path: app/Models/Lead.php
+
+		-
+			message: '#^Method App\\Models\\Lead\:\:assignedUser\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsTo does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/Lead.php
+
+		-
+			message: '#^Method App\\Models\\Lead\:\:assignments\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\HasMany does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/Lead.php
+
+		-
+			message: '#^Method App\\Models\\Lead\:\:detailUpdateLogs\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\HasMany does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/Lead.php
+
+		-
+			message: '#^Method App\\Models\\Lead\:\:leadNotes\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\HasMany does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/Lead.php
+
+		-
+			message: '#^Method App\\Models\\Lead\:\:statusLogs\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\HasMany does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/Lead.php
+
+		-
+			message: '#^Method App\\Models\\Lead\:\:tenant\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsTo does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/Lead.php
+
+		-
+			message: '#^Property App\\Models\\Lead\:\:\$update_seen_at \(Illuminate\\Support\\Carbon\|null\) does not accept Carbon\\CarbonImmutable\.$#'
+			identifier: assign.propertyType
+			count: 1
+			path: app/Models/Lead.php
+
+		-
+			message: '#^Method App\\Models\\LeadAssignment\:\:assignedBy\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsTo does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/LeadAssignment.php
+
+		-
+			message: '#^Method App\\Models\\LeadAssignment\:\:assignedTo\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsTo does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/LeadAssignment.php
+
+		-
+			message: '#^Method App\\Models\\LeadAssignment\:\:lead\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsTo does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/LeadAssignment.php
+
+		-
+			message: '#^Method App\\Models\\LeadDetailUpdateLog\:\:changedBy\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsTo does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/LeadDetailUpdateLog.php
+
+		-
+			message: '#^Method App\\Models\\LeadDetailUpdateLog\:\:lead\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsTo does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/LeadDetailUpdateLog.php
+
+		-
+			message: '#^Method App\\Models\\LeadNote\:\:lead\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsTo does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/LeadNote.php
+
+		-
+			message: '#^Method App\\Models\\LeadNote\:\:tenantUser\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsTo does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/LeadNote.php
+
+		-
+			message: '#^Method App\\Models\\LeadSource\:\:leads\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\HasMany does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/LeadSource.php
+
+		-
+			message: '#^Method App\\Models\\LeadSource\:\:tenant\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsTo does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/LeadSource.php
+
+		-
+			message: '#^Method App\\Models\\LeadStatusLog\:\:changedBy\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsTo does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/LeadStatusLog.php
+
+		-
+			message: '#^Method App\\Models\\LeadStatusLog\:\:lead\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsTo does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/LeadStatusLog.php
+
+		-
+			message: '#^Method App\\Models\\Module\:\:roles\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsToMany does not specify its types\: TRelatedModel, TDeclaringModel, TPivotModel, TAccessor \(2\-4 required\)$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/Module.php
+
+		-
+			message: '#^Method App\\Models\\Module\:\:tenants\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsToMany does not specify its types\: TRelatedModel, TDeclaringModel, TPivotModel, TAccessor \(2\-4 required\)$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/Module.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:hasModule\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Models/PlatformUser.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:hasPermissionForModule\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Models/PlatformUser.php
+
+		-
+			message: '#^Method App\\Models\\PlatformUser\:\:role\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsTo does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/PlatformUser.php
+
+		-
+			message: '#^Method App\\Models\\Role\:\:modulePermissions\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\HasMany does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/Role.php
+
+		-
+			message: '#^Method App\\Models\\Role\:\:modules\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsToMany does not specify its types\: TRelatedModel, TDeclaringModel, TPivotModel, TAccessor \(2\-4 required\)$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/Role.php
+
+		-
+			message: '#^Method App\\Models\\Role\:\:platformUsers\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\HasMany does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/Role.php
+
+		-
+			message: '#^Method App\\Models\\Role\:\:tenant\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsTo does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/Role.php
+
+		-
+			message: '#^Method App\\Models\\Role\:\:tenantUsers\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\HasMany does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/Role.php
+
+		-
+			message: '#^Method App\\Models\\RoleModulePermission\:\:module\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsTo does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/RoleModulePermission.php
+
+		-
+			message: '#^Method App\\Models\\RoleModulePermission\:\:permission\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsTo does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/RoleModulePermission.php
+
+		-
+			message: '#^Method App\\Models\\RoleModulePermission\:\:role\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsTo does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/RoleModulePermission.php
+
+		-
+			message: '#^Method App\\Models\\Tenant\:\:activeModules\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsToMany does not specify its types\: TRelatedModel, TDeclaringModel, TPivotModel, TAccessor \(2\-4 required\)$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/Tenant.php
+
+		-
+			message: '#^Method App\\Models\\Tenant\:\:leads\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\HasMany does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/Tenant.php
+
+		-
+			message: '#^Method App\\Models\\Tenant\:\:modules\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsToMany does not specify its types\: TRelatedModel, TDeclaringModel, TPivotModel, TAccessor \(2\-4 required\)$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/Tenant.php
+
+		-
+			message: '#^Method App\\Models\\Tenant\:\:ownerRole\(\) should return App\\Models\\Role\|null but returns Illuminate\\Database\\Eloquent\\Model\|null\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Models/Tenant.php
+
+		-
+			message: '#^Method App\\Models\\Tenant\:\:roles\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\HasMany does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/Tenant.php
+
+		-
+			message: '#^Method App\\Models\\Tenant\:\:tenantUsers\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\HasMany does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/Tenant.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:hasModule\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Models/TenantUser.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:hasPermissionForModule\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Models/TenantUser.php
+
+		-
+			message: '#^Method App\\Models\\TenantUser\:\:assignedLeads\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\HasMany does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/TenantUser.php
+
+		-
+			message: '#^Method App\\Models\\TenantUser\:\:role\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsTo does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/TenantUser.php
+
+		-
+			message: '#^Method App\\Models\\TenantUser\:\:tenant\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsTo does not specify its types\: TRelatedModel, TDeclaringModel$#'
+			identifier: missingType.generics
+			count: 1
+			path: app/Models/TenantUser.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Illuminate\\Database\\Eloquent\\Model\>\|Illuminate\\Database\\Eloquent\\Model\:\:\$is_owner_role\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Observers/TenantUserObserver.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$status\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Providers/FortifyServiceProvider.php
+
+		-
+			message: '#^Instanceof between App\\Models\\Tenant and App\\Models\\Tenant will always evaluate to true\.$#'
+			identifier: instanceof.alwaysTrue
+			count: 1
+			path: app/Services/LeadAssignmentService.php
+
+		-
+			message: '#^Method App\\Services\\LeadAssignmentService\:\:pickLeastLoadedUser\(\) is unused\.$#'
+			identifier: method.unused
+			count: 1
+			path: app/Services/LeadAssignmentService.php
+
+		-
+			message: '#^Method App\\Services\\LeadAssignmentService\:\:pickRandomUser\(\) is unused\.$#'
+			identifier: method.unused
+			count: 1
+			path: app/Services/LeadAssignmentService.php
+
+		-
+			message: '#^Method App\\Services\\LeadAssignmentService\:\:pickRoundRobinUser\(\) is unused\.$#'
+			identifier: method.unused
+			count: 1
+			path: app/Services/LeadAssignmentService.php
+
+		-
+			message: '#^Result of \|\| is always true\.$#'
+			identifier: booleanOr.alwaysTrue
+			count: 1
+			path: app/Services/LeadAssignmentService.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between string and App\\Enums\\LeadDistributionMode\:\:Automatic will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Services/LeadAssignmentService.php
+
+		-
+			message: '#^Unreachable statement \- code above always terminates\.$#'
+			identifier: deadCode.unreachable
+			count: 1
+			path: app/Services/LeadAssignmentService.php
+
+		-
+			message: '#^Method App\\Services\\LeadReportingService\:\:assignmentBreakdown\(\) should return Illuminate\\Support\\Collection\<int, array\{assignee\: App\\Models\\TenantUser\|null, count\: int\}\> but returns Illuminate\\Support\\Collection\<int, array\{assignee\: App\\Models\\TenantUser\|null, count\: int\}\>\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Services/LeadReportingService.php
+
+		-
+			message: '#^Method App\\Services\\LeadReportingService\:\:sourceCostSummary\(\) should return array\{rows\: Illuminate\\Support\\Collection\<int, array\{source\: App\\Models\\LeadSource, currency\: App\\Models\\Currency, total_cost\: string, lead_count\: int, cost_per_lead\: float\|null\}\>, excluded_months\: array\<int, string\>, totals_by_currency\: Illuminate\\Support\\Collection\<int, array\{currency\: App\\Models\\Currency, total\: string\}\>\} but returns array\{rows\: Illuminate\\Support\\Collection\<int, array\{source\: App\\Models\\LeadSource, currency\: App\\Models\\Currency, total_cost\: numeric\-string, lead_count\: int, cost_per_lead\: float\|null\}\>, excluded_months\: list\<non\-falsy\-string\>, totals_by_currency\: Illuminate\\Support\\Collection\<int, array\{currency\: App\\Models\\Currency, total\: numeric\-string\}\>\}\.$#'
+			identifier: return.type
+			count: 1
+			path: app/Services/LeadReportingService.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between ''platform''\|''tenant'' and App\\Enums\\ModuleScope\:\:Platform will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Services/RoleService.php
+
+		-
+			message: '#^Strict comparison using \!\=\= between ''platform''\|''tenant'' and App\\Enums\\ModuleScope\:\:Tenant will always evaluate to true\.$#'
+			identifier: notIdentical.alwaysTrue
+			count: 1
+			path: app/Services/RoleService.php
+
+		-
+			message: '#^Unreachable statement \- code above always terminates\.$#'
+			identifier: deadCode.unreachable
+			count: 2
+			path: app/Services/RoleService.php
+
+		-
+			message: '#^Parameter \#1 \$title of static method Illuminate\\Support\\Str\:\:slug\(\) expects string, array\|string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: database/factories/LeadStatusFactory.php
+
+		-
+			message: '#^Parameter \#1 \$value of static method Illuminate\\Support\\Str\:\:title\(\) expects string, array\|string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: database/factories/LeadStatusFactory.php
+
+		-
+			message: '#^Parameter \#1 \$title of static method Illuminate\\Support\\Str\:\:slug\(\) expects string, array\|string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: database/factories/ModuleFactory.php
+
+		-
+			message: '#^Parameter \#1 \$value of static method Illuminate\\Support\\Str\:\:title\(\) expects string, array\|string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: database/factories/ModuleFactory.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: database/factories/TenantUserFactory.php
+
+		-
+			message: '#^Parameter \#1 \$string of function ucfirst expects string, array\|string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: database/factories/WebsiteFormFactory.php
