@@ -117,4 +117,10 @@ class Dashboard extends Component
     {
         return LeadSourceCost::query()->where('tenant_id', Auth::user()->tenant_id)->count();
     }
+
+    #[Computed]
+    public function hasCustomRingtone(): bool
+    {
+        return Auth::user()->tenant->whatsapp_call_ringtone_path !== null;
+    }
 }

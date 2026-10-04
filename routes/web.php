@@ -5,6 +5,8 @@ use App\Http\Controllers\LeadAttachmentController;
 use App\Http\Controllers\LeadCallController;
 use App\Http\Controllers\LeadMessageAttachmentController;
 use App\Http\Controllers\NotificationRedirectController;
+use App\Http\Controllers\WhatsAppCallRingtoneController;
+use App\Livewire\Tenant\CallingSettings\Index as CallingSettingsIndex;
 use App\Livewire\Tenant\Dashboard;
 use App\Livewire\Tenant\LeadCustomFields\Index as LeadCustomFieldsIndex;
 use App\Livewire\Tenant\LeadImports\Index as LeadImportsIndex;
@@ -46,6 +48,14 @@ Route::middleware(['auth', 'verified', 'tenant.identify', 'tenant.active'])->gro
         Route::livewire('leads/source-costs', LeadSourceCostsIndex::class)->name('tenant-leads.source-costs');
         Route::livewire('leads/website-forms', WebsiteFormsIndex::class)->name('tenant-leads.website-forms');
         Route::livewire('leads/reports', LeadReportsIndex::class)->name('tenant-leads.reports');
+        Route::livewire('leads/calling-settings', CallingSettingsIndex::class)->name('tenant-leads.calling-settings');
+        // WhatsApp inbound calling — streams the tenant's custom ringtone
+        // (if set) to the global softphone shell, which lives in the main
+        // layout regardless of which lead-management page is open; gating
+        // it here (rather than the outer, non-module group) still matches
+        // reality since the softphone itself only ever renders when the
+        // lead-management module is active (see components/softphone.blade.php).
+        Route::get('whatsapp-call-ringtone', [WhatsAppCallRingtoneController::class, 'show'])->name('tenant.whatsapp-call-ringtone');
         Route::livewire('leads/import', LeadImportsIndex::class)->name('tenant-lead-imports.index');
         Route::livewire('leads/import/{leadImport}', LeadImportsShow::class)->name('tenant-lead-imports.show');
         // WhatsApp inbound calling — JSON actions on a live call. The call id is

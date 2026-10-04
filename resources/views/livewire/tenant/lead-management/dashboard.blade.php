@@ -168,6 +168,15 @@
                         'count' => [$this->totalWebsiteForms, __(':count forms', ['count' => $this->totalWebsiteForms])],
                         'gate' => $this->canManageCatalogs,
                     ],
+                    [
+                        'label' => __('Calling Settings'),
+                        'route' => 'tenant-leads.calling-settings',
+                        'icon' => 'phone',
+                        'tint' => 'emerald',
+                        'description' => __('Upload a custom ringtone for incoming WhatsApp calls.'),
+                        'count' => $this->hasCustomRingtone ? [1, __('Custom ringtone set')] : [0, __('Default tone')],
+                        'gate' => $this->canManageCatalogs,
+                    ],
                 ];
             @endphp
 

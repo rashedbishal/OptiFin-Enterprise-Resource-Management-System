@@ -14,6 +14,9 @@
     $softphoneConfig = [
         'userId' => (string) $userId,
         'tenantId' => (string) auth()->user()->tenant_id,
+        // Null when the tenant has no custom ringtone uploaded — index.js
+        // falls back to the synthesized tone in that case, unchanged.
+        'ringtoneUrl' => auth()->user()->tenant?->whatsapp_call_ringtone_path ? route('tenant.whatsapp-call-ringtone') : null,
         'pollMs' => (int) config('calling.softphone_poll_seconds', 5) * 1000,
         'heartbeatMs' => (int) config('calling.softphone_heartbeat_seconds', 15) * 1000,
         'staleMs' => (int) config('calling.softphone_staleness_seconds', 20) * 1000,

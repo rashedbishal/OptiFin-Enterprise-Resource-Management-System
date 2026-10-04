@@ -44,6 +44,9 @@ class Tenant extends Model
         'lead_nurturing_notify_enabled',
         'lead_nurturing_task_enabled',
         'lead_nurturing_inactive_days',
+        'whatsapp_call_ringtone_path',
+        'whatsapp_call_ringtone_original_name',
+        'whatsapp_call_ringtone_size',
     ];
 
     /**
@@ -64,6 +67,7 @@ class Tenant extends Model
             'lead_nurturing_notify_enabled' => 'boolean',
             'lead_nurturing_task_enabled' => 'boolean',
             'lead_nurturing_inactive_days' => 'integer',
+            'whatsapp_call_ringtone_size' => 'integer',
         ];
     }
 

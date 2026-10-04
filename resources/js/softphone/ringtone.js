@@ -1,7 +1,9 @@
 /**
- * WhatsApp inbound calling — a synthesized "you have an incoming call" ring
- * (Web Audio, no asset/library), played only while an inbound call is
- * Ringing and unclaimed in this tab. Mirrors outbound-media.js's
+ * WhatsApp inbound calling — plays either a tenant's uploaded custom MP3
+ * ringtone (Client Admin setting, see CallingSettings\Index) or, when none
+ * is set, a synthesized "you have an incoming call" ring (Web Audio, no
+ * asset/library) — played only while an inbound call is Ringing and
+ * unclaimed in this tab. The synthesized tone mirrors outbound-media.js's
  * startRingback()/stopRingback() pattern exactly (same Web Audio primitives,
  * one oscillator/gain pair retriggered per cadence tick, same "never throws
  * into the call lifecycle — a missing or autoplay-blocked AudioContext
@@ -14,8 +16,53 @@
  * state itself, so it cannot affect answer/decline/hangup or any existing
  * behavior.
  */
-export function createRingtone({ AudioContext, timers = { setInterval: (...a) => setInterval(...a), clearInterval: (...a) => clearInterval(...a) } } = {}) {
+export function createRingtone({
+    AudioContext,
+    timers = { setInterval: (...a) => setInterval(...a), clearInterval: (...a) => clearInterval(...a) },
+    audioUrl = null,
+    createAudioElement = (src) => new Audio(src),
+} = {}) {
     let active = null;
+    let customAudio = null;
+
+    /**
+     * The custom-MP3 path, entirely separate from the synthesized one below
+     * — a tenant with no ringtoneUrl configured never touches this at all,
+     * so its behavior is byte-for-byte unchanged from before this existed.
+     */
+    function startCustom() {
+        if (active) {
+            return;
+        }
+
+        try {
+            const audio = customAudio ?? (customAudio = createAudioElement(audioUrl));
+
+            audio.loop = true;
+            audio.currentTime = 0;
+
+            // A promise rejection here (autoplay blocked) must never throw
+            // into the call lifecycle — same principle as the synthesized
+            // path's try/catch below.
+            audio.play()?.catch(() => {});
+
+            active = { kind: 'custom', audio };
+        } catch {
+            active = null;
+        }
+    }
+
+    function stopCustom() {
+        const { audio } = active;
+        active = null;
+
+        try {
+            audio.pause();
+            audio.currentTime = 0;
+        } catch {
+            // Ignore.
+        }
+    }
 
     const ringBurst = (context, gain) => {
         try {
@@ -37,6 +84,12 @@ export function createRingtone({ AudioContext, timers = { setInterval: (...a) =>
      */
     function start() {
         if (active) {
+            return;
+        }
+
+        if (audioUrl) {
+            startCustom();
+
             return;
         }
 
@@ -71,6 +124,12 @@ export function createRingtone({ AudioContext, timers = { setInterval: (...a) =>
      */
     function stop() {
         if (!active) {
+            return;
+        }
+
+        if (active.kind === 'custom') {
+            stopCustom();
+
             return;
         }
 

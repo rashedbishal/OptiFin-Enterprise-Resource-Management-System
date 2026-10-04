@@ -44,7 +44,7 @@ export function registerSoftphone(alpine) {
                     return;
                 }
 
-                ringtone = createRingtone({ AudioContext: window.AudioContext });
+                ringtone = createRingtone({ AudioContext: window.AudioContext, audioUrl: config.ringtoneUrl ?? null });
 
                 controller = new SoftphoneController({
                     api: createApi({ urls: config.urls }),
