@@ -10,7 +10,7 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Validator;
 
-#[Signature('app:create-mother-admin')]
+#[Signature('admin:create-mother-admin-credentials')]
 #[Description('Create the platform\'s single Mother Admin account')]
 class CreateMotherAdmin extends Command
 {

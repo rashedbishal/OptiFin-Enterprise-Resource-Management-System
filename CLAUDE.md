@@ -24,7 +24,7 @@ vendor/bin/pest path/to/FileTest.php     # single file
 composer run test                        # config:clear + lint:check + types:check + full test suite (CI gate)
 
 php artisan route:list
-php artisan app:create-mother-admin      # bootstrap the single Platform mother_admin (nothing else creates one)
+php artisan admin:create-mother-admin-credentials  # bootstrap the single Platform mother_admin (nothing else creates one)
 php artisan schema:verify-enum-constraints  # manual, Postgres-only: live CHECK constraints vs PHP enum cases (not in CI)
 php artisan leads:fetch-emails           # poll IMAP lead sources, create Lead + ProcessEmailLeadSource job
 php artisan leads:retry-failed-emails    # retry durably-recorded failed email lead-processing messages that are due
@@ -40,6 +40,10 @@ php artisan calls:reconcile-stale        # every-minute sweep: end WhatsApp call
 ```
 
 **Test vs. dev database differ:** `phpunit.xml` runs the suite on in-memory SQLite (`QUEUE_CONNECTION=sync`, `BROADCAST_CONNECTION=null`), while `.env.example` targets PostgreSQL + `database` queue + Reverb. CI (`.github/workflows/tests.yml`: `composer setup` → `composer ci:check`) is SQLite-only, so Postgres-specific behavior (partial unique indexes, enum `CHECK` constraints) is not exercised by tests — verify it by hand, e.g. with `schema:verify-enum-constraints` after changing an enum-backed column such as `LeadSourceType`. Queue workers must be running locally for IMAP polling, notifications and CSV imports (`composer run dev` starts one).
+
+`phpstan analyse` runs at `level: 7` against `phpstan-baseline.neon` (~436 pre-existing errors, e.g. `Auth::user()` being typed `PlatformUser|TenantUser|null` throughout) — `types:check` only fails on errors *not* already in that baseline, so don't chase baseline-covered noise in unrelated code, but never let a new diagnostic slip in uncaught. Regenerate the baseline deliberately, not to silence a real new error.
+
+**Deploy pipeline:** a `deploy` job in `.github/workflows/tests.yml` runs after `ci` passes on every push to `main`, SSHing into the production VPS (deploy key restricted server-side to only run `deploy.sh`) to build the new release in an isolated `releases/<timestamp>/` directory and atomically swap the `current` symlink — only after dependencies, build, migrations and caches all succeed, with auto-rollback to the previous release if the post-deploy `/up` health check fails. `deploy.sh` itself lives on the VPS, not in this repo.
 
 `README.md` covers only a runbook for testing Facebook Lead Ads (Instant Forms) ingestion — no general project docs there.
 
