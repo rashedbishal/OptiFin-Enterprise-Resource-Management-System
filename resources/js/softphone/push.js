@@ -71,14 +71,24 @@ export function createPushSubscriber({
         return supported ? notificationApi.permission : 'unsupported';
     }
 
+    /**
+     * Goes through register() (idempotent — the browser just hands back the
+     * existing registration if one's already there) rather than
+     * navigator.serviceWorker.ready. `ready` only resolves once a worker has
+     * installed AND activated for this origin; on a first-ever visit nothing
+     * has registered yet, so awaiting it before anything has called
+     * register() deadlocks forever — the exact "stuck on Enabling…" bug this
+     * fixes. A registration's pushManager is usable immediately, with no
+     * need to wait for activation.
+     */
     async function currentSubscription() {
-        if (!supported) {
+        const registration = await register();
+
+        if (!registration) {
             return null;
         }
 
         try {
-            const registration = await nav.serviceWorker.ready;
-
             return await registration.pushManager.getSubscription();
         } catch {
             return null;
@@ -106,7 +116,13 @@ export function createPushSubscriber({
             return { ok: false, reason: 'unsupported' };
         }
 
-        const existing = await currentSubscription();
+        const registration = await register();
+
+        if (!registration) {
+            return { ok: false, reason: 'registration-failed' };
+        }
+
+        const existing = await registration.pushManager.getSubscription().catch(() => null);
 
         if (existing) {
             await send('POST', urls.subscribe, existing.toJSON());
@@ -118,12 +134,6 @@ export function createPushSubscriber({
 
         if (permissionResult !== 'granted') {
             return { ok: false, reason: 'permission-denied' };
-        }
-
-        const registration = await register();
-
-        if (!registration) {
-            return { ok: false, reason: 'registration-failed' };
         }
 
         let subscription;

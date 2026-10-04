@@ -64,6 +64,35 @@ beforeEach(() => {
     global.window.PushManager = function () {};
 });
 
+describe('createPushSubscriber() never relies on navigator.serviceWorker.ready', () => {
+    // Regression for a real deadlock: on a first-ever visit, nothing has
+    // called register() yet, so `ready` (which only resolves once a worker
+    // has installed AND activated) waits forever — register() itself is
+    // what must be awaited instead, since its registration is usable
+    // immediately. `ready` here is a promise that NEVER resolves; if
+    // anything still awaits it, these tests hang/time out.
+    function fakeEnvWithHangingReady() {
+        const env = fakeEnv();
+        env.nav.serviceWorker.ready = new Promise(() => {});
+
+        return env;
+    }
+
+    it('enable() completes on a first-ever visit', async () => {
+        const { nav, notificationApi, fetchImpl } = fakeEnvWithHangingReady();
+        const subscriber = createPushSubscriber({ nav, notificationApi, fetchImpl, vapidPublicKey: 'key', urls: { subscribe: '/push-subscriptions' } });
+
+        await expect(subscriber.enable()).resolves.toEqual({ ok: true, reason: null });
+    });
+
+    it('isSubscribed() completes on a first-ever visit', async () => {
+        const { nav, notificationApi } = fakeEnvWithHangingReady();
+        const subscriber = createPushSubscriber({ nav, notificationApi, vapidPublicKey: 'key', urls: {} });
+
+        await expect(subscriber.isSubscribed()).resolves.toBe(false);
+    });
+});
+
 describe('createPushSubscriber()', () => {
     it('is unsupported when no VAPID public key is configured', () => {
         const { nav, notificationApi } = fakeEnv();
