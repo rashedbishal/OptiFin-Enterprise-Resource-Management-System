@@ -188,6 +188,11 @@ class FakeAudioElement {
         this.currentTime = 0;
         this.paused = true;
         this.playCalls = 0;
+        this.listeners = {};
+    }
+
+    addEventListener(type, handler) {
+        (this.listeners[type] ??= []).push(handler);
     }
 
     play() {
@@ -199,7 +204,32 @@ class FakeAudioElement {
 
     pause() {
         this.paused = true;
+        // Real <audio> elements fire a native 'pause' event on every
+        // pause() call, whoever called it — the OS, the browser, or our
+        // own code — which is exactly the signal ringtone.js's own pause
+        // listener relies on.
+        for (const handler of this.listeners.pause ?? []) {
+            handler();
+        }
     }
+}
+
+function fakeDoc(visibilityState = 'visible') {
+    const listeners = {};
+
+    return {
+        visibilityState,
+        addEventListener: vi.fn((type, handler) => {
+            (listeners[type] ??= []).push(handler);
+        }),
+        fireVisibilityChange(nextState) {
+            this.visibilityState = nextState;
+
+            for (const handler of listeners.visibilitychange ?? []) {
+                handler();
+            }
+        },
+    };
 }
 
 describe('createRingtone() with a custom audioUrl', () => {
@@ -363,6 +393,96 @@ describe('createRingtone().prime()', () => {
  * navigator.mediaSession + MediaMetadata rather than real ones (jsdom
  * implements neither).
  */
+describe('createRingtone() resumes after an unexpected pause or backgrounded tab', () => {
+    it('retries play() when the custom audio is paused while still the active ring (e.g. the OS silently stopped it)', () => {
+        const createAudioElement = vi.fn((src) => new FakeAudioElement(src));
+        const ringtone = createRingtone({ audioUrl: 'https://example.test/ringtone.mp3', createAudioElement });
+
+        ringtone.start();
+        const audio = createAudioElement.mock.results[0].value;
+        const playCallsAfterStart = audio.playCalls;
+
+        // Simulates the browser/OS pausing it out from under us — nothing
+        // in this module itself called pause().
+        audio.pause();
+
+        expect(audio.playCalls).toBeGreaterThan(playCallsAfterStart);
+        expect(ringtone.isActive()).toBe(true);
+    });
+
+    it('does NOT resume after our own stop() pauses it', () => {
+        const createAudioElement = vi.fn((src) => new FakeAudioElement(src));
+        const ringtone = createRingtone({ audioUrl: 'https://example.test/ringtone.mp3', createAudioElement });
+
+        ringtone.start();
+        const audio = createAudioElement.mock.results[0].value;
+
+        ringtone.stop();
+
+        expect(audio.playCalls).toBe(1);
+        expect(audio.paused).toBe(true);
+    });
+
+    it('does NOT resume after prime()\'s own deliberate pause', async () => {
+        const createAudioElement = vi.fn((src) => new FakeAudioElement(src));
+        const ringtone = createRingtone({ audioUrl: 'https://example.test/ringtone.mp3', createAudioElement });
+
+        ringtone.prime();
+        await vi.waitFor(() => expect(createAudioElement.mock.results[0].value.paused).toBe(true));
+
+        expect(createAudioElement.mock.results[0].value.playCalls).toBe(1);
+    });
+
+    it('retries play() when the tab becomes visible again while the custom ring is still active', () => {
+        const createAudioElement = vi.fn((src) => new FakeAudioElement(src));
+        const doc = fakeDoc('hidden');
+        const ringtone = createRingtone({ audioUrl: 'https://example.test/ringtone.mp3', createAudioElement, doc });
+
+        ringtone.start();
+        const audio = createAudioElement.mock.results[0].value;
+        const playCallsWhileHidden = audio.playCalls;
+
+        doc.fireVisibilityChange('visible');
+
+        expect(audio.playCalls).toBeGreaterThan(playCallsWhileHidden);
+    });
+
+    it('resumes the AudioContext when the tab becomes visible again while the synthesized ring is still active', () => {
+        const doc = fakeDoc('hidden');
+        const ringtone = createRingtone({ AudioContext: FakeAudioContext, timers: fakeTimers(), doc });
+
+        ringtone.start();
+        const context = FakeAudioContext.instances[0];
+        context.resume = vi.fn(async () => undefined);
+
+        doc.fireVisibilityChange('visible');
+
+        expect(context.resume).toHaveBeenCalledOnce();
+    });
+
+    it('does nothing on visibilitychange while no ring is active', () => {
+        const createAudioElement = vi.fn((src) => new FakeAudioElement(src));
+        const doc = fakeDoc('hidden');
+        createRingtone({ audioUrl: 'https://example.test/ringtone.mp3', createAudioElement, doc });
+
+        expect(() => doc.fireVisibilityChange('visible')).not.toThrow();
+        expect(createAudioElement).not.toHaveBeenCalled();
+    });
+
+    it('does nothing on visibilitychange to a non-visible state', () => {
+        const createAudioElement = vi.fn((src) => new FakeAudioElement(src));
+        const doc = fakeDoc('visible');
+        const ringtone = createRingtone({ audioUrl: 'https://example.test/ringtone.mp3', createAudioElement, doc });
+
+        ringtone.start();
+        const playCallsAfterStart = createAudioElement.mock.results[0].value.playCalls;
+
+        doc.fireVisibilityChange('hidden');
+
+        expect(createAudioElement.mock.results[0].value.playCalls).toBe(playCallsAfterStart);
+    });
+});
+
 function fakeMediaSession() {
     return { metadata: undefined, playbackState: undefined, setActionHandler: vi.fn() };
 }

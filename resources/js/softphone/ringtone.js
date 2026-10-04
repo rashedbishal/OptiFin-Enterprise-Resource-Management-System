@@ -23,9 +23,70 @@ export function createRingtone({
     createAudioElement = (src) => new Audio(src),
     mediaSession = typeof navigator === 'undefined' ? undefined : navigator.mediaSession,
     MediaMetadataClass = typeof MediaMetadata === 'undefined' ? undefined : MediaMetadata,
+    doc = typeof document === 'undefined' ? undefined : document,
 } = {}) {
     let active = null;
     let customAudio = null;
+
+    /**
+     * Gets (creating + wiring up once) the single reused custom-audio
+     * element. The 'pause' listener is what notices when the OS/browser
+     * silently paused a genuinely ringing element out from under us — a
+     * real, observed failure mode: a call arriving while the tab is
+     * already backgrounded can start playback for a brief moment, then get
+     * paused by the browser before the tab is recognized as having an
+     * established background-media session, with no JS error at all. Fires
+     * only while `active` still names THIS element as the current ring (not
+     * during our own stopCustom()/prime(), both of which null out `active`
+     * — or clear it to a different ring — before ever calling pause()), so
+     * it only ever retries a pause we didn't ask for.
+     */
+    function getCustomAudio() {
+        if (customAudio) {
+            return customAudio;
+        }
+
+        customAudio = createAudioElement(audioUrl);
+
+        try {
+            customAudio.addEventListener('pause', () => {
+                if (active?.kind === 'custom' && active.audio === customAudio) {
+                    customAudio.play()?.catch(() => {});
+                }
+            });
+        } catch {
+            // Not every fake/stub in tests implements addEventListener.
+        }
+
+        return customAudio;
+    }
+
+    /**
+     * The other half of the same failure mode: even once the pause listener
+     * above retries, THAT retry can itself be blocked while still
+     * backgrounded. The moment the tab actually becomes visible again (the
+     * user tapped the notification, or just switched back), nothing else
+     * in this module would otherwise know to try again — visibilitychange
+     * is the one reliable signal for "autoplay restrictions have almost
+     * certainly just lifted."
+     */
+    if (doc) {
+        try {
+            doc.addEventListener('visibilitychange', () => {
+                if (doc.visibilityState !== 'visible' || !active) {
+                    return;
+                }
+
+                if (active.kind === 'custom') {
+                    active.audio.play()?.catch(() => {});
+                } else {
+                    active.context.resume?.().catch?.(() => {});
+                }
+            });
+        } catch {
+            // Ignore — the pause-listener retry above still applies.
+        }
+    }
 
     /**
      * Declares a real Media Session for the ring (title/artist instead of
@@ -89,7 +150,7 @@ export function createRingtone({
         }
 
         try {
-            const audio = customAudio ?? (customAudio = createAudioElement(audioUrl));
+            const audio = getCustomAudio();
 
             audio.loop = true;
             audio.currentTime = 0;
@@ -137,7 +198,7 @@ export function createRingtone({
         }
 
         try {
-            const audio = customAudio ?? (customAudio = createAudioElement(audioUrl));
+            const audio = getCustomAudio();
             const wasMuted = audio.muted;
             audio.muted = true;
 
