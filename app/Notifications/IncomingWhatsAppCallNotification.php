@@ -24,6 +24,14 @@ use NotificationChannels\WebPush\WebPushMessage;
  * retried job) replaces the OS notification instead of stacking a duplicate;
  * requireInteraction(true) keeps it visible until the user acts, matching a
  * real incoming-call alert rather than a disappearing toast.
+ *
+ * vibrate() is a one-shot pattern (fired once when the notification is
+ * shown, and again on each renotify — it does not loop like a real
+ * ringtone): the Web Notifications API has never supported attaching a
+ * custom sound file, in any browser, so a longer buzz-pause-buzz cadence is
+ * the only "feels like an incoming call" cue achievable here. Ignored
+ * entirely on a device in silent/vibrate-off mode or one with no vibration
+ * motor — never a gate on anything.
  */
 class IncomingWhatsAppCallNotification extends Notification
 {
@@ -57,6 +65,7 @@ class IncomingWhatsAppCallNotification extends Notification
             ->tag('whatsapp-call-'.$this->callId)
             ->renotify(true)
             ->requireInteraction(true)
+            ->vibrate([400, 200, 400, 200, 400, 200, 400])
             ->data(['url' => route('tenant-leads.show', $this->leadId)]);
     }
 }

@@ -79,6 +79,7 @@ test('the notification carries the lead\'s click-through url, name and phone', f
             'tag' => 'whatsapp-call-'.$x->call->id,
             'renotify' => true,
             'requireInteraction' => true,
+            'vibrate' => [400, 200, 400, 200, 400, 200, 400],
             'data' => ['url' => route('tenant-leads.show', $x->lead->id)],
         ]);
 
