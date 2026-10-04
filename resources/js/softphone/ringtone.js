@@ -117,6 +117,54 @@ export function createRingtone({
         }
     }
 
+    /**
+     * Unlocks the custom-audio element ahead of time, muted, so the FIRST
+     * real ring of a page session doesn't have to be the one that
+     * establishes "this element is allowed to autoplay" with the browser.
+     * That distinction matters specifically for a call that arrives while
+     * the tab is already backgrounded: a browser generally allows
+     * *continuing* audio that already played once in this session, but
+     * blocks *starting* new audio from a background tab with no recent
+     * interaction — silently, no error, which is indistinguishable from
+     * "broken" without this context. Call once, from a real user gesture,
+     * as early as possible (see index.js's one-time first-interaction
+     * listener) — a no-op for the synthesized path (nothing persists across
+     * its own start()/stop() cycle to usefully pre-unlock).
+     */
+    function prime() {
+        if (!audioUrl || active) {
+            return;
+        }
+
+        try {
+            const audio = customAudio ?? (customAudio = createAudioElement(audioUrl));
+            const wasMuted = audio.muted;
+            audio.muted = true;
+
+            const reset = () => {
+                try {
+                    audio.pause();
+                    audio.currentTime = 0;
+                } catch {
+                    // Ignore.
+                }
+
+                audio.muted = wasMuted;
+            };
+
+            const playing = audio.play();
+
+            if (playing?.then) {
+                playing.then(reset).catch(() => { audio.muted = wasMuted; });
+            } else {
+                reset();
+            }
+        } catch {
+            // Best effort — start() still tries its own unlock later, same
+            // as before this existed.
+        }
+    }
+
     const ringBurst = (context, gain) => {
         try {
             const t = context.currentTime;
@@ -227,6 +275,7 @@ export function createRingtone({
     return {
         start,
         stop,
+        prime,
         isActive: () => active !== null,
     };
 }

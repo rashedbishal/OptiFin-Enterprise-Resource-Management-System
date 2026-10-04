@@ -282,6 +282,80 @@ describe('createRingtone() with a custom audioUrl', () => {
     });
 });
 
+describe('createRingtone().prime()', () => {
+    it('creates and silently unlocks the custom audio element without starting an active ring', async () => {
+        const createAudioElement = vi.fn((src) => new FakeAudioElement(src));
+        const ringtone = createRingtone({ audioUrl: 'https://example.test/ringtone.mp3', createAudioElement });
+
+        ringtone.prime();
+        await vi.waitFor(() => expect(createAudioElement).toHaveBeenCalledTimes(1));
+
+        const audio = createAudioElement.mock.results[0].value;
+        await vi.waitFor(() => expect(audio.paused).toBe(true));
+        expect(audio.playCalls).toBe(1);
+        expect(ringtone.isActive()).toBe(false);
+    });
+
+    it('mutes during the priming play, then restores the original muted state', async () => {
+        const audio = new FakeAudioElement();
+        audio.muted = false;
+        const ringtone = createRingtone({ audioUrl: 'https://example.test/ringtone.mp3', createAudioElement: () => audio });
+
+        ringtone.prime();
+
+        expect(audio.muted).toBe(true);
+        await vi.waitFor(() => expect(audio.paused).toBe(true));
+        expect(audio.muted).toBe(false);
+    });
+
+    it('is a no-op for the synthesized path (no audioUrl)', () => {
+        const createAudioElement = vi.fn();
+        const ringtone = createRingtone({ AudioContext: FakeAudioContext, createAudioElement });
+
+        ringtone.prime();
+
+        expect(createAudioElement).not.toHaveBeenCalled();
+    });
+
+    it('never interferes with an already-active ring (would otherwise mute/pause it mid-ring)', () => {
+        const createAudioElement = vi.fn((src) => new FakeAudioElement(src));
+        const ringtone = createRingtone({ audioUrl: 'https://example.test/ringtone.mp3', createAudioElement });
+
+        ringtone.start();
+        const audio = createAudioElement.mock.results[0].value;
+        audio.muted = false;
+
+        ringtone.prime();
+
+        expect(audio.muted).toBe(false);
+        expect(audio.paused).toBe(false);
+        expect(ringtone.isActive()).toBe(true);
+    });
+
+    it('is safe to call again after a ring has since stopped', async () => {
+        const createAudioElement = vi.fn((src) => new FakeAudioElement(src));
+        const ringtone = createRingtone({ audioUrl: 'https://example.test/ringtone.mp3', createAudioElement });
+
+        ringtone.start();
+        ringtone.stop();
+
+        expect(() => ringtone.prime()).not.toThrow();
+        await vi.waitFor(() => expect(createAudioElement.mock.results[0].value.paused).toBe(true));
+        expect(createAudioElement).toHaveBeenCalledTimes(1);
+    });
+
+    it('never throws when construction or play() fails', async () => {
+        const throwing = createRingtone({ audioUrl: 'https://example.test/ringtone.mp3', createAudioElement: () => { throw new Error('nope'); } });
+        expect(() => throwing.prime()).not.toThrow();
+
+        const rejecting = createRingtone({
+            audioUrl: 'https://example.test/ringtone.mp3',
+            createAudioElement: () => ({ muted: false, paused: true, currentTime: 0, play: () => Promise.reject(new Error('blocked')), pause: vi.fn() }),
+        });
+        expect(() => rejecting.prime()).not.toThrow();
+    });
+});
+
 /*
  * The Media Session declaration — why the ring survives the tab being
  * backgrounded or the screen locked (mobile OSes exempt an active media

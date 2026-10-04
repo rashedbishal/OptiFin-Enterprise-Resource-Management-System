@@ -119,11 +119,28 @@ export function registerSoftphone(alpine) {
                 // trusted as anything beyond display text.
                 this.onSoftphoneCall = (event) => this.callOutbound(event.detail?.leadId, event.detail?.leadName, event.detail?.leadPhone);
                 window.addEventListener('softphone:call', this.onSoftphoneCall);
+
+                // Unlocks the ringtone's audio element on the very first tap
+                // anywhere on the page, well before any real call could
+                // arrive — see ringtone.js's prime() docblock for why a call
+                // that starts ringing while the tab is already backgrounded
+                // otherwise needs this to have already happened once. One
+                // real user gesture per page load is enough; removes itself
+                // immediately either way.
+                this.onFirstInteraction = () => {
+                    document.removeEventListener('pointerdown', this.onFirstInteraction);
+                    document.removeEventListener('keydown', this.onFirstInteraction);
+                    ringtone?.prime();
+                };
+                document.addEventListener('pointerdown', this.onFirstInteraction, { once: true, passive: true });
+                document.addEventListener('keydown', this.onFirstInteraction, { once: true });
             },
 
             destroy() {
                 clearInterval(clock);
                 window.removeEventListener('softphone:call', this.onSoftphoneCall);
+                document.removeEventListener('pointerdown', this.onFirstInteraction);
+                document.removeEventListener('keydown', this.onFirstInteraction);
                 controller?.stop();
                 ringtone?.stop();
                 ringtone = null;
