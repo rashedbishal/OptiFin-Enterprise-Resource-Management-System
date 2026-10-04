@@ -29,6 +29,34 @@ export function createRingtone({
     let customAudio = null;
 
     /**
+     * The one place that retries playing the custom audio (the pause
+     * listener and the visibilitychange handler below both call this,
+     * startCustom() does not — its own call is the original, not a retry).
+     * play() is async even before its promise settles; a legitimate
+     * stop() can start — and finish — pausing the SAME reused element
+     * while a retry's play() is still in flight. Without re-checking once
+     * it actually resolves, that race lets a stale retry "win" after
+     * stop() already ran: the loop="true" element would then keep ringing
+     * forever with nothing left watching it, since `active` is already
+     * null and no code path has a reason to call pause() on it again. This
+     * is exactly that watchdog: if we're no longer meant to be ringing by
+     * the time play() has taken effect, undo it immediately.
+     */
+    function retryCustomPlay(audio) {
+        const playing = audio.play();
+
+        playing?.then?.(() => {
+            if (!(active?.kind === 'custom' && active.audio === audio)) {
+                try {
+                    audio.pause();
+                } catch {
+                    // Ignore.
+                }
+            }
+        })?.catch?.(() => {});
+    }
+
+    /**
      * Gets (creating + wiring up once) the single reused custom-audio
      * element. The 'pause' listener is what notices when the OS/browser
      * silently paused a genuinely ringing element out from under us — a
@@ -51,7 +79,7 @@ export function createRingtone({
         try {
             customAudio.addEventListener('pause', () => {
                 if (active?.kind === 'custom' && active.audio === customAudio) {
-                    customAudio.play()?.catch(() => {});
+                    retryCustomPlay(customAudio);
                 }
             });
         } catch {
@@ -78,7 +106,7 @@ export function createRingtone({
                 }
 
                 if (active.kind === 'custom') {
-                    active.audio.play()?.catch(() => {});
+                    retryCustomPlay(active.audio);
                 } else {
                     active.context.resume?.().catch?.(() => {});
                 }
@@ -155,12 +183,12 @@ export function createRingtone({
             audio.loop = true;
             audio.currentTime = 0;
 
-            // A promise rejection here (autoplay blocked) must never throw
-            // into the call lifecycle — same principle as the synthesized
-            // path's try/catch below.
-            audio.play()?.catch(() => {});
-
+            // Set BEFORE play(), not after — retryCustomPlay()'s own
+            // post-resolve check needs `active` to already name this ring
+            // for the same reason it exists at all (see its own docblock).
             active = { kind: 'custom', audio };
+
+            retryCustomPlay(audio);
         } catch {
             active = null;
         }

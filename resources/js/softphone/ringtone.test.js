@@ -387,13 +387,43 @@ describe('createRingtone().prime()', () => {
 });
 
 /*
- * The Media Session declaration — why the ring survives the tab being
- * backgrounded or the screen locked (mobile OSes exempt an active media
- * session from background-tab suspension). Proven with a fake
- * navigator.mediaSession + MediaMetadata rather than real ones (jsdom
- * implements neither).
+ * Retrying a ring the OS silently paused, or that got blocked while the tab
+ * was backgrounded — see retryCustomPlay()'s own docblock in ringtone.js
+ * for the exact race this protects against (a reported bug: the ringtone
+ * kept playing indefinitely after the real call had already ended, because
+ * a stale in-flight retry's play() took effect after stop() already ran).
  */
 describe('createRingtone() resumes after an unexpected pause or backgrounded tab', () => {
+    it("a retry's play() that resolves AFTER stop() has already run gets immediately re-paused (the reported phantom-ringing bug)", async () => {
+        const createAudioElement = vi.fn((src) => new FakeAudioElement(src));
+        const ringtone = createRingtone({ audioUrl: 'https://example.test/ringtone.mp3', createAudioElement });
+
+        ringtone.start();
+        const audio = createAudioElement.mock.results[0].value;
+        const pauseSpy = vi.spyOn(audio, 'pause');
+
+        // The retry triggered below is made controllable, so its play()
+        // can be resolved AFTER stop() has already run — reproducing the
+        // exact race: a stale in-flight retry "winning" after the real
+        // call has already ended.
+        let resolveRetryPlay;
+        audio.play = vi.fn(() => new Promise((resolve) => { resolveRetryPlay = resolve; }));
+
+        // Simulates the OS silently pausing an active ring — fires the
+        // 'pause' listener, which starts the controllable retry above.
+        audio.pause();
+
+        ringtone.stop();
+        expect(ringtone.isActive()).toBe(false);
+        const pauseCallsAfterStop = pauseSpy.mock.calls.length;
+
+        // The stale retry's play() finally "takes effect" — without the
+        // watchdog, nothing would react to this and the loop="true"
+        // element would just keep ringing forever.
+        resolveRetryPlay();
+        await vi.waitFor(() => expect(pauseSpy.mock.calls.length).toBeGreaterThan(pauseCallsAfterStop));
+    });
+
     it('retries play() when the custom audio is paused while still the active ring (e.g. the OS silently stopped it)', () => {
         const createAudioElement = vi.fn((src) => new FakeAudioElement(src));
         const ringtone = createRingtone({ audioUrl: 'https://example.test/ringtone.mp3', createAudioElement });
@@ -483,6 +513,13 @@ describe('createRingtone() resumes after an unexpected pause or backgrounded tab
     });
 });
 
+/*
+ * The Media Session declaration — why the ring survives the tab being
+ * backgrounded or the screen locked (mobile OSes exempt an active media
+ * session from background-tab suspension). Proven with a fake
+ * navigator.mediaSession + MediaMetadata rather than real ones (jsdom
+ * implements neither).
+ */
 function fakeMediaSession() {
     return { metadata: undefined, playbackState: undefined, setActionHandler: vi.fn() };
 }
