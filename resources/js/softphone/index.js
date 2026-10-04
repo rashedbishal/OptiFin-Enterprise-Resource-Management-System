@@ -46,6 +46,20 @@ export function registerSoftphone(alpine) {
             // all (Safari without the PWA installed, pre-Chromium Edge, …).
             notificationsPermission: 'unsupported',
             notificationsSubscribed: false,
+            notificationsBusy: false,
+            notificationsError: null,
+            // Cancel hides the prompt for this browser without touching the
+            // actual Notification permission (which JS can never revoke) —
+            // persisted so it doesn't reappear on every page load this
+            // session; a try/catch since localStorage can throw (private
+            // browsing, blocked site data).
+            notificationsDismissed: (() => {
+                try {
+                    return window.localStorage.getItem('optifin.calling.notifications-dismissed') === '1';
+                } catch {
+                    return false;
+                }
+            })(),
 
             init() {
                 if (!window.Echo) {
@@ -130,14 +144,51 @@ export function registerSoftphone(alpine) {
             // requires a real user gesture, same reasoning as answer()/
             // callOutbound() above needing one for the microphone prompt).
             async enableNotifications() {
-                const ok = await pushSubscriber?.enable();
+                if (this.notificationsBusy) {
+                    return;
+                }
+
+                this.notificationsBusy = true;
+                this.notificationsError = null;
+
+                const result = (await pushSubscriber?.enable()) ?? { ok: false, reason: 'unsupported' };
+
+                if (result.error) {
+                    // Diagnostic only — never shown to the user, see push.js.
+                    console.error('[softphone] push subscribe failed:', result.error);
+                }
+
+                this.notificationsBusy = false;
                 this.notificationsPermission = pushSubscriber?.permission() ?? 'unsupported';
-                this.notificationsSubscribed = ok === true;
+                this.notificationsSubscribed = result.ok;
+
+                if (!result.ok) {
+                    const genericError = config.texts?.genericError ?? 'Something went wrong with the call.';
+
+                    this.notificationsError = {
+                        unsupported: config.texts?.notificationsUnsupported ?? 'This browser cannot show call notifications here.',
+                        'permission-denied': config.texts?.notificationsPermissionDenied ?? 'Notifications are blocked for this site in your browser settings.',
+                        'registration-failed': genericError,
+                        'subscribe-failed': genericError,
+                    }[result.reason] ?? genericError;
+                }
             },
 
             async disableNotifications() {
                 await pushSubscriber?.disable();
                 this.notificationsSubscribed = false;
+            },
+
+            dismissNotificationsPrompt() {
+                this.notificationsDismissed = true;
+                this.notificationsError = null;
+
+                try {
+                    window.localStorage.setItem('optifin.calling.notifications-dismissed', '1');
+                } catch {
+                    // Per-viewer convenience only — a failed write just means
+                    // the prompt may reappear next load, never a hard error.
+                }
             },
 
             toggleMinimized(id) {

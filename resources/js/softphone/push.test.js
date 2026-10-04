@@ -101,9 +101,9 @@ describe('createPushSubscriber()', () => {
             urls: { subscribe: '/push-subscriptions' },
         });
 
-        const ok = await subscriber.enable();
+        const result = await subscriber.enable();
 
-        expect(ok).toBe(true);
+        expect(result).toEqual({ ok: true, reason: null });
         expect(notificationApi.requestPermission).toHaveBeenCalledOnce();
         expect(registration.pushManager.subscribe).toHaveBeenCalledOnce();
         expect(fetchImpl).toHaveBeenCalledWith('/push-subscriptions', expect.objectContaining({
@@ -117,39 +117,42 @@ describe('createPushSubscriber()', () => {
         const { nav, notificationApi, fetchImpl, registration } = fakeEnv({ existingSubscription: existing });
         const subscriber = createPushSubscriber({ nav, notificationApi, fetchImpl, vapidPublicKey: 'key', urls: { subscribe: '/push-subscriptions' } });
 
-        const ok = await subscriber.enable();
+        const result = await subscriber.enable();
 
-        expect(ok).toBe(true);
+        expect(result).toEqual({ ok: true, reason: null });
         expect(notificationApi.requestPermission).not.toHaveBeenCalled();
         expect(registration.pushManager.subscribe).not.toHaveBeenCalled();
         expect(fetchImpl).toHaveBeenCalledWith('/push-subscriptions', expect.objectContaining({ method: 'POST' }));
     });
 
-    it('enable() returns false when the user denies the permission prompt', async () => {
+    it('enable() reports permission-denied when the user denies the prompt', async () => {
         const { nav, notificationApi, fetchImpl } = fakeEnv();
         notificationApi.requestPermission = vi.fn(async () => 'denied');
         const subscriber = createPushSubscriber({ nav, notificationApi, fetchImpl, vapidPublicKey: 'key', urls: {} });
 
-        const ok = await subscriber.enable();
+        const result = await subscriber.enable();
 
-        expect(ok).toBe(false);
+        expect(result).toEqual({ ok: false, reason: 'permission-denied' });
         expect(fetchImpl).not.toHaveBeenCalled();
     });
 
-    it('enable() returns false, never throws, when pushManager.subscribe() rejects', async () => {
+    it('enable() reports subscribe-failed, never throws, when pushManager.subscribe() rejects', async () => {
         const { nav, notificationApi, fetchImpl, registration } = fakeEnv();
+        const subscribeError = new Error('AbortError: subscribe failed');
         registration.pushManager.subscribe = vi.fn(async () => {
-            throw new Error('AbortError: subscribe failed');
+            throw subscribeError;
         });
         const subscriber = createPushSubscriber({ nav, notificationApi, fetchImpl, vapidPublicKey: 'key', urls: {} });
 
-        await expect(subscriber.enable()).resolves.toBe(false);
+        const result = await subscriber.enable();
+
+        expect(result).toEqual({ ok: false, reason: 'subscribe-failed', error: subscribeError });
     });
 
-    it('enable() is a no-op when unsupported', async () => {
+    it('enable() reports unsupported as a no-op', async () => {
         const subscriber = createPushSubscriber({ nav: {}, notificationApi: undefined, vapidPublicKey: 'key', urls: {} });
 
-        await expect(subscriber.enable()).resolves.toBe(false);
+        await expect(subscriber.enable()).resolves.toEqual({ ok: false, reason: 'unsupported' });
     });
 
     it('isSubscribed() reflects whether a subscription currently exists', async () => {
@@ -201,6 +204,6 @@ describe('createPushSubscriber()', () => {
         });
         const subscriber = createPushSubscriber({ nav, notificationApi, fetchImpl, vapidPublicKey: 'key', urls: { subscribe: '/push-subscriptions' } });
 
-        await expect(subscriber.enable()).resolves.toBe(true);
+        await expect(subscriber.enable()).resolves.toEqual({ ok: true, reason: null });
     });
 });

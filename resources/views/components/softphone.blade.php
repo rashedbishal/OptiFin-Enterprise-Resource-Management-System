@@ -51,6 +51,8 @@
             'declinedUnconfirmed' => __('Declined here — WhatsApp may take a moment to stop ringing.'),
             'offline' => __('You are offline. Calls will reappear when you reconnect.'),
             'genericError' => __('Something went wrong with the call.'),
+            'notificationsUnsupported' => __('This browser cannot show call notifications here.'),
+            'notificationsPermissionDenied' => __('Notifications are blocked for this site in your browser settings.'),
         ],
     ];
 @endphp
@@ -61,17 +63,35 @@ instance but toggle independently: the notifications prompt has nothing to do
 with whether a call is active, so it must not live inside the call-cards
 container's own x-show (which stays hidden with zero active calls). --}}
 <div x-data="softphone(@js($softphoneConfig))" x-cloak>
-    {{-- Web Push opt-in — shown only while the browser hasn't yet decided
-    (permission 'default'); 'granted'/'denied'/'unsupported' all hide it,
-    since a denied permission can only be changed from the browser's own
-    site settings, never by a second JS prompt. --}}
+    {{-- Web Push opt-in — a real modal (backdrop + centered dialog), shown
+    only while the browser hasn't yet decided (permission 'default') AND the
+    user hasn't dismissed it this browser. 'granted'/'denied'/'unsupported'
+    all hide it too: a denied permission can only be changed from the
+    browser's own site settings, never by a second JS prompt. Hand-rolled
+    rather than <flux:modal> — this is a plain Alpine component with no
+    Livewire backing, and the file already hand-rolls its other overlays
+    (Ringing/Connecting/… full-screen states below) the same way. --}}
     <div
-        x-show="notificationsPermission === 'default'"
-        class="pointer-events-auto fixed inset-x-0 bottom-0 z-40 m-2 flex items-center justify-between gap-3 rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-900 sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-[24rem] dark:border-sky-500/40 dark:bg-sky-500/10 dark:text-sky-200"
+        x-show="notificationsPermission === 'default' && !notificationsDismissed"
+        class="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center bg-zinc-950/40 p-4"
         data-test="softphone-enable-notifications"
     >
-        <span>{{ __('Get notified of incoming WhatsApp calls even when this tab is closed.') }}</span>
-        <flux:button size="xs" variant="primary" x-on:click="enableNotifications()">{{ __('Enable') }}</flux:button>
+        <div class="w-full max-w-sm rounded-xl bg-white p-6 shadow-lg ring ring-zinc-950/5 dark:bg-zinc-800 dark:ring-white/10">
+            <flux:heading size="lg">{{ __('Enable call notifications?') }}</flux:heading>
+            <flux:text class="mt-2" variant="subtle">
+                {{ __('Get notified of incoming WhatsApp calls even when this tab is closed.') }}
+            </flux:text>
+
+            <div x-show="notificationsError" class="mt-3 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-900 dark:border-red-500/40 dark:bg-red-500/10 dark:text-red-200" x-text="notificationsError"></div>
+
+            <div class="mt-5 flex justify-end gap-2">
+                <flux:button variant="ghost" x-on:click="dismissNotificationsPrompt()" x-bind:disabled="notificationsBusy">{{ __('Cancel') }}</flux:button>
+                <flux:button variant="primary" x-on:click="enableNotifications()" x-bind:disabled="notificationsBusy">
+                    <span x-show="!notificationsBusy">{{ __('Enable') }}</span>
+                    <span x-show="notificationsBusy">{{ __('Enabling…') }}</span>
+                </flux:button>
+            </div>
+        </div>
     </div>
 
     {{-- Desktop: a floating panel bottom-right. Mobile: a full-width bottom

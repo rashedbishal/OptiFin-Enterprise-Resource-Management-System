@@ -93,10 +93,17 @@ export function createPushSubscriber({
      * Must be called directly from a user gesture (a button click) — both
      * Notification.requestPermission() and, on some browsers,
      * pushManager.subscribe() require one.
+     *
+     * Resolves { ok, reason, error } rather than a bare boolean so the UI can
+     * show *why* it failed (the user-facing complaint this was added for:
+     * silent failure looks identical to "nothing happened" from a click).
+     * reason is one of: null (success), 'unsupported', 'permission-denied',
+     * 'registration-failed', 'subscribe-failed'. `error`, when present, is
+     * the raw Error for console logging only — never shown to the user.
      */
     async function enable() {
         if (!supported) {
-            return false;
+            return { ok: false, reason: 'unsupported' };
         }
 
         const existing = await currentSubscription();
@@ -104,19 +111,19 @@ export function createPushSubscriber({
         if (existing) {
             await send('POST', urls.subscribe, existing.toJSON());
 
-            return true;
+            return { ok: true, reason: null };
         }
 
         const permissionResult = await notificationApi.requestPermission();
 
         if (permissionResult !== 'granted') {
-            return false;
+            return { ok: false, reason: 'permission-denied' };
         }
 
         const registration = await register();
 
         if (!registration) {
-            return false;
+            return { ok: false, reason: 'registration-failed' };
         }
 
         let subscription;
@@ -126,13 +133,13 @@ export function createPushSubscriber({
                 userVisibleOnly: true,
                 applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
             });
-        } catch {
-            return false;
+        } catch (error) {
+            return { ok: false, reason: 'subscribe-failed', error };
         }
 
         await send('POST', urls.subscribe, subscription.toJSON());
 
-        return true;
+        return { ok: true, reason: null };
     }
 
     async function disable() {
