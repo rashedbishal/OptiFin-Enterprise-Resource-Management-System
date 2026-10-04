@@ -9,10 +9,11 @@ use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
-#[Signature('admin:create-mother-admin-credentials')]
-#[Description('Create the platform\'s single Mother Admin account')]
-class CreateMotherAdmin extends Command
+#[Signature('admin:patch-mother-admin-credentials')]
+#[Description('Create the platform\'s single Mother Admin account, or update its credentials if it already exists')]
+class PatchMotherAdminCredentials extends Command
 {
     use PasswordValidationRules;
 
@@ -21,14 +22,10 @@ class CreateMotherAdmin extends Command
      */
     public function handle(): int
     {
-        if (PlatformUser::where('user_type', PlatformUserType::MotherAdmin)->exists()) {
-            $this->components->error('A Mother Admin already exists. Only one may ever exist.');
+        $motherAdmin = PlatformUser::where('user_type', PlatformUserType::MotherAdmin)->first();
 
-            return self::FAILURE;
-        }
-
-        $name = $this->ask('Name');
-        $email = $this->ask('Email address');
+        $name = $this->ask('Name', $motherAdmin?->name);
+        $email = $this->ask('Email address', $motherAdmin?->email);
         $password = $this->secret('Password');
         $passwordConfirmation = $this->secret('Confirm password');
 
@@ -39,7 +36,10 @@ class CreateMotherAdmin extends Command
             'password_confirmation' => $passwordConfirmation,
         ], [
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:platform_users,email'],
+            'email' => [
+                'required', 'string', 'email', 'max:255',
+                Rule::unique('platform_users', 'email')->ignore($motherAdmin?->id),
+            ],
             'password' => $this->passwordRules(),
         ]);
 
@@ -49,6 +49,18 @@ class CreateMotherAdmin extends Command
             }
 
             return self::FAILURE;
+        }
+
+        if ($motherAdmin) {
+            $motherAdmin->update([
+                'name' => $name,
+                'email' => $email,
+                'password' => $password,
+            ]);
+
+            $this->components->info("Mother Admin credentials updated for \"{$email}\".");
+
+            return self::SUCCESS;
         }
 
         PlatformUser::create([

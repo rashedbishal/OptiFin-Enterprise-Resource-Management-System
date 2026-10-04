@@ -24,7 +24,7 @@ vendor/bin/pest path/to/FileTest.php     # single file
 composer run test                        # config:clear + lint:check + types:check + full test suite (CI gate)
 
 php artisan route:list
-php artisan admin:create-mother-admin-credentials  # bootstrap the single Platform mother_admin (nothing else creates one)
+php artisan admin:patch-mother-admin-credentials  # bootstrap the single Platform mother_admin, or update its name/email/password if it already exists (nothing else creates/patches one; the account itself can never be deleted — see PlatformUserObserver)
 php artisan schema:verify-enum-constraints  # manual, Postgres-only: live CHECK constraints vs PHP enum cases (not in CI)
 php artisan leads:fetch-emails           # poll IMAP lead sources, create Lead + ProcessEmailLeadSource job
 php artisan leads:retry-failed-emails    # retry durably-recorded failed email lead-processing messages that are due
