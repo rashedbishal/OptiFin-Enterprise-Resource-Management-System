@@ -1,8 +1,9 @@
 import { createApi } from './api.js';
-import { SoftphoneController } from './controller.js';
+import { MODE, SoftphoneController } from './controller.js';
 import { registerCallDragButton } from './drag-button.js';
 import { createOwnership } from './ownership.js';
 import { subscribeToCalls } from './realtime.js';
+import { createRingtone } from './ringtone.js';
 
 /**
  * WhatsApp inbound calling — the Alpine component behind the global softphone
@@ -19,6 +20,7 @@ export function registerSoftphone(alpine) {
     alpine.data('softphone', (config) => {
         let controller = null;
         let clock = null;
+        let ringtone = null;
 
         const media = (audioEl) => () => {
             const supported = typeof window.RTCPeerConnection === 'function' && typeof navigator.mediaDevices?.getUserMedia === 'function';
@@ -42,6 +44,8 @@ export function registerSoftphone(alpine) {
                     return;
                 }
 
+                ringtone = createRingtone({ AudioContext: window.AudioContext });
+
                 controller = new SoftphoneController({
                     api: createApi({ urls: config.urls }),
                     createMedia: media(this.$refs.remoteAudio),
@@ -53,6 +57,16 @@ export function registerSoftphone(alpine) {
                     staleMs: config.staleMs,
                     onChange: (snapshot) => {
                         this.view = snapshot;
+
+                        // Ring for as long as any unclaimed inbound call is
+                        // showing — start()/stop() are both idempotent, so
+                        // this re-evaluation on every snapshot never
+                        // restarts an already-playing ring.
+                        if (snapshot.cards.some((card) => card.mode === MODE.RINGING)) {
+                            ringtone?.start();
+                        } else {
+                            ringtone?.stop();
+                        }
                     },
                 });
 
@@ -78,6 +92,8 @@ export function registerSoftphone(alpine) {
                 clearInterval(clock);
                 window.removeEventListener('softphone:call', this.onSoftphoneCall);
                 controller?.stop();
+                ringtone?.stop();
+                ringtone = null;
             },
 
             answer(id) {
