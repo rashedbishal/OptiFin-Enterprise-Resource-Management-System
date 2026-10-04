@@ -12,6 +12,7 @@ use App\Models\LeadSource;
 use App\Services\CallRouter;
 use App\Support\LeadCallBroadcaster;
 use App\Support\LeadCallMissedNotifier;
+use App\Support\LeadCallPushNotifier;
 use App\Support\WhatsAppCallEvent;
 use Closure;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -221,6 +222,7 @@ class RecordInboundCall
             // Announce the ring only now: the offer is safely cached, so an
             // agent who answers straight away can always claim it.
             LeadCallBroadcaster::updated($call, CallStatus::Ringing);
+            LeadCallPushNotifier::ring($call);
 
             return self::OUTCOME_RECORDED;
         });

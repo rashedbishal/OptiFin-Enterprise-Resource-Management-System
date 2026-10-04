@@ -17,6 +17,15 @@
         // Null when the tenant has no custom ringtone uploaded — index.js
         // falls back to the synthesized tone in that case, unchanged.
         'ringtoneUrl' => auth()->user()->tenant?->whatsapp_call_ringtone_path ? route('tenant.whatsapp-call-ringtone') : null,
+        // Web Push — only the PUBLIC VAPID key, safe to expose (that's what
+        // "public" means here). Read straight from config rather than a
+        // VITE_* build-time var, matching every other value in this array:
+        // no rebuild needed if the key pair is ever rotated.
+        'vapidPublicKey' => config('webpush.vapid.public_key'),
+        'pushUrls' => [
+            'subscribe' => route('tenant.push-subscriptions.store'),
+            'unsubscribe' => route('tenant.push-subscriptions.destroy'),
+        ],
         'pollMs' => (int) config('calling.softphone_poll_seconds', 5) * 1000,
         'heartbeatMs' => (int) config('calling.softphone_heartbeat_seconds', 15) * 1000,
         'staleMs' => (int) config('calling.softphone_staleness_seconds', 20) * 1000,
@@ -47,19 +56,35 @@
 @endphp
 
 {{-- Global softphone shell — mounted once in the tenant layout inside @persist, so
-a live call survives wire:navigate. Desktop: a floating panel bottom-right. Mobile:
-a full-width bottom sheet. z-40 sits above the top bar (z-[15]) and the mobile
-sidebar drawer (z-20); dialogs and toasts render in the browser's top layer above
-it. The container ignores pointer events so it never blocks the page around the
-cards. --}}
-<div
-    x-data="softphone(@js($softphoneConfig))"
-    x-cloak
-    x-show="view.cards.length > 0 || view.notices.length > 0 || view.offline"
-    class="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex flex-col gap-2 p-2 sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-[24rem] sm:p-0"
-    aria-live="polite"
-    data-test="softphone"
->
+a live call survives wire:navigate. Both children below share this one x-data
+instance but toggle independently: the notifications prompt has nothing to do
+with whether a call is active, so it must not live inside the call-cards
+container's own x-show (which stays hidden with zero active calls). --}}
+<div x-data="softphone(@js($softphoneConfig))" x-cloak>
+    {{-- Web Push opt-in — shown only while the browser hasn't yet decided
+    (permission 'default'); 'granted'/'denied'/'unsupported' all hide it,
+    since a denied permission can only be changed from the browser's own
+    site settings, never by a second JS prompt. --}}
+    <div
+        x-show="notificationsPermission === 'default'"
+        class="pointer-events-auto fixed inset-x-0 bottom-0 z-40 m-2 flex items-center justify-between gap-3 rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-sm text-sky-900 sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-[24rem] dark:border-sky-500/40 dark:bg-sky-500/10 dark:text-sky-200"
+        data-test="softphone-enable-notifications"
+    >
+        <span>{{ __('Get notified of incoming WhatsApp calls even when this tab is closed.') }}</span>
+        <flux:button size="xs" variant="primary" x-on:click="enableNotifications()">{{ __('Enable') }}</flux:button>
+    </div>
+
+    {{-- Desktop: a floating panel bottom-right. Mobile: a full-width bottom
+    sheet. z-40 sits above the top bar (z-[15]) and the mobile sidebar drawer
+    (z-20); dialogs and toasts render in the browser's top layer above it.
+    The container ignores pointer events so it never blocks the page around
+    the cards. --}}
+    <div
+        x-show="view.cards.length > 0 || view.notices.length > 0 || view.offline"
+        class="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex flex-col gap-2 p-2 sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-[24rem] sm:p-0"
+        aria-live="polite"
+        data-test="softphone"
+    >
     <audio x-ref="remoteAudio" playsinline class="hidden"></audio>
 
     <div x-show="view.offline" class="pointer-events-auto rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200" x-text="view.offlineText"></div>
@@ -445,4 +470,5 @@ cards. --}}
         </div>
         </div>
     </template>
+    </div>
 </div>

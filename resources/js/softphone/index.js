@@ -2,6 +2,7 @@ import { createApi } from './api.js';
 import { MODE, SoftphoneController } from './controller.js';
 import { registerCallDragButton } from './drag-button.js';
 import { createOwnership } from './ownership.js';
+import { createPushSubscriber } from './push.js';
 import { subscribeToCalls } from './realtime.js';
 import { createRingtone } from './ringtone.js';
 
@@ -21,6 +22,7 @@ export function registerSoftphone(alpine) {
         let controller = null;
         let clock = null;
         let ringtone = null;
+        let pushSubscriber = null;
 
         const media = (audioEl) => () => {
             const supported = typeof window.RTCPeerConnection === 'function' && typeof navigator.mediaDevices?.getUserMedia === 'function';
@@ -38,6 +40,12 @@ export function registerSoftphone(alpine) {
         return {
             view: { loaded: false, offline: false, offlineText: '', cards: [], notices: [], mediaBusy: false },
             minimized: {},
+            // Web Push — 'unsupported' until init() resolves the real state,
+            // so the "Enable notifications" prompt stays hidden rather than
+            // flashing then disappearing on a browser that can't do this at
+            // all (Safari without the PWA installed, pre-Chromium Edge, …).
+            notificationsPermission: 'unsupported',
+            notificationsSubscribed: false,
 
             init() {
                 if (!window.Echo) {
@@ -45,6 +53,10 @@ export function registerSoftphone(alpine) {
                 }
 
                 ringtone = createRingtone({ AudioContext: window.AudioContext, audioUrl: config.ringtoneUrl ?? null });
+
+                pushSubscriber = createPushSubscriber({ vapidPublicKey: config.vapidPublicKey ?? null, urls: config.pushUrls ?? {} });
+                this.notificationsPermission = pushSubscriber.permission();
+                pushSubscriber.isSubscribed().then((subscribed) => { this.notificationsSubscribed = subscribed; });
 
                 controller = new SoftphoneController({
                     api: createApi({ urls: config.urls }),
@@ -113,6 +125,20 @@ export function registerSoftphone(alpine) {
                 return leadId ? controller?.callOutbound(leadId, { id: leadId, name: leadName ?? null, phone: leadPhone ?? null }) : undefined;
             },
             cancelOutboundCall: () => controller?.cancelOutboundCall(),
+
+            // Called straight from the click (Notification.requestPermission()
+            // requires a real user gesture, same reasoning as answer()/
+            // callOutbound() above needing one for the microphone prompt).
+            async enableNotifications() {
+                const ok = await pushSubscriber?.enable();
+                this.notificationsPermission = pushSubscriber?.permission() ?? 'unsupported';
+                this.notificationsSubscribed = ok === true;
+            },
+
+            async disableNotifications() {
+                await pushSubscriber?.disable();
+                this.notificationsSubscribed = false;
+            },
 
             toggleMinimized(id) {
                 this.minimized = { ...this.minimized, [id]: !this.minimized[id] };

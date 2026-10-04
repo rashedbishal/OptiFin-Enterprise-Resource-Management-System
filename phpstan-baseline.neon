@@ -25,6 +25,18 @@ parameters:
 			path: app/Http/Controllers/NotificationRedirectController.php
 
 		-
+			message: '#^Call to an undefined method App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:deletePushSubscription\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Http/Controllers/PushSubscriptionController.php
+
+		-
+			message: '#^Call to an undefined method App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:updatePushSubscription\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: app/Http/Controllers/PushSubscriptionController.php
+
+		-
 			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant\.$#'
 			identifier: property.notFound
 			count: 1

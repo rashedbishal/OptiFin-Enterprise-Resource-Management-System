@@ -16,6 +16,7 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Laravel\Fortify\TwoFactorAuthenticatable;
+use NotificationChannels\WebPush\HasPushSubscriptions;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
 
@@ -38,7 +39,7 @@ use Spatie\Activitylog\Traits\LogsActivity;
 class TenantUser extends Authenticatable
 {
     /** @use HasFactory<TenantUserFactory> */
-    use HasFactory, HasModulePermissions, HasUlids, LogsActivity, Notifiable, TwoFactorAuthenticatable;
+    use HasFactory, HasModulePermissions, HasPushSubscriptions, HasUlids, LogsActivity, Notifiable, TwoFactorAuthenticatable;
 
     /**
      * @return array<string, string>

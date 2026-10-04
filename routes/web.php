@@ -5,6 +5,7 @@ use App\Http\Controllers\LeadAttachmentController;
 use App\Http\Controllers\LeadCallController;
 use App\Http\Controllers\LeadMessageAttachmentController;
 use App\Http\Controllers\NotificationRedirectController;
+use App\Http\Controllers\PushSubscriptionController;
 use App\Http\Controllers\WhatsAppCallRingtoneController;
 use App\Livewire\Tenant\CallingSettings\Index as CallingSettingsIndex;
 use App\Livewire\Tenant\Dashboard;
@@ -56,6 +57,12 @@ Route::middleware(['auth', 'verified', 'tenant.identify', 'tenant.active'])->gro
         // reality since the softphone itself only ever renders when the
         // lead-management module is active (see components/softphone.blade.php).
         Route::get('whatsapp-call-ringtone', [WhatsAppCallRingtoneController::class, 'show'])->name('tenant.whatsapp-call-ringtone');
+        // WhatsApp inbound calling — registers/unregisters this browser's Web
+        // Push subscription so an incoming call can wake the OS even with the
+        // tab closed. Lives alongside the softphone's own routes since it's
+        // only ever called from there.
+        Route::post('push-subscriptions', [PushSubscriptionController::class, 'store'])->name('tenant.push-subscriptions.store');
+        Route::delete('push-subscriptions', [PushSubscriptionController::class, 'destroy'])->name('tenant.push-subscriptions.destroy');
         Route::livewire('leads/import', LeadImportsIndex::class)->name('tenant-lead-imports.index');
         Route::livewire('leads/import/{leadImport}', LeadImportsShow::class)->name('tenant-lead-imports.show');
         // WhatsApp inbound calling — JSON actions on a live call. The call id is
