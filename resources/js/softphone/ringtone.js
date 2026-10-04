@@ -21,9 +21,62 @@ export function createRingtone({
     timers = { setInterval: (...a) => setInterval(...a), clearInterval: (...a) => clearInterval(...a) },
     audioUrl = null,
     createAudioElement = (src) => new Audio(src),
+    mediaSession = typeof navigator === 'undefined' ? undefined : navigator.mediaSession,
+    MediaMetadataClass = typeof MediaMetadata === 'undefined' ? undefined : MediaMetadata,
 } = {}) {
     let active = null;
     let customAudio = null;
+
+    /**
+     * Declares a real Media Session for the ring (title/artist instead of
+     * Chrome's own guess at the page title, and no seek/track controls,
+     * which make no sense for a ringing call) — mobile OSes specifically
+     * exempt an active media session from background-tab suspension, which
+     * is *why* the ring keeps playing audibly after the tab is backgrounded
+     * or the screen is locked. Declared for both the custom-audio and
+     * synthesized paths alike, since it's independent of how the sound is
+     * actually produced. Best-effort, like everything else here: an
+     * unsupported API or a throwing call never affects the ring itself.
+     */
+    function setMediaSession(metadata) {
+        if (!mediaSession) {
+            return;
+        }
+
+        try {
+            if (typeof MediaMetadataClass === 'function') {
+                mediaSession.metadata = new MediaMetadataClass({
+                    title: metadata?.title ?? 'Incoming WhatsApp call',
+                    artist: metadata?.artist ?? '',
+                });
+            }
+
+            mediaSession.playbackState = 'playing';
+
+            for (const action of ['seekbackward', 'seekforward', 'seekto', 'previoustrack', 'nexttrack', 'stop', 'skipad']) {
+                try {
+                    mediaSession.setActionHandler(action, null);
+                } catch {
+                    // Not every action is supported everywhere.
+                }
+            }
+        } catch {
+            // Never blocks the ring itself.
+        }
+    }
+
+    function clearMediaSession() {
+        if (!mediaSession) {
+            return;
+        }
+
+        try {
+            mediaSession.playbackState = 'none';
+            mediaSession.metadata = null;
+        } catch {
+            // Ignore.
+        }
+    }
 
     /**
      * The custom-MP3 path, entirely separate from the synthesized one below
@@ -80,12 +133,19 @@ export function createRingtone({
 
     /**
      * Idempotent — a second start() while already ringing is a no-op, same
-     * as startRingback().
+     * as startRingback() (so a later call with different `metadata`, e.g. a
+     * second overlapping ring with a different caller, doesn't update the
+     * Media Session already showing — same simplification already accepted
+     * for the cadence itself, see this file's own top docblock).
+     *
+     * @param {{title?: string, artist?: string}} [metadata]
      */
-    function start() {
+    function start(metadata) {
         if (active) {
             return;
         }
+
+        setMediaSession(metadata);
 
         if (audioUrl) {
             startCustom();
@@ -126,6 +186,8 @@ export function createRingtone({
         if (!active) {
             return;
         }
+
+        clearMediaSession();
 
         if (active.kind === 'custom') {
             stopCustom();

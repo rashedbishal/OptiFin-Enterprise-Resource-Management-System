@@ -53,6 +53,7 @@
             'genericError' => __('Something went wrong with the call.'),
             'notificationsUnsupported' => __('This browser cannot show call notifications here.'),
             'notificationsPermissionDenied' => __('Notifications are blocked for this site in your browser settings.'),
+            'incomingCallTitle' => __('Incoming WhatsApp call'),
         ],
     ];
 @endphp

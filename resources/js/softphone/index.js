@@ -63,7 +63,12 @@ export function registerSoftphone(alpine) {
                     return;
                 }
 
-                ringtone = createRingtone({ AudioContext: window.AudioContext, audioUrl: config.ringtoneUrl ?? null });
+                ringtone = createRingtone({
+                    AudioContext: window.AudioContext,
+                    audioUrl: config.ringtoneUrl ?? null,
+                    mediaSession: navigator.mediaSession,
+                    MediaMetadataClass: window.MediaMetadata,
+                });
 
                 pushSubscriber = createPushSubscriber({ vapidPublicKey: config.vapidPublicKey ?? null, urls: config.pushUrls ?? {} });
                 this.notificationsPermission = pushSubscriber.permission();
@@ -85,8 +90,13 @@ export function registerSoftphone(alpine) {
                         // showing — start()/stop() are both idempotent, so
                         // this re-evaluation on every snapshot never
                         // restarts an already-playing ring.
-                        if (snapshot.cards.some((card) => card.mode === MODE.RINGING)) {
-                            ringtone?.start();
+                        const ringingCard = snapshot.cards.find((card) => card.mode === MODE.RINGING);
+
+                        if (ringingCard) {
+                            ringtone?.start({
+                                title: config.texts?.incomingCallTitle ?? 'Incoming WhatsApp call',
+                                artist: ringingCard.lead?.name || ringingCard.lead?.phone || '',
+                            });
                         } else {
                             ringtone?.stop();
                         }

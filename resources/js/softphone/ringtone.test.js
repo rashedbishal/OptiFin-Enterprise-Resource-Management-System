@@ -281,3 +281,98 @@ describe('createRingtone() with a custom audioUrl', () => {
         expect(createAudioElement).toHaveBeenCalledTimes(1);
     });
 });
+
+/*
+ * The Media Session declaration — why the ring survives the tab being
+ * backgrounded or the screen locked (mobile OSes exempt an active media
+ * session from background-tab suspension). Proven with a fake
+ * navigator.mediaSession + MediaMetadata rather than real ones (jsdom
+ * implements neither).
+ */
+function fakeMediaSession() {
+    return { metadata: undefined, playbackState: undefined, setActionHandler: vi.fn() };
+}
+
+class FakeMediaMetadata {
+    constructor(init) {
+        Object.assign(this, init);
+    }
+}
+
+describe('createRingtone() Media Session', () => {
+    it('declares metadata and playbackState on start(), for the synthesized path', () => {
+        const mediaSession = fakeMediaSession();
+        const ringtone = createRingtone({ AudioContext: FakeAudioContext, timers: fakeTimers(), mediaSession, MediaMetadataClass: FakeMediaMetadata });
+
+        ringtone.start({ title: 'Incoming WhatsApp call', artist: 'Jane Caller' });
+
+        expect(mediaSession.metadata).toEqual(expect.objectContaining({ title: 'Incoming WhatsApp call', artist: 'Jane Caller' }));
+        expect(mediaSession.playbackState).toBe('playing');
+    });
+
+    it('declares metadata and playbackState on start(), for the custom-audio path too', () => {
+        const mediaSession = fakeMediaSession();
+        const ringtone = createRingtone({
+            audioUrl: 'https://example.test/ringtone.mp3',
+            createAudioElement: () => new FakeAudioElement(),
+            mediaSession,
+            MediaMetadataClass: FakeMediaMetadata,
+        });
+
+        ringtone.start({ title: 'Incoming WhatsApp call', artist: 'Jane Caller' });
+
+        expect(mediaSession.metadata).toEqual(expect.objectContaining({ title: 'Incoming WhatsApp call', artist: 'Jane Caller' }));
+        expect(mediaSession.playbackState).toBe('playing');
+    });
+
+    it('falls back to a generic title/blank artist when no metadata is given', () => {
+        const mediaSession = fakeMediaSession();
+        const ringtone = createRingtone({ AudioContext: FakeAudioContext, timers: fakeTimers(), mediaSession, MediaMetadataClass: FakeMediaMetadata });
+
+        ringtone.start();
+
+        expect(mediaSession.metadata).toEqual(expect.objectContaining({ title: 'Incoming WhatsApp call', artist: '' }));
+    });
+
+    it('suppresses the seek/track controls, which make no sense for a ringing call', () => {
+        const mediaSession = fakeMediaSession();
+        const ringtone = createRingtone({ AudioContext: FakeAudioContext, timers: fakeTimers(), mediaSession, MediaMetadataClass: FakeMediaMetadata });
+
+        ringtone.start();
+
+        for (const action of ['seekbackward', 'seekforward', 'seekto', 'previoustrack', 'nexttrack', 'stop', 'skipad']) {
+            expect(mediaSession.setActionHandler).toHaveBeenCalledWith(action, null);
+        }
+    });
+
+    it('clears metadata and playbackState on stop()', () => {
+        const mediaSession = fakeMediaSession();
+        const ringtone = createRingtone({ AudioContext: FakeAudioContext, timers: fakeTimers(), mediaSession, MediaMetadataClass: FakeMediaMetadata });
+
+        ringtone.start();
+        ringtone.stop();
+
+        expect(mediaSession.metadata).toBeNull();
+        expect(mediaSession.playbackState).toBe('none');
+    });
+
+    it('is a no-op, never throws, when navigator.mediaSession is unsupported', () => {
+        const ringtone = createRingtone({ AudioContext: FakeAudioContext, timers: fakeTimers(), mediaSession: undefined });
+
+        expect(() => ringtone.start({ title: 'x' })).not.toThrow();
+        expect(() => ringtone.stop()).not.toThrow();
+    });
+
+    it('a throwing mediaSession (e.g. a locked-down browser) never blocks the ring', () => {
+        const mediaSession = {
+            get metadata() { return undefined; },
+            set metadata(_v) { throw new Error('denied'); },
+            playbackState: undefined,
+            setActionHandler: vi.fn(),
+        };
+        const ringtone = createRingtone({ AudioContext: FakeAudioContext, timers: fakeTimers(), mediaSession, MediaMetadataClass: FakeMediaMetadata });
+
+        expect(() => ringtone.start()).not.toThrow();
+        expect(ringtone.isActive()).toBe(true);
+    });
+});
