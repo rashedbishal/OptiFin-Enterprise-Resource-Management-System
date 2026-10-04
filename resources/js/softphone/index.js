@@ -50,16 +50,11 @@ export function registerSoftphone(alpine) {
             notificationsError: null,
             // Cancel hides the prompt for this browser without touching the
             // actual Notification permission (which JS can never revoke) —
-            // persisted so it doesn't reappear on every page load this
-            // session; a try/catch since localStorage can throw (private
-            // browsing, blocked site data).
-            notificationsDismissed: (() => {
-                try {
-                    return window.localStorage.getItem('optifin.calling.notifications-dismissed') === '1';
-                } catch {
-                    return false;
-                }
-            })(),
+            // deliberately NOT persisted: plain in-memory state means it
+            // resets on the next full page load, which is what "ask again
+            // next login" means in practice (login is a full reload, not a
+            // wire:navigate transition the @persist'd softphone survives).
+            notificationsDismissed: false,
 
             init() {
                 if (!window.Echo) {
@@ -182,13 +177,6 @@ export function registerSoftphone(alpine) {
             dismissNotificationsPrompt() {
                 this.notificationsDismissed = true;
                 this.notificationsError = null;
-
-                try {
-                    window.localStorage.setItem('optifin.calling.notifications-dismissed', '1');
-                } catch {
-                    // Per-viewer convenience only — a failed write just means
-                    // the prompt may reappear next load, never a hard error.
-                }
             },
 
             toggleMinimized(id) {
