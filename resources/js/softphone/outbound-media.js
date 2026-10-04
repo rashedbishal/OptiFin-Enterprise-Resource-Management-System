@@ -1,3 +1,4 @@
+import { canToggleSpeaker, findAudioOutputDevices, setAudioOutputDevice } from './audio-output.js';
 import { SessionError } from './media.js';
 
 /**
@@ -97,6 +98,13 @@ export class OutboundSession {
         this.reconnecting = false;
         this.connectedAt = null;
         this.answerApplied = false;
+        // Earpiece/loudspeaker toggle — see AnswerSession.detectSpeakerSupport()'s
+        // own docblock (identical reasoning, duplicated rather than shared:
+        // this class deliberately never imports AnswerSession's own methods,
+        // see this file's own top docblock).
+        this.speakerOn = false;
+        this.speakerAvailable = false;
+        this.speakerDevices = { speakerId: null, earpieceId: null };
 
         this.pc = null;
         this.waiter = null;
@@ -319,6 +327,38 @@ export class OutboundSession {
             this.audioBlocked = true;
             this.onChange();
         }
+
+        this.detectSpeakerSupport();
+    }
+
+    /**
+     * Only meaningful once connected — see AnswerSession's identical method.
+     */
+    async detectSpeakerSupport() {
+        this.speakerDevices = await findAudioOutputDevices(this.env?.mediaDevices);
+        this.speakerAvailable = canToggleSpeaker(this.speakerDevices);
+        this.onChange();
+    }
+
+    /**
+     * See AnswerSession.toggleSpeaker() — identical behavior.
+     */
+    async toggleSpeaker() {
+        if (!this.speakerAvailable) {
+            return false;
+        }
+
+        const next = !this.speakerOn;
+        const deviceId = next ? this.speakerDevices.speakerId : this.speakerDevices.earpieceId;
+        const ok = await setAudioOutputDevice(this.audioEl, deviceId);
+
+        if (ok) {
+            this.speakerOn = next;
+        }
+
+        this.onChange();
+
+        return ok;
     }
 
     async enableAudio() {

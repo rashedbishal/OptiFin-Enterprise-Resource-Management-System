@@ -697,6 +697,17 @@ export class SoftphoneController {
         }
     }
 
+    // Same PHASE.CONNECTED check as toggleMute() above — 'connected' is the
+    // same literal string for both AnswerSession's PHASE and
+    // OutboundSession's own OUTBOUND_PHASE, so this already covers both.
+    toggleSpeaker() {
+        if (this.session && this.session.phase === PHASE.CONNECTED) {
+            return this.session.toggleSpeaker();
+        }
+
+        return undefined;
+    }
+
     enableAudio() {
         return this.session?.enableAudio();
     }
@@ -773,6 +784,8 @@ export class SoftphoneController {
                 error: null,
                 retryable: false,
                 muted: false,
+                speakerOn: false,
+                speakerAvailable: false,
                 audioBlocked: false,
                 reconnecting: false,
             };
@@ -788,6 +801,8 @@ export class SoftphoneController {
                     error: session.error?.message ?? null,
                     retryable: session.error?.retryable === true,
                     muted: session.muted,
+                    speakerOn: session.speakerOn,
+                    speakerAvailable: session.speakerAvailable,
                     audioBlocked: session.audioBlocked,
                     reconnecting: session.reconnecting,
                     // Prefer this tab's own locally-observed connect moment
@@ -941,6 +956,8 @@ export class SoftphoneController {
             error: session.error?.message ?? null,
             retryable: session.error?.retryable === true,
             muted: session.muted,
+            speakerOn: session.speakerOn,
+            speakerAvailable: session.speakerAvailable,
             audioBlocked: session.audioBlocked,
             reconnecting: false,
             // The server row, once it exists at all, is always created

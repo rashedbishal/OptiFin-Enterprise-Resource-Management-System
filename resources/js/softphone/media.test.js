@@ -12,9 +12,9 @@ function make(overrides = {}) {
         api,
         stream,
         audioEl,
-        env: { RTCPeerConnection: FakePeerConnection },
         connectTimeoutMs: 20000,
         ...overrides.options,
+        env: { RTCPeerConnection: FakePeerConnection, ...overrides.env },
     });
 
     return { api, stream, audioEl, session };
@@ -282,6 +282,57 @@ describe('answer session — live call', () => {
 
         expect(stream.tracks[0].enabled).toBe(false);
         expect(api.accept).toHaveBeenCalledTimes(1);
+    });
+
+    it('detects speaker support once connected and exposes it on the session', async () => {
+        const mediaDevices = { enumerateDevices: vi.fn(async () => [{ kind: 'audiooutput', label: 'Speaker', deviceId: 'speaker-1' }]) };
+        const { session } = await connected({ env: { mediaDevices } });
+
+        await vi.waitFor(() => expect(session.speakerAvailable).toBe(true));
+        expect(session.speakerOn).toBe(false);
+    });
+
+    it('speakerAvailable stays false with no distinct speaker device (e.g. iOS Safari)', async () => {
+        const { session } = await connected();
+
+        await vi.waitFor(() => expect(session.speakerDevices).toEqual({ speakerId: null, earpieceId: null }));
+        expect(session.speakerAvailable).toBe(false);
+    });
+
+    it('toggleSpeaker() switches the audio output device and flips speakerOn', async () => {
+        const mediaDevices = { enumerateDevices: vi.fn(async () => [
+            { kind: 'audiooutput', label: 'Earpiece', deviceId: 'earpiece-1' },
+            { kind: 'audiooutput', label: 'Speaker', deviceId: 'speaker-1' },
+        ]) };
+        const audioEl = { ...fakeAudio(), setSinkId: vi.fn(async () => undefined) };
+        const { session } = await connected({ audioEl, env: { mediaDevices } });
+        await vi.waitFor(() => expect(session.speakerAvailable).toBe(true));
+
+        await session.toggleSpeaker();
+        expect(session.speakerOn).toBe(true);
+        expect(audioEl.setSinkId).toHaveBeenLastCalledWith('speaker-1');
+
+        await session.toggleSpeaker();
+        expect(session.speakerOn).toBe(false);
+        expect(audioEl.setSinkId).toHaveBeenLastCalledWith('earpiece-1');
+    });
+
+    it('toggleSpeaker() is a no-op when unavailable', async () => {
+        const { session } = await connected();
+        await vi.waitFor(() => expect(session.speakerDevices).toEqual({ speakerId: null, earpieceId: null }));
+
+        await expect(session.toggleSpeaker()).resolves.toBe(false);
+        expect(session.speakerOn).toBe(false);
+    });
+
+    it('toggleSpeaker() leaves speakerOn unchanged, never throws, when setSinkId() rejects', async () => {
+        const mediaDevices = { enumerateDevices: vi.fn(async () => [{ kind: 'audiooutput', label: 'Speaker', deviceId: 'speaker-1' }]) };
+        const audioEl = { ...fakeAudio(), setSinkId: vi.fn(async () => { throw new Error('NotFoundError'); }) };
+        const { session } = await connected({ audioEl, env: { mediaDevices } });
+        await vi.waitFor(() => expect(session.speakerAvailable).toBe(true));
+
+        await expect(session.toggleSpeaker()).resolves.toBe(false);
+        expect(session.speakerOn).toBe(false);
     });
 
     it('blocked autoplay is surfaced and an explicit click enables the audio', async () => {

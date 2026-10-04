@@ -236,6 +236,18 @@ container's own x-show (which stays hidden with zero active calls). --}}
                         <span class="text-sm text-amber-700 dark:text-amber-300" x-show="card.reconnecting">{{ __('Reconnecting audio…') }}</span>
                         <div class="flex flex-wrap gap-2">
                             <flux:button size="sm" x-on:click="toggleMute()"><span x-text="card.muted ? @js(__('Unmute')) : @js(__('Mute'))"></span></flux:button>
+                            {{-- Earpiece/loudspeaker — phone/tablet only (lg:hidden): a
+                            desktop computer has no earpiece, so the toggle is
+                            meaningless there. Also hidden on any device where
+                            setSinkId()/distinct output devices aren't available at all
+                            (iOS Safari, mainly — see resources/js/softphone/audio-output.js). --}}
+                            <flux:button size="sm" class="lg:hidden" x-show="card.speakerAvailable" x-on:click="toggleSpeaker()">
+                                <span class="flex items-center gap-1">
+                                    <flux:icon.speaker-wave x-show="card.speakerOn" class="size-4" />
+                                    <flux:icon.device-phone-mobile x-show="!card.speakerOn" class="size-4" />
+                                    <span x-text="card.speakerOn ? @js(__('Speaker')) : @js(__('Earpiece'))"></span>
+                                </span>
+                            </flux:button>
                             <flux:button size="sm" variant="primary" x-show="card.audioBlocked" x-on:click="enableAudio()">{{ __('Enable audio') }}</flux:button>
                             <flux:button size="sm" variant="danger" x-on:click="hangup(card.id)" x-bind:disabled="!card.canHangup">{{ __('Hang up') }}</flux:button>
                         </div>
@@ -459,7 +471,7 @@ container's own x-show (which stays hidden with zero active calls). --}}
             <div class="flex w-full flex-col items-center gap-6 pb-2">
                 <flux:button variant="primary" x-show="card.audioBlocked" x-on:click="enableAudio()" class="w-full max-w-xs">{{ __('Enable audio') }}</flux:button>
 
-                <div class="flex w-full max-w-xs items-center justify-center gap-12">
+                <div class="flex w-full max-w-xs items-center justify-between gap-6">
                     <div class="flex flex-col items-center gap-2">
                         <button
                             type="button"
@@ -471,6 +483,25 @@ container's own x-show (which stays hidden with zero active calls). --}}
                             <flux:icon.microphone class="size-7" />
                         </button>
                         <span class="text-xs text-zinc-500 dark:text-zinc-400" x-text="card.muted ? @js(__('Unmute')) : @js(__('Mute'))"></span>
+                    </div>
+
+                    {{-- Earpiece/loudspeaker — this full-screen layout is
+                    phone-only already (sm:hidden on its parent, so a
+                    desktop never reaches it), unlike the compact card's own
+                    copy of this button, which still needs the lg:hidden
+                    class since it's shared with tablet/desktop. --}}
+                    <div class="flex flex-col items-center gap-2" x-show="card.speakerAvailable">
+                        <button
+                            type="button"
+                            class="flex size-16 cursor-pointer items-center justify-center rounded-full text-zinc-700 shadow-lg dark:text-zinc-200"
+                            :class="card.speakerOn ? 'bg-zinc-300 dark:bg-zinc-600' : 'bg-zinc-100 dark:bg-zinc-800'"
+                            x-on:click="toggleSpeaker()"
+                            aria-label="{{ __('Speaker') }}"
+                        >
+                            <flux:icon.speaker-wave x-show="card.speakerOn" class="size-7" />
+                            <flux:icon.device-phone-mobile x-show="!card.speakerOn" class="size-7" />
+                        </button>
+                        <span class="text-xs text-zinc-500 dark:text-zinc-400" x-text="card.speakerOn ? @js(__('Speaker')) : @js(__('Earpiece'))"></span>
                     </div>
 
                     <div class="flex flex-col items-center gap-2">

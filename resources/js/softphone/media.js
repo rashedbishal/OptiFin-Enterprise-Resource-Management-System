@@ -25,6 +25,8 @@
  * audio connects, which needs a real Meta number, browser and network (Step 7).
  */
 
+import { canToggleSpeaker, findAudioOutputDevices, setAudioOutputDevice } from './audio-output.js';
+
 export const PHASE = {
     CLAIMING: 'claiming',
     ANSWERING: 'answering',
@@ -64,6 +66,11 @@ export class AnswerSession {
         this.muted = false;
         this.audioBlocked = false;
         this.reconnecting = false;
+        // Earpiece/loudspeaker toggle — see detectSpeakerSupport()'s own
+        // docblock for why this is only known once Connected, not before.
+        this.speakerOn = false;
+        this.speakerAvailable = false;
+        this.speakerDevices = { speakerId: null, earpieceId: null };
         // Set locally the instant audio actually goes live (goLive()) — the
         // elapsed timer must not depend on the server's own connected_at
         // reaching this same tab through a poll/realtime round-trip, which can
@@ -251,6 +258,46 @@ export class AnswerSession {
             this.audioBlocked = true;
             this.onChange();
         }
+
+        // Fire-and-forget: never blocks goLive() itself, and never fails the
+        // call — a device/browser with no distinct speaker output simply
+        // never shows the toggle (see controller.js's card.speakerAvailable).
+        this.detectSpeakerSupport();
+    }
+
+    /**
+     * Only meaningful once connected: enumerateDevices() only returns real
+     * labels once the call's own getUserMedia grant is active (it is, by
+     * this point), and there is nothing to toggle before then anyway.
+     */
+    async detectSpeakerSupport() {
+        this.speakerDevices = await findAudioOutputDevices(this.env?.mediaDevices);
+        this.speakerAvailable = canToggleSpeaker(this.speakerDevices);
+        this.onChange();
+    }
+
+    /**
+     * Client-only, like setMuted() — no request, no stored state. Switches
+     * to the loudspeaker device when turning on, and back to the detected
+     * earpiece device (or the system default, if the browser didn't
+     * separately expose one) when turning off.
+     */
+    async toggleSpeaker() {
+        if (!this.speakerAvailable) {
+            return false;
+        }
+
+        const next = !this.speakerOn;
+        const deviceId = next ? this.speakerDevices.speakerId : this.speakerDevices.earpieceId;
+        const ok = await setAudioOutputDevice(this.audioEl, deviceId);
+
+        if (ok) {
+            this.speakerOn = next;
+        }
+
+        this.onChange();
+
+        return ok;
     }
 
     async enableAudio() {

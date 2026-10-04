@@ -348,8 +348,8 @@ describe('applyAnswer()', () => {
 });
 
 describe('mute / audio / teardown', () => {
-    async function connected() {
-        const made = setup();
+    async function connected(envOverrides = {}) {
+        const made = setup({}, envOverrides);
         await made.session.initiate();
         const applying = made.session.applyAnswer();
         const pc = FakePeerConnection.instances.at(-1);
@@ -368,6 +368,40 @@ describe('mute / audio / teardown', () => {
 
         session.setMuted(false);
         expect(stream.tracks[0].enabled).toBe(true);
+    });
+
+    it('detects speaker support once connected, same as AnswerSession', async () => {
+        const mediaDevices = { enumerateDevices: vi.fn(async () => [{ kind: 'audiooutput', label: 'Speaker', deviceId: 'speaker-1' }]) };
+        const { session } = await connected({ mediaDevices });
+
+        await vi.waitFor(() => expect(session.speakerAvailable).toBe(true));
+        expect(session.speakerOn).toBe(false);
+    });
+
+    it('toggleSpeaker() switches the audio output device and flips speakerOn', async () => {
+        const mediaDevices = { enumerateDevices: vi.fn(async () => [
+            { kind: 'audiooutput', label: 'Earpiece', deviceId: 'earpiece-1' },
+            { kind: 'audiooutput', label: 'Speaker', deviceId: 'speaker-1' },
+        ]) };
+        const { session, audioEl } = await connected({ mediaDevices });
+        audioEl.setSinkId = vi.fn(async () => undefined);
+        await vi.waitFor(() => expect(session.speakerAvailable).toBe(true));
+
+        await session.toggleSpeaker();
+        expect(session.speakerOn).toBe(true);
+        expect(audioEl.setSinkId).toHaveBeenLastCalledWith('speaker-1');
+
+        await session.toggleSpeaker();
+        expect(session.speakerOn).toBe(false);
+        expect(audioEl.setSinkId).toHaveBeenLastCalledWith('earpiece-1');
+    });
+
+    it('toggleSpeaker() is a no-op when unavailable', async () => {
+        const { session } = await connected();
+        await vi.waitFor(() => expect(session.speakerDevices).toEqual({ speakerId: null, earpieceId: null }));
+
+        await expect(session.toggleSpeaker()).resolves.toBe(false);
+        expect(session.speakerOn).toBe(false);
     });
 
     it('close() is idempotent and tears down the peer connection, microphone and audio', async () => {

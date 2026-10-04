@@ -33,7 +33,9 @@ export function registerSoftphone(alpine) {
                 getMicrophone: () => navigator.mediaDevices.getUserMedia({ audio: true }),
                 // AudioContext: only OutboundSession's ringback uses this —
                 // undefined here simply means ringback silently never starts.
-                env: { RTCPeerConnection: window.RTCPeerConnection, iceServers: [], AudioContext: window.AudioContext },
+                // mediaDevices: the earpiece/loudspeaker toggle — undefined
+                // here (older browsers) simply means it's never available.
+                env: { RTCPeerConnection: window.RTCPeerConnection, iceServers: [], AudioContext: window.AudioContext, mediaDevices: navigator.mediaDevices },
             };
         };
 
@@ -126,6 +128,7 @@ export function registerSoftphone(alpine) {
             dismiss: (id) => controller?.dismiss(id),
             retry: () => controller?.retry(),
             toggleMute: () => controller?.toggleMute(),
+            toggleSpeaker: () => controller?.toggleSpeaker(),
             enableAudio: () => controller?.enableAudio(),
 
             callOutbound(leadId, leadName = null, leadPhone = null) {

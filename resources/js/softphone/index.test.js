@@ -20,7 +20,7 @@ function capturedComponent(config = { urls: {}, texts: {} }) {
 }
 
 describe('the Alpine adapter forwards every softphone action the template calls', () => {
-    it.each(['answer', 'decline', 'dismiss', 'hangup', 'retry', 'toggleMute', 'enableAudio', 'toggleMinimized', 'format', 'init', 'destroy'])(
+    it.each(['answer', 'decline', 'dismiss', 'hangup', 'retry', 'toggleMute', 'toggleSpeaker', 'enableAudio', 'toggleMinimized', 'format', 'init', 'destroy'])(
         'exposes %s as a callable method',
         (name) => {
             expect(typeof capturedComponent()[name]).toBe('function');
@@ -30,7 +30,7 @@ describe('the Alpine adapter forwards every softphone action the template calls'
     it('before init() (controller not yet created), every forwarded call action is a safe no-op rather than a ReferenceError', () => {
         const component = capturedComponent();
 
-        for (const name of ['answer', 'decline', 'dismiss', 'hangup', 'retry', 'toggleMute', 'enableAudio']) {
+        for (const name of ['answer', 'decline', 'dismiss', 'hangup', 'retry', 'toggleMute', 'toggleSpeaker', 'enableAudio']) {
             expect(() => component[name]('call-1')).not.toThrow();
         }
     });

@@ -32,7 +32,7 @@ function setup({ calls = [], mediaOverrides = {}, heartbeatMs = 15000, staleMs =
     };
     const stream = fakeStream();
     const audioEl = fakeAudio();
-    const media = { supported: true, getMicrophone: vi.fn(async () => stream), env: { RTCPeerConnection: FakePeerConnection }, audioEl, ...mediaOverrides };
+    const media = { supported: true, getMicrophone: vi.fn(async () => stream), audioEl, ...mediaOverrides, env: { RTCPeerConnection: FakePeerConnection, ...mediaOverrides.env } };
     const controller = new SoftphoneController({ api, createMedia: () => media, ownership, subscribe, heartbeatMs, staleMs, pollMs });
     controllers.push(controller);
 
@@ -810,8 +810,8 @@ describe('answering', () => {
 });
 
 describe('a connected call', () => {
-    async function connected() {
-        const made = setup({ calls: [rawCall({ id: 'a' })] });
+    async function connected(mediaOverrides = {}) {
+        const made = setup({ calls: [rawCall({ id: 'a' })], mediaOverrides });
         made.controller.start();
         await flush();
         made.state.calls = [rawCall({ id: 'a', status: 'connected', claimed_by_me: true, expires_in_seconds: null, connected_at: new Date().toISOString() })];
@@ -877,6 +877,39 @@ describe('a connected call', () => {
         await flush();
 
         expect(() => controller.toggleMute()).not.toThrow();
+    });
+
+    it('speaker toggle switches the audio output device and is reflected on the card', async () => {
+        const mediaDevices = { enumerateDevices: vi.fn(async () => [
+            { kind: 'audiooutput', label: 'Earpiece', deviceId: 'earpiece-1' },
+            { kind: 'audiooutput', label: 'Speaker', deviceId: 'speaker-1' },
+        ]) };
+        const { controller, audioEl, cards } = await connected({ env: { mediaDevices } });
+        audioEl.setSinkId = vi.fn(async () => undefined);
+        await vi.waitFor(() => expect(cards()[0].speakerAvailable).toBe(true));
+
+        await controller.toggleSpeaker();
+        expect(cards()[0].speakerOn).toBe(true);
+        expect(audioEl.setSinkId).toHaveBeenLastCalledWith('speaker-1');
+
+        await controller.toggleSpeaker();
+        expect(cards()[0].speakerOn).toBe(false);
+        expect(audioEl.setSinkId).toHaveBeenLastCalledWith('earpiece-1');
+    });
+
+    it('speaker toggle is unavailable (hidden on the card) with no distinct speaker device', async () => {
+        const { cards } = await connected();
+
+        await flush();
+        expect(cards()[0].speakerAvailable).toBe(false);
+    });
+
+    it('speaker toggle does nothing before the call is connected', async () => {
+        const { controller } = setup({ calls: [rawCall()] });
+        controller.start();
+        await flush();
+
+        expect(() => controller.toggleSpeaker()).not.toThrow();
     });
 
     it('hangs up through the hangup endpoint once, ignoring duplicate clicks, and tears the session down immediately', async () => {
