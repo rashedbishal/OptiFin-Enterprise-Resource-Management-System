@@ -23,7 +23,7 @@
     $showSkeletonByDefault = $panel ? ! $initialLoadComplete : ! $tabContentReady;
 @endphp
 
-<flux:card class="{{ $premium ? 'overflow-hidden border-zinc-200/80 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-900' : '' }} {{ $premium && $hasConversation ? 'h-full max-h-[34rem]' : '' }}">
+<flux:card class="{{ $premium ? 'overflow-hidden border-zinc-200/80 bg-white shadow-sm dark:border-zinc-700/80 dark:bg-zinc-900' : '' }} {{ $premium && $hasConversation ? 'flex h-full max-h-[34rem] flex-col' : '' }}">
     <div class="{{ $premium ? '-mx-6 -mt-6 mb-5 flex items-center justify-between gap-3 border-b border-zinc-200/80 bg-[linear-gradient(115deg,rgba(255,255,255,0.96)_0%,rgba(248,250,252,0.92)_48%,rgba(239,246,255,0.88)_100%)] px-6 py-4 dark:border-zinc-700/80 dark:bg-[linear-gradient(115deg,rgba(24,24,27,0.98)_0%,rgba(24,24,27,0.94)_48%,rgba(23,37,84,0.76)_100%)]' : '' }}">
         <div class="flex min-w-0 items-center gap-3">
             @if ($premium)
@@ -90,7 +90,7 @@
                 }).observe($el);
                 new MutationObserver(() => { $el.scrollTop = $el.scrollHeight; }).observe($el, { childList: true, subtree: true });
             "
-            class="flex {{ $compact ? 'max-h-48' : 'max-h-96' }} {{ $premium ? 'rounded-2xl border border-white/80 bg-[radial-gradient(105%_82%_at_100%_0%,rgba(219,234,254,0.72)_0%,rgba(219,234,254,0)_62%),radial-gradient(86%_82%_at_0%_100%,rgba(237,233,254,0.52)_0%,rgba(237,233,254,0)_66%),linear-gradient(135deg,rgba(255,255,255,0.92)_0%,rgba(248,250,252,0.84)_52%,rgba(239,246,255,0.88)_100%)] p-3 shadow-inner shadow-slate-950/5 ring-1 ring-zinc-200/70 sm:p-4 dark:border-white/10 dark:bg-[radial-gradient(105%_82%_at_100%_0%,rgba(30,58,138,0.34)_0%,rgba(30,58,138,0)_62%),radial-gradient(86%_82%_at_0%_100%,rgba(76,29,149,0.18)_0%,rgba(76,29,149,0)_66%),linear-gradient(135deg,rgba(9,9,11,0.96)_0%,rgba(24,24,27,0.92)_52%,rgba(15,23,42,0.94)_100%)] dark:shadow-black/35 dark:ring-white/5' : '' }} flex-col gap-4 overflow-y-auto pe-1 contain-paint"
+            class="flex {{ $compact ? 'max-h-48' : 'max-h-96' }} {{ $premium ? 'rounded-2xl border border-white/80 bg-[radial-gradient(105%_82%_at_100%_0%,rgba(219,234,254,0.72)_0%,rgba(219,234,254,0)_62%),radial-gradient(86%_82%_at_0%_100%,rgba(237,233,254,0.52)_0%,rgba(237,233,254,0)_66%),linear-gradient(135deg,rgba(255,255,255,0.92)_0%,rgba(248,250,252,0.84)_52%,rgba(239,246,255,0.88)_100%)] p-3 shadow-inner shadow-slate-950/5 ring-1 ring-zinc-200/70 sm:p-4 dark:border-white/10 dark:bg-[radial-gradient(105%_82%_at_100%_0%,rgba(30,58,138,0.34)_0%,rgba(30,58,138,0)_62%),radial-gradient(86%_82%_at_0%_100%,rgba(76,29,149,0.18)_0%,rgba(76,29,149,0)_66%),linear-gradient(135deg,rgba(9,9,11,0.96)_0%,rgba(24,24,27,0.92)_52%,rgba(15,23,42,0.94)_100%)] dark:shadow-black/35 dark:ring-white/5' : '' }} min-h-0 flex-1 flex-col gap-4 overflow-y-auto pe-1 contain-paint"
         >
             {{-- Messenger-style feed: what the customer sent (and every
             attachment, which only ever arrives inbound) sits on the left in
