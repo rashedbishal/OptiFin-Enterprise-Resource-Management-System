@@ -27,6 +27,7 @@ Route::prefix('webhook')->name('api.webhook.')->group(function () {
         ->name('facebook.token')
         ->middleware(['throttle.fail-open:meta-webhook-facebook-per-source-ip', 'throttle.fail-open:meta-webhook-facebook-per-source', 'verify.meta.signature:facebook_messenger,facebook_lead_ads']);
     Route::get('facebook/{tenant_code}', [LeadWebhookController::class, 'verifyFacebook'])->name('facebook.verify');
+    Route::get('facebook/{tenant_code}/{webhook_token}', [LeadWebhookController::class, 'verifyFacebook'])->name('facebook.verify.token');
     Route::post('whatsapp/{tenant_code}', [LeadWebhookController::class, 'whatsapp'])
         ->name('whatsapp')
         ->middleware(['throttle.fail-open:meta-webhook-whatsapp-per-source-ip', 'throttle.fail-open:meta-webhook-whatsapp-per-source', 'verify.meta.signature:whatsapp']);
@@ -34,6 +35,7 @@ Route::prefix('webhook')->name('api.webhook.')->group(function () {
         ->name('whatsapp.token')
         ->middleware(['throttle.fail-open:meta-webhook-whatsapp-per-source-ip', 'throttle.fail-open:meta-webhook-whatsapp-per-source', 'verify.meta.signature:whatsapp']);
     Route::get('whatsapp/{tenant_code}', [LeadWebhookController::class, 'verifyWhatsapp'])->name('whatsapp.verify');
+    Route::get('whatsapp/{tenant_code}/{webhook_token}', [LeadWebhookController::class, 'verifyWhatsapp'])->name('whatsapp.verify.token');
     Route::post('instagram/{tenant_code}', [LeadWebhookController::class, 'instagram'])
         ->name('instagram')
         ->middleware(['throttle.fail-open:meta-webhook-instagram-per-source-ip', 'throttle.fail-open:meta-webhook-instagram-per-source', 'verify.meta.signature:instagram']);
@@ -41,6 +43,7 @@ Route::prefix('webhook')->name('api.webhook.')->group(function () {
         ->name('instagram.token')
         ->middleware(['throttle.fail-open:meta-webhook-instagram-per-source-ip', 'throttle.fail-open:meta-webhook-instagram-per-source', 'verify.meta.signature:instagram']);
     Route::get('instagram/{tenant_code}', [LeadWebhookController::class, 'verifyInstagram'])->name('instagram.verify');
+    Route::get('instagram/{tenant_code}/{webhook_token}', [LeadWebhookController::class, 'verifyInstagram'])->name('instagram.verify.token');
     // SEC-2 — this route previously had no rate limiting at all (see
     // App\Providers\AppServiceProvider::configureRateLimiting()'s own
     // docblock for why these two limiters are keyed on LeadSource.id

@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Str;
 
 /**
  * REL-1 — a real Cache::lock()->block() timeout takes the full configured
@@ -80,6 +81,54 @@ test('a facebook webhook verify challenge fails with the wrong token', function 
 
     $this->get(route('api.webhook.facebook.verify', $tenant->tenant_code).'?hub_mode=subscribe&hub_verify_token=wrong&hub_challenge=42')
         ->assertForbidden();
+});
+
+test('a facebook webhook verify challenge succeeds on the token-bearing route', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $plaintextToken = Str::random(40);
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::FacebookMessenger,
+        'config' => ['page_id' => '123', 'verify_token' => 'secret-token'],
+        'webhook_token_hash' => hash('sha256', $plaintextToken),
+    ]);
+
+    $this->get(route('api.webhook.facebook.verify.token', [$tenant->tenant_code, $plaintextToken]).'?hub_mode=subscribe&hub_verify_token=secret-token&hub_challenge=42')
+        ->assertOk()
+        ->assertSee('42');
+});
+
+test('an instagram webhook verify challenge succeeds on the token-bearing route', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $plaintextToken = Str::random(40);
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Instagram,
+        'config' => ['instagram_account_id' => '456', 'verify_token' => 'secret-token'],
+        'webhook_token_hash' => hash('sha256', $plaintextToken),
+    ]);
+
+    $this->get(route('api.webhook.instagram.verify.token', [$tenant->tenant_code, $plaintextToken]).'?hub_mode=subscribe&hub_verify_token=secret-token&hub_challenge=42')
+        ->assertOk()
+        ->assertSee('42');
+});
+
+test('a whatsapp webhook verify challenge succeeds on the token-bearing route', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $plaintextToken = Str::random(40);
+
+    LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => ['phone_number_id' => '123', 'access_token' => 'x', 'verify_token' => 'y'],
+        'webhook_token_hash' => hash('sha256', $plaintextToken),
+    ]);
+
+    $this->get(route('api.webhook.whatsapp.verify.token', [$tenant->tenant_code, $plaintextToken]).'?hub_mode=subscribe&hub_verify_token=y&hub_challenge=42')
+        ->assertOk()
+        ->assertSee('42');
 });
 
 test('a facebook message creates a lead, and a follow-up message is appended instead of duplicated', function () {

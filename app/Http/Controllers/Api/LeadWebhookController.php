@@ -71,10 +71,10 @@ class LeadWebhookController extends Controller
      * Messenger and Lead Ads, so this accepts whichever of the two is
      * configured for the tenant (a tenant may only have one set up).
      */
-    public function verifyFacebook(Request $request, string $tenant_code): Response
+    public function verifyFacebook(Request $request, string $tenant_code, ?string $webhook_token = null): Response
     {
-        $source = $this->resolveSourceOrNull($tenant_code, LeadSourceType::FacebookMessenger)
-            ?? $this->resolveSourceOrNull($tenant_code, LeadSourceType::FacebookLeadAds);
+        $source = $this->resolveSourceOrNull($tenant_code, LeadSourceType::FacebookMessenger, $webhook_token)
+            ?? $this->resolveSourceOrNull($tenant_code, LeadSourceType::FacebookLeadAds, $webhook_token);
 
         abort_if($source === null, 404);
 
@@ -235,9 +235,9 @@ class LeadWebhookController extends Controller
     /**
      * Verify an Instagram Messaging webhook subscription challenge.
      */
-    public function verifyInstagram(Request $request, string $tenant_code): Response
+    public function verifyInstagram(Request $request, string $tenant_code, ?string $webhook_token = null): Response
     {
-        return $this->verifyHubChallenge($request, $this->resolveSource($tenant_code, LeadSourceType::Instagram));
+        return $this->verifyHubChallenge($request, $this->resolveSource($tenant_code, LeadSourceType::Instagram, $webhook_token));
     }
 
     /**
@@ -352,9 +352,9 @@ class LeadWebhookController extends Controller
     /**
      * Verify a WhatsApp Cloud API webhook subscription challenge.
      */
-    public function verifyWhatsapp(Request $request, string $tenant_code): Response
+    public function verifyWhatsapp(Request $request, string $tenant_code, ?string $webhook_token = null): Response
     {
-        return $this->verifyHubChallenge($request, $this->resolveSource($tenant_code, LeadSourceType::Whatsapp));
+        return $this->verifyHubChallenge($request, $this->resolveSource($tenant_code, LeadSourceType::Whatsapp, $webhook_token));
     }
 
     /**
