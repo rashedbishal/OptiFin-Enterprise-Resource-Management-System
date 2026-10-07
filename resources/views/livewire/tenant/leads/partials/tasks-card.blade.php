@@ -4,6 +4,11 @@
     // $this is the Show component instance — same "call $this->x directly
     // in a shared partial" pattern deals-card.blade.php already uses.
     $canUpdate = $this->canUpdate;
+
+    // Lazy relation access, same accepted convention lead-hero.blade.php/
+    // detail-card.blade.php already use for $lead->source on this
+    // single-record page — no eager load needed in Show::mount() for it.
+    $tenant = $lead->tenant;
 @endphp
 
 <flux:card class="h-full max-h-[30rem] flex flex-col gap-4">
@@ -25,7 +30,28 @@
             // is even on for this tenant.
             $isOverdue = $task->status->value === 'pending' && $task->due_date !== null && $task->due_date->isPast();
             $canDeleteTask = $this->canDeleteTask($task);
+
+            // The live counterpart to Task Due-Date Alerts (previously this
+            // toggle had no visible sign anywhere short of waiting for the
+            // once-daily bell notification) — true exactly when today's
+            // sweep would notify about this task, so it can show up before
+            // the due date too (not just once overdue), unlike $isOverdue.
+            $taskAlertActive = $task->alertActive($tenant->task_alert_enabled, $tenant->task_alert_days_before);
             @endphp
+            {{-- Due-date alert: same border-shimmer treatment as the Kanban
+            card's meeting/follow-up alert (partials/lead-card.blade.php),
+            reusing the same .lead-alert-shimmer CSS class rather than a
+            badge — the overlay is a childless absolute sibling (masking
+            clips an element's whole subtree, so it can never wrap the row
+            itself) sitting inside a tooltip for the "why" on hover. No
+            --shimmer-light/--shimmer-dark override here: a task row has no
+            per-status background to contrast against like a lead card does,
+            so the CSS's own default amber fallback is exactly right. --}}
+            @if ($taskAlertActive)
+                <flux:tooltip position="bottom" class="w-full" content="{{ __('A reminder for this task is sent once a day while this stays active.') }}">
+                    <div class="relative w-full">
+                        <div class="lead-alert-shimmer pointer-events-none absolute inset-0 rounded-xl" aria-hidden="true"></div>
+            @endif
             <div wire:key="task-row-{{ $task->id }}" class="flex flex-col gap-3.5 rounded-xl border border-zinc-200/90 bg-zinc-50 p-3.5 sm:p-4 shadow-2xs dark:border-zinc-700/80 dark:bg-zinc-900/80">
             <div class="flex min-w-0 flex-col gap-1.5">
                 <div class="flex flex-wrap items-center gap-1.5">
@@ -102,6 +128,10 @@
                 </div>
             @endif
             </div>
+            @if ($taskAlertActive)
+                    </div>
+                </flux:tooltip>
+            @endif
         @empty
             <flux:text class="font-medium text-zinc-600 dark:text-zinc-400">{{ __('No tasks yet for this lead.') }}</flux:text>
         @endforelse
