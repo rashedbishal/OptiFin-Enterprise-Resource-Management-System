@@ -111,4 +111,17 @@ class MessengerSender implements MessageSenderInterface
 
         return SendResult::success(is_string($externalMessageId) ? $externalMessageId : null, $response->json());
     }
+
+    /**
+     * Template messages are WhatsApp-only in this app (see
+     * App\Models\WhatsAppMessageTemplate's own docblock) — never actually
+     * reachable in practice, since the composer only ever offers the
+     * template-send UI for a WhatsApp conversation, but this still returns
+     * a normal SendResult::failure() rather than throwing, matching every
+     * other "platform rejected this" outcome this interface already uses.
+     */
+    public function sendTemplate(Conversation $conversation, Message $message): SendResult
+    {
+        return SendResult::failure('Template messages are only supported for WhatsApp.');
+    }
 }

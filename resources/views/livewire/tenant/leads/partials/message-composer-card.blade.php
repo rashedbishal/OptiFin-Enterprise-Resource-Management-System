@@ -60,11 +60,55 @@
                     </div>
                 </form>
             @else
-                <flux:callout variant="subtle" icon="lock-closed" :heading="__('Sending is not available right now')">
-                    <flux:callout.text>
-                        {{ $eligibility?->reason ?? __('This channel has no conversation history yet.') }}
-                    </flux:callout.text>
-                </flux:callout>
+                @php
+                    // WhatsApp Message Templates — the composer's recovery
+                    // path once the window has closed. templateEligibility
+                    // being eligible means "every other check (merged,
+                    // consent, credentials) passed — only the window itself
+                    // is what's blocking the normal composer", so this never
+                    // offers a template for a merged/consent-withdrawn lead,
+                    // without needing to string-match $eligibility->reason.
+                    $templateEligibility = $this->templateEligibility;
+                    $templates = $this->whatsappTemplates;
+                    $selectedTemplate = $templates->firstWhere('id', $this->selectedTemplateId);
+                @endphp
+
+                @if ($templateEligibility && $templateEligibility->eligible && $templates->isNotEmpty())
+                    <flux:callout variant="subtle" icon="clock" :heading="__('The reply window has expired')">
+                        <flux:callout.text>
+                            {{ __('Send an approved template to re-engage this lead — once they reply, free-form replies work again.') }}
+                        </flux:callout.text>
+                    </flux:callout>
+
+                    <form wire:submit="sendTemplateMessage" class="flex flex-col gap-2">
+                        <x-dropdown-select
+                            wire:model.live="selectedTemplateId"
+                            :placeholder="__('Choose a template…')"
+                            :options="$templates->map(fn ($template) => ['value' => $template->id, 'label' => __(':name (:language)', ['name' => $template->name, 'language' => $template->language])])->toArray()"
+                        />
+
+                        @if ($selectedTemplate)
+                            @for ($i = 0; $i < $selectedTemplate->variable_count; $i++)
+                                <flux:input
+                                    wire:model="templateVariableValues.{{ $i }}"
+                                    :label="__('Variable :n', ['n' => $i + 1])"
+                                    :placeholder="__('Value :n', ['n' => $i + 1])"
+                                />
+                                @error('templateVariableValues.'.$i) <flux:text size="sm" class="text-red-600 dark:text-red-400">{{ $message }}</flux:text> @enderror
+                            @endfor
+
+                            <div class="flex justify-end">
+                                <flux:button type="submit" variant="primary" size="sm">{{ __('Send Template') }}</flux:button>
+                            </div>
+                        @endif
+                    </form>
+                @else
+                    <flux:callout variant="subtle" icon="lock-closed" :heading="__('Sending is not available right now')">
+                        <flux:callout.text>
+                            {{ $eligibility?->reason ?? __('This channel has no conversation history yet.') }}
+                        </flux:callout.text>
+                    </flux:callout>
+                @endif
             @endif
         @endif
 

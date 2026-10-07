@@ -4,17 +4,23 @@ use App\Livewire\Tenant\CallingSettings\Index;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
+use Tests\Support\WhatsAppCallFixtures;
 
 /*
  * WhatsApp inbound calling — a Client-Admin-only, tenant-wide custom
  * ringtone (MP3, <=1MB). Storage::fake('local') isolates every assertion
  * from the real disk, same convention as LeadCsvImportEngineTest.
+ *
+ * The page itself requires a WhatsApp lead source (mount() redirects away
+ * otherwise — see the dedicated test below), so every test exercising the
+ * page's actual behavior sets one up via WhatsAppCallFixtures::source().
  */
 
 beforeEach(fn () => Storage::fake('local'));
 
 test('a client admin can upload a ringtone', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    WhatsAppCallFixtures::source($tenant);
 
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)
@@ -31,6 +37,7 @@ test('a client admin can upload a ringtone', function () {
 
 test('uploading a new ringtone deletes the previous file from storage', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    WhatsAppCallFixtures::source($tenant);
 
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)
@@ -54,6 +61,7 @@ test('uploading a new ringtone deletes the previous file from storage', function
 
 test('remove deletes the file from storage and clears the tenant columns', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    WhatsAppCallFixtures::source($tenant);
 
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)
@@ -74,7 +82,8 @@ test('remove deletes the file from storage and clears the tenant columns', funct
 });
 
 test('remove without a ringtone set is a safe no-op', function () {
-    ['clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    WhatsAppCallFixtures::source($tenant);
 
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)
@@ -84,6 +93,7 @@ test('remove without a ringtone set is a safe no-op', function () {
 
 test('a non-mp3 file is rejected', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    WhatsAppCallFixtures::source($tenant);
 
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)
@@ -96,6 +106,7 @@ test('a non-mp3 file is rejected', function () {
 
 test('a file over 1MB is rejected', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    WhatsAppCallFixtures::source($tenant);
 
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)
@@ -108,9 +119,18 @@ test('a file over 1MB is rejected', function () {
 
 test('a client user (non-admin) cannot open the calling settings page', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
+    WhatsAppCallFixtures::source($tenant);
     $clientUser = clientUserWithLeadPermission($tenant);
 
     Livewire::actingAs($clientUser)
         ->test(Index::class)
         ->assertForbidden();
+});
+
+test('a client admin is redirected away from the page when the tenant has no WhatsApp lead source', function () {
+    ['clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Index::class)
+        ->assertRedirect(route('lead-management.index'));
 });

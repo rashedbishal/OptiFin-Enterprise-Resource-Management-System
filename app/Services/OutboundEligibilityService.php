@@ -37,6 +37,36 @@ class OutboundEligibilityService
 {
     public function evaluate(Conversation $conversation): EligibilityResult
     {
+        $commonFailure = $this->evaluateCommon($conversation);
+
+        if ($commonFailure !== null) {
+            return $commonFailure;
+        }
+
+        if (! $conversation->isWithinMessagingWindow()) {
+            return EligibilityResult::ineligible('The reply window has expired.');
+        }
+
+        return EligibilityResult::eligible();
+    }
+
+    /**
+     * WhatsApp Message Templates — the same checks as evaluate() above
+     * MINUS the messaging-window check, since an already-approved template
+     * exists specifically to reach a lead once that window has closed (see
+     * App\Services\WhatsAppSender::sendTemplate()). Confirmed against
+     * Meta's own permissions docs before adding this: sending a template
+     * needs nothing beyond whatsapp_business_messaging, the exact scope
+     * hasRequiredCredentials() below already requires for a normal reply —
+     * no new credential/scope check was needed here.
+     */
+    public function evaluateForTemplate(Conversation $conversation): EligibilityResult
+    {
+        return $this->evaluateCommon($conversation) ?? EligibilityResult::eligible();
+    }
+
+    private function evaluateCommon(Conversation $conversation): ?EligibilityResult
+    {
         $lead = $conversation->lead;
 
         if ($lead->merged_into_lead_id !== null) {
@@ -59,11 +89,7 @@ class OutboundEligibilityService
             return EligibilityResult::ineligible("This channel isn't configured for sending yet.");
         }
 
-        if (! $conversation->isWithinMessagingWindow()) {
-            return EligibilityResult::ineligible('The reply window has expired.');
-        }
-
-        return EligibilityResult::eligible();
+        return null;
     }
 
     /**

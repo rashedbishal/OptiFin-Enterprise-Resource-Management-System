@@ -52,3 +52,4 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Livewire/Tenant/Leads/Index.php,resources/views/livewire/tenant/leads.blade.php | .ai/rules/views-livewire-tenant.md |
 | resources/views/livewire/** | .ai/rules/views-livewire.md |
 | resources/views/layouts/app.blade.php,resources/views/livewire/tenant/**,resources/views/partials/settings-heading.blade.php | .ai/rules/views-partials.md |
+| app/{Models/WhatsAppMessageTemplate.php,Services/{OutboundEligibilityService,WhatsAppSender}.php,Livewire/Tenant/WhatsAppTemplates/**,Livewire/Tenant/Leads/Show.php} | .ai/rules/whats-app-templates-tenant-leads.md |

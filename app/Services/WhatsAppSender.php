@@ -127,4 +127,69 @@ class WhatsAppSender implements MessageSenderInterface
 
         return SendResult::success(is_string($externalMessageId) ? $externalMessageId : null, $response->json());
     }
+
+    /**
+     * Sends an already-approved WhatsApp template message — the one send
+     * path that works even once the 24-hour messaging window has closed.
+     * Confirmed against Meta's own permissions docs before building this:
+     * `type: template` goes through this exact same `/messages` endpoint
+     * and needs nothing beyond whatsapp_business_messaging, the same scope
+     * send()/sendMedia() above already require — template CREATION/
+     * management is the only thing gated behind the separate
+     * whatsapp_business_management scope, and this app never does that
+     * (see WhatsAppMessageTemplate's own docblock).
+     *
+     * $message's own template_name/template_language/template_variables
+     * columns are the single source of truth for the payload — a snapshot
+     * taken at send-time (see Show::sendTemplateMessage()), never a live
+     * join back to the WhatsAppMessageTemplate catalog row, which a tenant
+     * could rename or deactivate after this message was already queued.
+     *
+     * Body-text variables only for Phase 1 — no header media, no buttons.
+     */
+    public function sendTemplate(Conversation $conversation, Message $message): SendResult
+    {
+        $config = $conversation->leadSource->config ?? [];
+        $phoneNumberId = $config['phone_number_id'] ?? null;
+        $accessToken = $config['access_token'] ?? null;
+
+        if (! is_string($phoneNumberId) || $phoneNumberId === '' || ! is_string($accessToken) || $accessToken === '') {
+            return SendResult::failure('WhatsApp credentials are not configured for this source.');
+        }
+
+        $variables = is_array($message->template_variables) ? $message->template_variables : [];
+
+        $template = [
+            'name' => $message->template_name,
+            'language' => ['code' => $message->template_language],
+        ];
+
+        if ($variables !== []) {
+            $template['components'] = [[
+                'type' => 'body',
+                'parameters' => array_map(static fn (string $value): array => ['type' => 'text', 'text' => $value], $variables),
+            ]];
+        }
+
+        $response = Http::withToken($accessToken)->timeout(15)->post(
+            "https://graph.facebook.com/v20.0/{$phoneNumberId}/messages",
+            [
+                'messaging_product' => 'whatsapp',
+                'to' => $conversation->external_thread_id,
+                'type' => 'template',
+                'template' => $template,
+            ],
+        );
+
+        if (! $response->successful()) {
+            return SendResult::failure(
+                $response->json('error.message') ?? 'WhatsApp rejected the template message.',
+                $response->json(),
+            );
+        }
+
+        $externalMessageId = $response->json('messages.0.id');
+
+        return SendResult::success(is_string($externalMessageId) ? $externalMessageId : null, $response->json());
+    }
 }

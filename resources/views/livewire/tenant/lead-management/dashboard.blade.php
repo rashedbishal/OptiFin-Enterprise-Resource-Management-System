@@ -168,7 +168,14 @@
                         'count' => [$this->totalWebsiteForms, __(':count forms', ['count' => $this->totalWebsiteForms])],
                         'gate' => $this->canManageCatalogs,
                     ],
-                    [
+                ];
+
+                // Only relevant once the tenant has a WhatsApp lead source —
+                // without one, WhatsApp calling/messaging can never happen,
+                // so these tiles are omitted entirely rather than shown
+                // locked.
+                if ($this->hasWhatsAppSource) {
+                    $tiles[] = [
                         'label' => __('Calling Settings'),
                         'route' => 'tenant-leads.calling-settings',
                         'icon' => 'phone',
@@ -176,8 +183,18 @@
                         'description' => __('Upload a custom ringtone for incoming WhatsApp calls.'),
                         'count' => $this->hasCustomRingtone ? [1, __('Custom ringtone set')] : [0, __('Default tone')],
                         'gate' => $this->canManageCatalogs,
-                    ],
-                ];
+                    ];
+
+                    $tiles[] = [
+                        'label' => __('WhatsApp Templates'),
+                        'route' => 'tenant-leads.whatsapp-templates',
+                        'icon' => 'chat-bubble-left-right',
+                        'tint' => 'emerald',
+                        'description' => __('Approved templates your team can send to re-engage a lead once the reply window closes.'),
+                        'count' => [$this->totalWhatsAppTemplates, __(':count registered', ['count' => $this->totalWhatsAppTemplates])],
+                        'gate' => $this->canManageCatalogs,
+                    ];
+                }
             @endphp
 
             @foreach ($tiles as $tile)

@@ -50,6 +50,7 @@ use App\Models\Task;
 use App\Models\TaskStatusLog;
 use App\Models\Tenant;
 use App\Models\TenantUser;
+use App\Models\WhatsAppMessageTemplate;
 use App\Notifications\FollowUpCancelledNotification;
 use App\Notifications\FollowUpUpdatedNotification;
 use App\Notifications\MeetingCancelledNotification;
@@ -146,6 +147,20 @@ class Show extends Component
     public ?TemporaryUploadedFile $imageUpload = null;
 
     public ?TemporaryUploadedFile $pdfUpload = null;
+
+    /**
+     * WhatsApp Message Templates — the composer's "re-engage" picker,
+     * shown only once the channel's messaging window has closed (see
+     * templateEligibility()/whatsappTemplates() below). Reset after each
+     * successful sendTemplateMessage() call, same pattern as
+     * $newMessageBody after sendMessage().
+     */
+    public ?string $selectedTemplateId = null;
+
+    /**
+     * @var array<int, string>
+     */
+    public array $templateVariableValues = [];
 
     /**
      * The "Add tag" picker's currently-selected tag, bound to a dropdown
@@ -540,7 +555,7 @@ class Show extends Component
         $this->assigneeId = $this->lead->assigned_to;
         $this->fillDetailFieldsFromLead();
         $this->refreshActivity();
-        unset($this->timeline, $this->possibleDuplicates, $this->customFieldDisplayRows);
+        unset($this->timeline, $this->possibleDuplicates, $this->customFieldDisplayRows, $this->tasks);
     }
 
     #[Computed]
@@ -949,6 +964,52 @@ class Show extends Component
         }
 
         return app(OutboundEligibilityService::class)->evaluate($this->activeConversation);
+    }
+
+    /**
+     * WhatsApp Message Templates — null for every channel except WhatsApp
+     * (templates are WhatsApp-only in this app, see WhatsAppMessageTemplate's
+     * own docblock) or when there's no active conversation to send through
+     * yet. Unlike messagingEligibility() above, this is eligible even once
+     * the messaging window has closed — that's the whole point of it (see
+     * OutboundEligibilityService::evaluateForTemplate()).
+     */
+    #[Computed]
+    public function templateEligibility(): ?EligibilityResult
+    {
+        if ($this->messagingChannel !== MessageChannel::Whatsapp || $this->activeConversation === null) {
+            return null;
+        }
+
+        return app(OutboundEligibilityService::class)->evaluateForTemplate($this->activeConversation);
+    }
+
+    /**
+     * This tenant's active WhatsApp templates for this lead's own WhatsApp
+     * source — resolved via ResolveLeadWhatsAppSource, the same lookup
+     * WhatsApp Outbound Calling already uses for "which source does this
+     * lead's WhatsApp presence belong to." Empty for any other channel.
+     *
+     * @return Collection<int, WhatsAppMessageTemplate>
+     */
+    #[Computed]
+    public function whatsappTemplates(): Collection
+    {
+        if ($this->messagingChannel !== MessageChannel::Whatsapp) {
+            return collect();
+        }
+
+        $source = app(ResolveLeadWhatsAppSource::class)->handle($this->lead);
+
+        if ($source === null) {
+            return collect();
+        }
+
+        return WhatsAppMessageTemplate::query()
+            ->where('lead_source_id', $source->id)
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get();
     }
 
     /**
@@ -2544,6 +2605,105 @@ class Show extends Component
     }
 
     /**
+     * Livewire's own property-updated hook, fired automatically by the
+     * composer's wire:model.live="selectedTemplateId" dropdown — resizes
+     * $templateVariableValues to exactly the newly-picked template's
+     * variable_count, clearing any stale values a previously-picked
+     * template left behind, so the view renders exactly the right number
+     * of value inputs. A tampered/foreign/inactive template id just clears
+     * the array, same defensive shape as every other picker on this page.
+     */
+    public function updatedSelectedTemplateId(): void
+    {
+        $template = $this->whatsappTemplates->firstWhere('id', $this->selectedTemplateId);
+        $this->templateVariableValues = $template === null ? [] : array_fill(0, $template->variable_count, '');
+        $this->resetErrorBag();
+    }
+
+    /**
+     * WhatsApp Message Templates — sends an already-approved template to
+     * re-engage a lead whose messaging window has closed. Deliberately
+     * checks templateEligibility() (evaluateForTemplate(), no window
+     * check), never messagingEligibility() — that's the entire reason this
+     * action exists. Otherwise mirrors sendMessage()'s Gate/leadIsMutable/
+     * rate-limit/dedup-lock/create-then-dispatch shape exactly; the
+     * template's name/language and the submitted variable values are
+     * snapshotted onto the Message row itself (see WhatsAppSender::
+     * sendTemplate()'s own docblock for why), never a live FK.
+     */
+    public function sendTemplateMessage(): void
+    {
+        if (Gate::denies('update', $this->lead)) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to update this lead."));
+
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
+            return;
+        }
+
+        if (! $this->passesOutboundRateLimits()) {
+            return;
+        }
+
+        $conversation = $this->activeConversation;
+
+        if ($conversation === null || $this->messagingChannel !== MessageChannel::Whatsapp) {
+            return;
+        }
+
+        $eligibility = app(OutboundEligibilityService::class)->evaluateForTemplate($conversation);
+
+        if (! $eligibility->eligible) {
+            Flux::toast(variant: 'danger', text: $eligibility->reason);
+
+            return;
+        }
+
+        $template = $this->whatsappTemplates->firstWhere('id', $this->selectedTemplateId);
+
+        if ($template === null) {
+            Flux::toast(variant: 'danger', text: __('Pick a template first.'));
+
+            return;
+        }
+
+        $validated = $this->validate([
+            'templateVariableValues' => ['array', 'size:'.$template->variable_count],
+            'templateVariableValues.*' => ['required', 'string', 'max:255'],
+        ]);
+
+        $lockKey = 'outbound-template-message:'.$conversation->id.':'.$template->id.':'.md5(implode('|', $validated['templateVariableValues']));
+        $created = Cache::lock($lockKey, 10)->get(fn (): Message => Message::create([
+            'tenant_id' => $conversation->tenant_id,
+            'conversation_id' => $conversation->id,
+            'lead_id' => $conversation->lead_id,
+            'channel' => $conversation->channel,
+            'direction' => MessageDirection::Outbound,
+            'message_type' => MessageType::Template,
+            'template_name' => $template->name,
+            'template_language' => $template->language,
+            'template_variables' => $validated['templateVariableValues'],
+            'status' => MessageStatus::Pending,
+            'status_updated_at' => now(),
+            'sent_by' => Auth::id(),
+        ]));
+
+        if (! $created instanceof Message) {
+            Flux::toast(variant: 'warning', text: __('This message is already being sent.'));
+
+            return;
+        }
+
+        SendOutboundMessage::dispatch($created);
+
+        $this->reset('selectedTemplateId', 'templateVariableValues');
+        unset($this->activeConversation, $this->messagingEligibility, $this->templateEligibility, $this->outboundMessages);
+        Flux::toast(variant: 'success', text: __('Template message queued for sending.'));
+    }
+
+    /**
      * Sends the composer's pending image/PDF. Only called from
      * sendMessage(), after its permission, rate-limit and eligibility
      * checks. The file is re-validated here against the lead's channel
@@ -3104,6 +3264,11 @@ class Show extends Component
 
         $this->showTaskModal = false;
         unset($this->tasks);
+        // Reuses the lead's own existing broadcast channel/listener
+        // (refreshLead(), already wired for every other mutation this page
+        // makes) so anyone else with this same lead open sees the task
+        // appear/change live, not just the actor's own browser.
+        event(new LeadUpdated($this->lead));
         Flux::toast(variant: 'success', text: __('Task saved.'));
     }
 
@@ -3161,6 +3326,7 @@ class Show extends Component
 
         $this->refreshActivity();
         unset($this->tasks);
+        event(new LeadUpdated($this->lead));
         Flux::toast(variant: 'success', text: __('Task status updated.'));
     }
 
@@ -3206,6 +3372,7 @@ class Show extends Component
 
         $this->refreshActivity();
         unset($this->tasks);
+        event(new LeadUpdated($this->lead));
         Flux::toast(variant: 'success', text: __('Task deleted.'));
     }
 

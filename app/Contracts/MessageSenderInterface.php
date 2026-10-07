@@ -34,4 +34,17 @@ interface MessageSenderInterface
      * own, separate Message.
      */
     public function sendMedia(Conversation $conversation, Message $message): SendResult;
+
+    /**
+     * Sends an already-approved message template — the one send path that
+     * works even once the 24-hour messaging window has closed (see
+     * App\Services\OutboundEligibilityService::evaluateForTemplate()).
+     * WhatsApp is the only channel this app supports templates for in this
+     * phase (see App\Models\WhatsAppMessageTemplate's own docblock);
+     * Messenger/Instagram implementations must return a
+     * SendResult::failure() rather than throw, the same "platform
+     * rejected this" shape as every other unsupported-combination outcome
+     * in this contract.
+     */
+    public function sendTemplate(Conversation $conversation, Message $message): SendResult;
 }

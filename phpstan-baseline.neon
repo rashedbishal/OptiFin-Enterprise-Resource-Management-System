@@ -217,6 +217,12 @@ parameters:
 			path: app/Livewire/Tenant/CallingSettings/Index.php
 
 		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/CallingSettings/Index.php
+
+		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$whatsapp_call_ringtone_path\.$#'
 			identifier: property.notFound
 			count: 2
@@ -321,7 +327,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant_id\.$#'
 			identifier: property.notFound
-			count: 6
+			count: 8
 			path: app/Livewire/Tenant/LeadManagement/Dashboard.php
 
 		-
@@ -753,7 +759,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Livewire\\Tenant\\Leads\\Show\:\:\$activeConversation\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 4
 			path: app/Livewire/Tenant/Leads/Show.php
 
 		-
@@ -783,7 +789,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Livewire\\Tenant\\Leads\\Show\:\:\$messagingChannel\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 5
 			path: app/Livewire/Tenant/Leads/Show.php
 
 		-
@@ -796,6 +802,12 @@ parameters:
 			message: '#^Access to an undefined property App\\Livewire\\Tenant\\Leads\\Show\:\:\$tenantTags\.$#'
 			identifier: property.notFound
 			count: 1
+			path: app/Livewire/Tenant/Leads/Show.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\Leads\\Show\:\:\$whatsappTemplates\.$#'
+			identifier: property.notFound
+			count: 2
 			path: app/Livewire/Tenant/Leads/Show.php
 
 		-
@@ -1211,6 +1223,30 @@ parameters:
 			identifier: nullsafe.neverNull
 			count: 2
 			path: app/Livewire/Tenant/WebsiteForms/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\WhatsAppTemplates\\Index\:\:\$eligibleSources\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Livewire/Tenant/WhatsAppTemplates/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant\.$#'
+			identifier: property.notFound
+			count: 2
+			path: app/Livewire/Tenant/WhatsAppTemplates/Index.php
+
+		-
+			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant_id\.$#'
+			identifier: property.notFound
+			count: 5
+			path: app/Livewire/Tenant/WhatsAppTemplates/Index.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 3
+			path: app/Livewire/Tenant/WhatsAppTemplates/Index.php
 
 		-
 			message: '#^Anonymous function should return string but returns string\|false\.$#'

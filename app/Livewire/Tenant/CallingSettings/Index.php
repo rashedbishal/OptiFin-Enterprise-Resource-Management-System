@@ -2,6 +2,8 @@
 
 namespace App\Livewire\Tenant\CallingSettings;
 
+use App\Enums\LeadSourceType;
+use App\Models\LeadSource;
 use App\Services\OutboundMediaStorage;
 use Flux\Flux;
 use Illuminate\Support\Facades\Auth;
@@ -40,9 +42,28 @@ class Index extends Component
 
     public ?TemporaryUploadedFile $ringtoneFile = null;
 
+    /**
+     * Mirrors the Lead Management hub's own tile gating (Dashboard::
+     * hasWhatsAppSource()) — without a WhatsApp lead source, WhatsApp
+     * calling can never happen, so a ringtone for it is a dead end. The
+     * admin check runs first so a non-admin still gets a 403, not a
+     * redirect, matching this page's pre-existing authorization contract.
+     */
     public function mount(): void
     {
         abort_unless(Auth::user()->isClientAdmin(), 403);
+
+        if (! $this->tenantHasWhatsAppSource()) {
+            $this->redirect(route('lead-management.index'), navigate: true);
+        }
+    }
+
+    private function tenantHasWhatsAppSource(): bool
+    {
+        return LeadSource::query()
+            ->where('tenant_id', Auth::user()->tenant_id)
+            ->where('type', LeadSourceType::Whatsapp)
+            ->exists();
     }
 
     public function humanSize(?int $bytes): ?string

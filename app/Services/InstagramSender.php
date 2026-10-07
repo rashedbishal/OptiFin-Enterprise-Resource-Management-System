@@ -123,4 +123,13 @@ class InstagramSender implements MessageSenderInterface
 
         return SendResult::success(is_string($externalMessageId) ? $externalMessageId : null, $response->json());
     }
+
+    /**
+     * Template messages are WhatsApp-only in this app — see
+     * MessengerSender::sendTemplate()'s identical docblock.
+     */
+    public function sendTemplate(Conversation $conversation, Message $message): SendResult
+    {
+        return SendResult::failure('Template messages are only supported for WhatsApp.');
+    }
 }

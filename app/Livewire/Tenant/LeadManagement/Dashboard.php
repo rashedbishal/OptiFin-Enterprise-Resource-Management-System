@@ -2,12 +2,14 @@
 
 namespace App\Livewire\Tenant\LeadManagement;
 
+use App\Enums\LeadSourceType;
 use App\Models\Lead;
 use App\Models\LeadCustomFieldDefinition;
 use App\Models\LeadScoringRule;
 use App\Models\LeadSource;
 use App\Models\LeadSourceCost;
 use App\Models\WebsiteForm;
+use App\Models\WhatsAppMessageTemplate;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Computed;
@@ -122,5 +124,26 @@ class Dashboard extends Component
     public function hasCustomRingtone(): bool
     {
         return Auth::user()->tenant->whatsapp_call_ringtone_path !== null;
+    }
+
+    /**
+     * Gates the "Calling Settings"/"WhatsApp Templates" tiles' very
+     * presence (not just their lock badge) — a tenant with no WhatsApp
+     * lead source can never place/receive a WhatsApp call or message, so
+     * either setting would be a dead end.
+     */
+    #[Computed]
+    public function hasWhatsAppSource(): bool
+    {
+        return LeadSource::query()
+            ->where('tenant_id', Auth::user()->tenant_id)
+            ->where('type', LeadSourceType::Whatsapp)
+            ->exists();
+    }
+
+    #[Computed]
+    public function totalWhatsAppTemplates(): int
+    {
+        return WhatsAppMessageTemplate::query()->where('tenant_id', Auth::user()->tenant_id)->count();
     }
 }

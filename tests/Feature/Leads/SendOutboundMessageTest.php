@@ -3,6 +3,7 @@
 use App\Enums\LeadSourceType;
 use App\Enums\MessageChannel;
 use App\Enums\MessageStatus;
+use App\Enums\MessageType;
 use App\Jobs\SendOutboundMessage;
 use App\Models\Conversation;
 use App\Models\Lead;
@@ -146,6 +147,73 @@ test('an ineligible conversation (expired window) is marked failed without ever 
         'tenant_id' => $tenant->id, 'lead_id' => $lead->id, 'lead_source_id' => $source->id,
     ]);
     $message = makeOutboundMessage($tenant->id, $lead->id, $conversation, MessageChannel::Whatsapp);
+
+    Http::fake();
+
+    (new SendOutboundMessage($message))->handle(app(OutboundEligibilityService::class), app(MessageSenderFactory::class));
+
+    Http::assertNothingSent();
+    expect($message->fresh()->status)->toBe(MessageStatus::Failed);
+});
+
+test('a template message sends successfully even with an expired messaging window', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => ['phone_number_id' => '1', 'access_token' => 'token'],
+    ]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+    $conversation = Conversation::factory()->windowExpired()->create([
+        'tenant_id' => $tenant->id, 'lead_id' => $lead->id, 'lead_source_id' => $source->id,
+    ]);
+    $message = Message::factory()->outbound()->create([
+        'tenant_id' => $tenant->id,
+        'lead_id' => $lead->id,
+        'conversation_id' => $conversation->id,
+        'channel' => MessageChannel::Whatsapp,
+        'message_type' => MessageType::Template,
+        'body' => null,
+        'template_name' => 'order_update',
+        'template_language' => 'en_US',
+        'template_variables' => ['12345'],
+    ]);
+
+    Http::fake(['graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.TEMPLATE']]], 200)]);
+
+    (new SendOutboundMessage($message))->handle(app(OutboundEligibilityService::class), app(MessageSenderFactory::class));
+
+    Http::assertSent(fn ($request) => $request['type'] === 'template'
+        && $request['template']['name'] === 'order_update'
+        && $request['template']['language']['code'] === 'en_US'
+        && $request['template']['components'][0]['parameters'][0]['text'] === '12345');
+    expect($message->fresh()->status)->toBe(MessageStatus::Sent);
+    expect($message->fresh()->external_message_id)->toBe('wamid.TEMPLATE');
+});
+
+test('a template message on a merged lead is still marked failed without calling the platform API', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => ['phone_number_id' => '1', 'access_token' => 'token'],
+    ]);
+    $survivor = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'merged_into_lead_id' => $survivor->id]);
+    $conversation = Conversation::factory()->windowExpired()->create([
+        'tenant_id' => $tenant->id, 'lead_id' => $lead->id, 'lead_source_id' => $source->id,
+    ]);
+    $message = Message::factory()->outbound()->create([
+        'tenant_id' => $tenant->id,
+        'lead_id' => $lead->id,
+        'conversation_id' => $conversation->id,
+        'channel' => MessageChannel::Whatsapp,
+        'message_type' => MessageType::Template,
+        'body' => null,
+        'template_name' => 'order_update',
+        'template_language' => 'en_US',
+        'template_variables' => [],
+    ]);
 
     Http::fake();
 

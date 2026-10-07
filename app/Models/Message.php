@@ -30,6 +30,9 @@ use Illuminate\Support\Carbon;
  * @property MessageChannel $channel
  * @property MessageDirection $direction
  * @property MessageType $message_type
+ * @property string|null $template_name
+ * @property string|null $template_language
+ * @property array<int, string>|null $template_variables
  * @property string|null $body
  * @property string|null $external_message_id
  * @property string|null $external_participant_id
@@ -50,6 +53,7 @@ use Illuminate\Support\Carbon;
  */
 #[Fillable([
     'tenant_id', 'conversation_id', 'lead_id', 'channel', 'direction', 'message_type', 'body',
+    'template_name', 'template_language', 'template_variables',
     'external_message_id', 'external_participant_id', 'status', 'status_updated_at',
     'failure_reason', 'sent_by', 'metadata',
     'attachment_path', 'attachment_mime', 'attachment_name', 'attachment_size',
@@ -71,6 +75,7 @@ class Message extends Model
             'status' => MessageStatus::class,
             'status_updated_at' => 'datetime',
             'metadata' => 'array',
+            'template_variables' => 'array',
         ];
     }
 

@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Enums\MessageStatus;
+use App\Enums\MessageType;
 use App\Events\LeadUpdated;
 use App\Models\Message;
 use App\Services\MessageSenderFactory;
@@ -67,7 +68,11 @@ class SendOutboundMessage implements ShouldQueue
         }
 
         $conversation = $this->message->conversation;
-        $eligibilityResult = $eligibility->evaluate($conversation);
+        $isTemplate = $this->message->message_type === MessageType::Template;
+
+        $eligibilityResult = $isTemplate
+            ? $eligibility->evaluateForTemplate($conversation)
+            : $eligibility->evaluate($conversation);
 
         if (! $eligibilityResult->eligible) {
             $this->markFailed($eligibilityResult->reason);
@@ -76,9 +81,11 @@ class SendOutboundMessage implements ShouldQueue
         }
 
         $sender = $senderFactory->make($this->message->channel);
-        $sendResult = $this->message->hasMedia()
-            ? $sender->sendMedia($conversation, $this->message)
-            : $sender->send($conversation, (string) $this->message->body);
+        $sendResult = match (true) {
+            $isTemplate => $sender->sendTemplate($conversation, $this->message),
+            $this->message->hasMedia() => $sender->sendMedia($conversation, $this->message),
+            default => $sender->send($conversation, (string) $this->message->body),
+        };
 
         if (! $sendResult->successful) {
             $this->markFailed($sendResult->failureReason);

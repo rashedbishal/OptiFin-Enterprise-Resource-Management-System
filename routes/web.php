@@ -25,6 +25,7 @@ use App\Livewire\Tenant\ModulePlaceholder;
 use App\Livewire\Tenant\Roles\Index as RolesIndex;
 use App\Livewire\Tenant\Users\Index as UsersIndex;
 use App\Livewire\Tenant\WebsiteForms\Index as WebsiteFormsIndex;
+use App\Livewire\Tenant\WhatsAppTemplates\Index as WhatsAppTemplatesIndex;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome')->name('home');
@@ -50,6 +51,7 @@ Route::middleware(['auth', 'verified', 'tenant.identify', 'tenant.active'])->gro
         Route::livewire('leads/website-forms', WebsiteFormsIndex::class)->name('tenant-leads.website-forms');
         Route::livewire('leads/reports', LeadReportsIndex::class)->name('tenant-leads.reports');
         Route::livewire('leads/calling-settings', CallingSettingsIndex::class)->name('tenant-leads.calling-settings');
+        Route::livewire('leads/whatsapp-templates', WhatsAppTemplatesIndex::class)->name('tenant-leads.whatsapp-templates');
         // WhatsApp inbound calling — streams the tenant's custom ringtone
         // (if set) to the global softphone shell, which lives in the main
         // layout regardless of which lead-management page is open; gating
