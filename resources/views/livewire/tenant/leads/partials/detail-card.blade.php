@@ -145,11 +145,12 @@
             blue bubble, with its delivery status under it. Presentation
             only — the order, the data and the scroll behavior above are
             unchanged. --}}
-            @php $previousMessageDate = null; @endphp
+            @php $previousMessageDate = null; $previousOutgoing = null; $previousSender = null; $previousSentAt = null; @endphp
             @foreach ($timeline as $item)
                 @php
                     $outgoing = $item['type'] !== 'attachment' && $item['direction'] === \App\Enums\MessageDirection::Outbound;
                     $sentAt = $item['at'] ?? null;
+                    $sender = $outgoing ? $item['sender'] : null;
                 @endphp
 
                 @if ($premium && $sentAt && (! $previousMessageDate || ! $sentAt->isSameDay($previousMessageDate)))
@@ -166,18 +167,49 @@
                         </span>
                         <span class="h-px flex-1 bg-zinc-200/80 dark:bg-zinc-700/80"></span>
                     </div>
+                    {{-- A day boundary always breaks grouping, even if the
+                    same side/sender continues right after it. --}}
+                    @php $previousOutgoing = null; $previousSender = null; $previousSentAt = null; @endphp
                 @endif
                 @php $previousMessageDate = $sentAt ?? $previousMessageDate; @endphp
 
-                <div class="flex w-full items-end gap-2.5 {{ $outgoing ? 'justify-end' : 'justify-start' }}">
+                @php
+                    // Consecutive messages from the same side (and, for
+                    // outgoing, the same team member — a sender change
+                    // always starts a fresh group), sent within a minute of
+                    // each other, collapse their repeated "YOUR TEAM" label
+                    // and "Sent by :name" caption into a single header,
+                    // WhatsApp-style, rather than restating it on every
+                    // single bubble — that repetition (plus a full gap-4
+                    // between every message regardless of how closely
+                    // related) is what made a rapid back-and-forth look
+                    // over-padded. The 60s cutoff is deliberately tight: two
+                    // genuinely separate replies a couple of minutes apart
+                    // should still each get their own label/timestamp.
+                    $isGrouped = $loop->index > 0
+                        && $outgoing === $previousOutgoing
+                        && $sender === $previousSender
+                        && $sentAt && $previousSentAt
+                        && abs($sentAt->diffInSeconds($previousSentAt)) <= 60;
+                    $previousOutgoing = $outgoing;
+                    $previousSender = $sender;
+                    $previousSentAt = $sentAt ?? $previousSentAt;
+                @endphp
+
+                {{-- The feed container's own gap-4 already spaces every row
+                apart by default (and correctly adds nothing before the very
+                first child) — a grouped row only needs to pull itself
+                closer to the previous one, via a negative margin sized to
+                net out to a tight ~4px gap instead of the full 16px. --}}
+                <div class="flex w-full items-end gap-2.5 {{ $isGrouped ? '-mt-3' : '' }} {{ $outgoing ? 'justify-end' : 'justify-start' }}">
                     @if ($premium && ! $outgoing)
-                        <div class="mb-5 flex size-8 shrink-0 items-center justify-center rounded-xl border border-white bg-white text-zinc-500 shadow-sm ring-1 ring-zinc-200/70 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-700">
+                        <div class="mb-5 flex size-8 shrink-0 items-center justify-center rounded-xl border border-white bg-white text-zinc-500 shadow-sm ring-1 ring-zinc-200/70 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-700 {{ $isGrouped ? 'invisible' : '' }}">
                             <flux:icon :icon="$lead->source->type->icon()" class="size-4" />
                         </div>
                     @endif
 
                 <div class="flex max-w-[82%] flex-col gap-1 {{ $outgoing ? 'items-end' : 'items-start' }}">
-                    @if ($premium)
+                    @if ($premium && ! $isGrouped)
                         <span class="px-1 text-[10px] font-bold tracking-wide text-zinc-400 uppercase dark:text-zinc-500">{{ $outgoing ? __('Your team') : $lead->source->name }}</span>
                     @endif
                     @if ($item['type'] === 'text')
@@ -220,10 +252,13 @@
                     @php
                         // "Sent by <name>" replaces the bare "Sent" status; any
                         // other status (Pending/Delivered/Read/Failed) still shows.
+                        // Grouped messages skip "Sent by :name" (already stated
+                        // once at the top of the group — see $isGrouped above)
+                        // but keep their own per-message status, which can
+                        // still legitimately differ bubble to bubble.
                         $status = $outgoing ? $item['status'] : null;
-                        $sender = $outgoing ? $item['sender'] : null;
                         $caption = collect([
-                            $sender ? __('Sent by :name', ['name' => $sender]) : null,
+                            $sender && ! $isGrouped ? __('Sent by :name', ['name' => $sender]) : null,
                             $status && ! ($sender && $status === \App\Enums\MessageStatus::Sent) ? __($status->label()) : null,
                         ])->filter()->implode(' · ');
                     @endphp
