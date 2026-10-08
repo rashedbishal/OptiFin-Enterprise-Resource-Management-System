@@ -66,6 +66,26 @@ test('a whatsapp source is checked against the whatsapp_business_messaging scope
         ->assertJson(['required_scopes' => ['whatsapp_business_messaging' => true, 'pages_messaging' => false]]);
 });
 
+test('a messenger source is checked against the page_utility_messaging scope', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::FacebookMessenger,
+        'config' => ['page_id' => '1', 'page_access_token' => 'EAAoXmSomeVeryLongRealLookingToken1234567890', 'verify_token' => 'secret'],
+    ]);
+
+    Http::fake(['graph.facebook.com/debug_token*' => Http::response([
+        'data' => ['app_id' => '1', 'is_valid' => true, 'expires_at' => 0, 'scopes' => ['pages_messaging']],
+    ])]);
+
+    $this->actingAs($motherAdmin, 'platform')
+        ->getJson(route('admin.clients.lead-sources.meta-permissions', [$tenant, $source]))
+        ->assertOk()
+        ->assertJson(['required_scopes' => ['pages_messaging' => true, 'page_utility_messaging' => false]]);
+});
+
 test('a lead source with no access token configured returns a clear error instead of calling the graph api', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
     $motherAdmin = PlatformUser::factory()->motherAdmin()->create();

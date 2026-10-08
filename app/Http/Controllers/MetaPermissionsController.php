@@ -33,6 +33,14 @@ class MetaPermissionsController extends Controller
         'whatsapp_business_messaging',
         'leads_retrieval',
         'pages_manage_metadata',
+        // Messenger Utility Message Templates — Meta's Feb 2026 replacement
+        // for the deprecated Message Tags feature. Confirmed directly with
+        // Meta: pages_messaging alone is NOT sufficient to send a template
+        // outside the 24-hour window; this is a genuinely separate scope a
+        // Page's token needs re-authorizing for, unlike WhatsApp (where
+        // sending an approved template needed nothing beyond the scope
+        // normal replies already use).
+        'page_utility_messaging',
     ];
 
     public function show(Tenant $tenant, LeadSource $leadSource): JsonResponse

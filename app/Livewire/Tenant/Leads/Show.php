@@ -46,6 +46,7 @@ use App\Models\LeadStatus;
 use App\Models\LeadStatusLog;
 use App\Models\LeadTag;
 use App\Models\Message;
+use App\Models\MessengerMessageTemplate;
 use App\Models\Task;
 use App\Models\TaskStatusLog;
 use App\Models\Tenant;
@@ -967,17 +968,18 @@ class Show extends Component
     }
 
     /**
-     * WhatsApp Message Templates — null for every channel except WhatsApp
-     * (templates are WhatsApp-only in this app, see WhatsAppMessageTemplate's
-     * own docblock) or when there's no active conversation to send through
-     * yet. Unlike messagingEligibility() above, this is eligible even once
-     * the messaging window has closed — that's the whole point of it (see
-     * OutboundEligibilityService::evaluateForTemplate()).
+     * Message Templates (WhatsApp and Messenger — see WhatsAppMessageTemplate/
+     * MessengerMessageTemplate's own docblocks; Instagram has no equivalent
+     * in this app) — null for any other channel, or when there's no active
+     * conversation to send through yet. Unlike messagingEligibility() above,
+     * this is eligible even once the messaging window has closed — that's
+     * the whole point of it (see OutboundEligibilityService::
+     * evaluateForTemplate()).
      */
     #[Computed]
     public function templateEligibility(): ?EligibilityResult
     {
-        if ($this->messagingChannel !== MessageChannel::Whatsapp || $this->activeConversation === null) {
+        if (! in_array($this->messagingChannel, [MessageChannel::Whatsapp, MessageChannel::Messenger], true) || $this->activeConversation === null) {
             return null;
         }
 
@@ -1006,6 +1008,35 @@ class Show extends Component
         }
 
         return WhatsAppMessageTemplate::query()
+            ->where('lead_source_id', $source->id)
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get();
+    }
+
+    /**
+     * This tenant's active Messenger templates for this lead's active
+     * Messenger conversation's own source. Simpler resolution than
+     * whatsappTemplates() above — no ResolveLeadWhatsAppSource-style
+     * fallback exists (or is needed) for Messenger, since there's no
+     * calling feature pulling in that extra complexity here.
+     *
+     * @return Collection<int, MessengerMessageTemplate>
+     */
+    #[Computed]
+    public function messengerTemplates(): Collection
+    {
+        if ($this->messagingChannel !== MessageChannel::Messenger) {
+            return collect();
+        }
+
+        $source = $this->activeConversation?->leadSource;
+
+        if ($source === null) {
+            return collect();
+        }
+
+        return MessengerMessageTemplate::query()
             ->where('lead_source_id', $source->id)
             ->where('is_active', true)
             ->orderBy('name')
@@ -2605,6 +2636,21 @@ class Show extends Component
     }
 
     /**
+     * The catalog row (whichever channel it's from) behind the composer's
+     * currently-picked $selectedTemplateId — the single place both
+     * updatedSelectedTemplateId() and sendTemplateMessage() resolve it, so
+     * the two never drift to different catalogs for the same channel.
+     */
+    private function resolveSelectedTemplate(): WhatsAppMessageTemplate|MessengerMessageTemplate|null
+    {
+        return match ($this->messagingChannel) {
+            MessageChannel::Whatsapp => $this->whatsappTemplates->firstWhere('id', $this->selectedTemplateId),
+            MessageChannel::Messenger => $this->messengerTemplates->firstWhere('id', $this->selectedTemplateId),
+            default => null,
+        };
+    }
+
+    /**
      * Livewire's own property-updated hook, fired automatically by the
      * composer's wire:model.live="selectedTemplateId" dropdown — resizes
      * $templateVariableValues to exactly the newly-picked template's
@@ -2615,21 +2661,24 @@ class Show extends Component
      */
     public function updatedSelectedTemplateId(): void
     {
-        $template = $this->whatsappTemplates->firstWhere('id', $this->selectedTemplateId);
+        $template = $this->resolveSelectedTemplate();
         $this->templateVariableValues = $template === null ? [] : array_fill(0, $template->variable_count, '');
         $this->resetErrorBag();
     }
 
     /**
-     * WhatsApp Message Templates — sends an already-approved template to
-     * re-engage a lead whose messaging window has closed. Deliberately
-     * checks templateEligibility() (evaluateForTemplate(), no window
-     * check), never messagingEligibility() — that's the entire reason this
-     * action exists. Otherwise mirrors sendMessage()'s Gate/leadIsMutable/
-     * rate-limit/dedup-lock/create-then-dispatch shape exactly; the
-     * template's name/language and the submitted variable values are
-     * snapshotted onto the Message row itself (see WhatsAppSender::
-     * sendTemplate()'s own docblock for why), never a live FK.
+     * Message Templates (WhatsApp or Messenger) — sends an already-approved
+     * template to re-engage a lead whose messaging window has closed.
+     * Deliberately checks templateEligibility() (evaluateForTemplate(), no
+     * window check), never messagingEligibility() — that's the entire
+     * reason this action exists. Otherwise mirrors sendMessage()'s
+     * Gate/leadIsMutable/rate-limit/dedup-lock/create-then-dispatch shape
+     * exactly; the template's name/language and the submitted variable
+     * values are snapshotted onto the Message row itself (see
+     * WhatsAppSender::sendTemplate()'s own docblock for why), never a live
+     * FK. message_type=Template plus the conversation's own $channel is
+     * all SendOutboundMessage/MessageSenderFactory need to route this to
+     * the right *Sender — no channel branching needed here beyond that.
      */
     public function sendTemplateMessage(): void
     {
@@ -2649,7 +2698,7 @@ class Show extends Component
 
         $conversation = $this->activeConversation;
 
-        if ($conversation === null || $this->messagingChannel !== MessageChannel::Whatsapp) {
+        if ($conversation === null || ! in_array($this->messagingChannel, [MessageChannel::Whatsapp, MessageChannel::Messenger], true)) {
             return;
         }
 
@@ -2661,7 +2710,7 @@ class Show extends Component
             return;
         }
 
-        $template = $this->whatsappTemplates->firstWhere('id', $this->selectedTemplateId);
+        $template = $this->resolveSelectedTemplate();
 
         if ($template === null) {
             Flux::toast(variant: 'danger', text: __('Pick a template first.'));

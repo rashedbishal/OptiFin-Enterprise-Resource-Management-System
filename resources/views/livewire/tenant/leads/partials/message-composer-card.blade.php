@@ -61,15 +61,20 @@
                 </form>
             @else
                 @php
-                    // WhatsApp Message Templates — the composer's recovery
-                    // path once the window has closed. templateEligibility
-                    // being eligible means "every other check (merged,
-                    // consent, credentials) passed — only the window itself
-                    // is what's blocking the normal composer", so this never
-                    // offers a template for a merged/consent-withdrawn lead,
-                    // without needing to string-match $eligibility->reason.
+                    // Message Templates (WhatsApp or Messenger) — the
+                    // composer's recovery path once the window has closed.
+                    // templateEligibility being eligible means "every other
+                    // check (merged, consent, credentials) passed — only
+                    // the window itself is what's blocking the normal
+                    // composer", so this never offers a template for a
+                    // merged/consent-withdrawn lead, without needing to
+                    // string-match $eligibility->reason.
                     $templateEligibility = $this->templateEligibility;
-                    $templates = $this->whatsappTemplates;
+                    $templates = match ($channel) {
+                        \App\Enums\MessageChannel::Whatsapp => $this->whatsappTemplates,
+                        \App\Enums\MessageChannel::Messenger => $this->messengerTemplates,
+                        default => collect(),
+                    };
                     $selectedTemplate = $templates->firstWhere('id', $this->selectedTemplateId);
                 @endphp
 

@@ -8,6 +8,7 @@ use App\Models\LeadCustomFieldDefinition;
 use App\Models\LeadScoringRule;
 use App\Models\LeadSource;
 use App\Models\LeadSourceCost;
+use App\Models\MessengerMessageTemplate;
 use App\Models\WebsiteForm;
 use App\Models\WhatsAppMessageTemplate;
 use Illuminate\Support\Facades\Auth;
@@ -145,5 +146,26 @@ class Dashboard extends Component
     public function totalWhatsAppTemplates(): int
     {
         return WhatsAppMessageTemplate::query()->where('tenant_id', Auth::user()->tenant_id)->count();
+    }
+
+    /**
+     * Gates the "Messenger Templates" tile's very presence, same reasoning
+     * as hasWhatsAppSource() — a tenant with no Messenger lead source can
+     * never message through it, so a template catalog for it would be a
+     * dead end.
+     */
+    #[Computed]
+    public function hasMessengerSource(): bool
+    {
+        return LeadSource::query()
+            ->where('tenant_id', Auth::user()->tenant_id)
+            ->where('type', LeadSourceType::FacebookMessenger)
+            ->exists();
+    }
+
+    #[Computed]
+    public function totalMessengerTemplates(): int
+    {
+        return MessengerMessageTemplate::query()->where('tenant_id', Auth::user()->tenant_id)->count();
     }
 }

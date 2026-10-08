@@ -195,6 +195,19 @@
                         'gate' => $this->canManageCatalogs,
                     ];
                 }
+
+                // Same reasoning as the WhatsApp block above, for Messenger.
+                if ($this->hasMessengerSource) {
+                    $tiles[] = [
+                        'label' => __('Messenger Templates'),
+                        'route' => 'tenant-leads.messenger-templates',
+                        'icon' => 'chat-bubble-left-right',
+                        'tint' => 'blue',
+                        'description' => __('Approved templates your team can send to re-engage a lead once the reply window closes.'),
+                        'count' => [$this->totalMessengerTemplates, __(':count registered', ['count' => $this->totalMessengerTemplates])],
+                        'gate' => $this->canManageCatalogs,
+                    ];
+                }
             @endphp
 
             @foreach ($tiles as $tile)

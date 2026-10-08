@@ -21,6 +21,7 @@ use App\Livewire\Tenant\LeadScoring\Index as LeadScoringIndex;
 use App\Livewire\Tenant\LeadSourceCosts\Index as LeadSourceCostsIndex;
 use App\Livewire\Tenant\LeadSources\Index as LeadSourcesIndex;
 use App\Livewire\Tenant\LeadTags\Index as LeadTagsIndex;
+use App\Livewire\Tenant\MessengerTemplates\Index as MessengerTemplatesIndex;
 use App\Livewire\Tenant\ModulePlaceholder;
 use App\Livewire\Tenant\Roles\Index as RolesIndex;
 use App\Livewire\Tenant\Users\Index as UsersIndex;
@@ -52,6 +53,7 @@ Route::middleware(['auth', 'verified', 'tenant.identify', 'tenant.active'])->gro
         Route::livewire('leads/reports', LeadReportsIndex::class)->name('tenant-leads.reports');
         Route::livewire('leads/calling-settings', CallingSettingsIndex::class)->name('tenant-leads.calling-settings');
         Route::livewire('leads/whatsapp-templates', WhatsAppTemplatesIndex::class)->name('tenant-leads.whatsapp-templates');
+        Route::livewire('leads/messenger-templates', MessengerTemplatesIndex::class)->name('tenant-leads.messenger-templates');
         // WhatsApp inbound calling — streams the tenant's custom ringtone
         // (if set) to the global softphone shell, which lives in the main
         // layout regardless of which lead-management page is open; gating

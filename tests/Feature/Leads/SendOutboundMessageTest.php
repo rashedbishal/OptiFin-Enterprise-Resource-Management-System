@@ -223,6 +223,74 @@ test('a template message on a merged lead is still marked failed without calling
     expect($message->fresh()->status)->toBe(MessageStatus::Failed);
 });
 
+test('a messenger template message sends successfully even with an expired messaging window', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::FacebookMessenger,
+        'config' => ['page_id' => '1', 'page_access_token' => 'page-token'],
+    ]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+    $conversation = Conversation::factory()->messenger()->windowExpired()->create([
+        'tenant_id' => $tenant->id, 'lead_id' => $lead->id, 'lead_source_id' => $source->id,
+    ]);
+    $message = Message::factory()->outbound()->create([
+        'tenant_id' => $tenant->id,
+        'lead_id' => $lead->id,
+        'conversation_id' => $conversation->id,
+        'channel' => MessageChannel::Messenger,
+        'message_type' => MessageType::Template,
+        'body' => null,
+        'template_name' => 'order_update',
+        'template_language' => 'en',
+        'template_variables' => ['12345'],
+    ]);
+
+    Http::fake(['graph.facebook.com/*' => Http::response(['message_id' => 'mid.TEMPLATE'], 200)]);
+
+    (new SendOutboundMessage($message))->handle(app(OutboundEligibilityService::class), app(MessageSenderFactory::class));
+
+    Http::assertSent(fn ($request) => str_contains($request->url(), '/1/messages')
+        && $request['messaging_type'] === 'UTILITY'
+        && $request['message']['template']['name'] === 'order_update'
+        && $request['message']['template']['language']['code'] === 'en'
+        && $request['message']['template']['components'][0]['parameters'][0]['text'] === '12345');
+    expect($message->fresh()->status)->toBe(MessageStatus::Sent);
+    expect($message->fresh()->external_message_id)->toBe('mid.TEMPLATE');
+});
+
+test('a messenger template message on a merged lead is still marked failed without calling the platform API', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::FacebookMessenger,
+        'config' => ['page_id' => '1', 'page_access_token' => 'page-token'],
+    ]);
+    $survivor = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'merged_into_lead_id' => $survivor->id]);
+    $conversation = Conversation::factory()->messenger()->windowExpired()->create([
+        'tenant_id' => $tenant->id, 'lead_id' => $lead->id, 'lead_source_id' => $source->id,
+    ]);
+    $message = Message::factory()->outbound()->create([
+        'tenant_id' => $tenant->id,
+        'lead_id' => $lead->id,
+        'conversation_id' => $conversation->id,
+        'channel' => MessageChannel::Messenger,
+        'message_type' => MessageType::Template,
+        'body' => null,
+        'template_name' => 'order_update',
+        'template_language' => 'en',
+        'template_variables' => [],
+    ]);
+
+    Http::fake();
+
+    (new SendOutboundMessage($message))->handle(app(OutboundEligibilityService::class), app(MessageSenderFactory::class));
+
+    Http::assertNothingSent();
+    expect($message->fresh()->status)->toBe(MessageStatus::Failed);
+});
+
 test('a job run against an already-resolved message is a no-op', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Whatsapp, 'config' => ['phone_number_id' => '1', 'access_token' => 'token']]);
