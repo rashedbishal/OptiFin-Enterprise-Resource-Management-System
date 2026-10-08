@@ -39,8 +39,11 @@ class MetaPermissionsController extends Controller
         // outside the 24-hour window; this is a genuinely separate scope a
         // Page's token needs re-authorizing for, unlike WhatsApp (where
         // sending an approved template needed nothing beyond the scope
-        // normal replies already use).
-        'page_utility_messaging',
+        // normal replies already use). Plural "pages_", matching this
+        // scope's own naming convention (pages_messaging, pages_manage_
+        // metadata, ...) — a real Meta API error response is what caught
+        // an earlier singular "page_" guess here.
+        'pages_utility_messaging',
     ];
 
     public function show(Tenant $tenant, LeadSource $leadSource): JsonResponse

@@ -66,7 +66,7 @@ test('a whatsapp source is checked against the whatsapp_business_messaging scope
         ->assertJson(['required_scopes' => ['whatsapp_business_messaging' => true, 'pages_messaging' => false]]);
 });
 
-test('a messenger source is checked against the page_utility_messaging scope', function () {
+test('a messenger source is checked against the pages_utility_messaging scope', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
     $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
 
@@ -83,7 +83,7 @@ test('a messenger source is checked against the page_utility_messaging scope', f
     $this->actingAs($motherAdmin, 'platform')
         ->getJson(route('admin.clients.lead-sources.meta-permissions', [$tenant, $source]))
         ->assertOk()
-        ->assertJson(['required_scopes' => ['pages_messaging' => true, 'page_utility_messaging' => false]]);
+        ->assertJson(['required_scopes' => ['pages_messaging' => true, 'pages_utility_messaging' => false]]);
 });
 
 test('a lead source with no access token configured returns a clear error instead of calling the graph api', function () {

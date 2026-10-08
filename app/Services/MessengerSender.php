@@ -120,7 +120,7 @@ class MessengerSender implements MessageSenderInterface
      * the one send path that works even once the 24-hour messaging window
      * has closed. Confirmed directly with Meta before building this:
      * `pages_messaging` alone is NOT sufficient here, unlike WhatsApp —
-     * the Page's token also needs the separate `page_utility_messaging`
+     * the Page's token also needs the separate `pages_utility_messaging`
      * scope (see MetaPermissionsController::REQUIRED_SCOPES), or Meta
      * rejects the send with a permission error surfaced as a normal
      * SendResult::failure() below, the same as any other platform

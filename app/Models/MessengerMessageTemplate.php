@@ -20,7 +20,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * Parallel to WhatsAppMessageTemplate rather than a shared model — the two
  * channels' Meta-side mechanics genuinely differ: Messenger's replacement
  * for the deprecated (Feb 2026) Message Tags feature needs its own
- * page_utility_messaging OAuth scope (confirmed with Meta: pages_messaging
+ * pages_utility_messaging OAuth scope (confirmed with Meta: pages_messaging
  * alone is NOT sufficient to send one, unlike WhatsApp, where sending an
  * approved template needs nothing beyond the scope normal replies already
  * use), a different send endpoint shape (`messaging_type: UTILITY` +
