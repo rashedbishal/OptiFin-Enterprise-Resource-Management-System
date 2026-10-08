@@ -378,12 +378,8 @@
                         const start = el.selectionStart;
                         const end = el.selectionEnd;
                         const next = this.variableNumbers.length ? Math.max(...this.variableNumbers) + 1 : 1;
-                        // Built from single-brace pieces, never written as a
-                        // literal adjacent '{{'/'}}' pair in this file —
-                        // Blade's compiler scans raw template text for that
-                        // exact two-character sequence to start an echo
-                        // region, and would otherwise try (and fail) to
-                        // compile " + next + " as PHP between them.
+                        // Built from single-brace pieces, never a literal
+                        // adjacent brace pair in this file's own source.
                         const openBraces = '{' + '{';
                         const closeBraces = '}' + '}';
                         const token = openBraces + next + closeBraces;
@@ -414,7 +410,13 @@
 
                 <div x-show="body.length > 0" x-cloak class="rounded-lg border border-zinc-200/80 bg-zinc-50 p-3 dark:border-zinc-700/80 dark:bg-zinc-900/60">
                     <flux:text size="xs" variant="subtle">{{ __('Preview') }}</flux:text>
-                    <p class="text-sm text-zinc-700 dark:text-zinc-300" x-text="body.replace(/\{\{(\d+)\}\}/g, (match, n) => '[' + @js(__('Example')) + ' ' + n + ']')"></p>
+                    {{-- Plain "Example" rather than @js(__('Example')) — @js()
+                    emits JSON (double-quoted) output, which would close
+                    this x-text="..." HTML attribute early the exact same
+                    way a stray '"' in a comment did elsewhere in this
+                    block. Platform-Admin-only internal tooling; not worth
+                    the same risk for one word. --}}
+                    <p class="text-sm text-zinc-700 dark:text-zinc-300" x-text="body.replace(/\{\{(\d+)\}\}/g, (match, n) => '[Example ' + n + ']')"></p>
                 </div>
             </div>
             @error('templateBodyText') <flux:text size="sm" class="text-red-600 dark:text-red-400">{{ $message }}</flux:text> @enderror
