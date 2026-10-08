@@ -360,13 +360,64 @@
 
             <flux:input wire:model="templateLanguage" :label="__('Language Code')" placeholder="en_US" required />
 
-            <flux:textarea
-                wire:model="templateBodyText"
-                :label="__('Body Text')"
-                :description="__('Use Meta\'s own numbered-placeholder syntax for variables, same as a template name\'s approved content — no placeholders at all is also a valid, 0-variable template.')"
-                rows="3"
-                required
-            />
+            {{-- Body text: a plain textarea the admin writes normally, with
+            an "Insert Variable" button that drops the next placeholder in
+            at the cursor — never needs to know or type Meta's {{n}}
+            syntax. $wire.entangle(...).defer keeps `body` instantly
+            reactive for the client-only preview/count below without a
+            network round-trip per keystroke, syncing back to the real
+            Livewire property only when the form actually submits. --}}
+            <div
+                x-data="{
+                    body: $wire.entangle('templateBodyText').defer,
+                    get variableNumbers() {
+                        return [...new Set([...this.body.matchAll(/\{\{(\d+)\}\}/g)].map((m) => parseInt(m[1], 10)))].sort((a, b) => a - b);
+                    },
+                    insertVariable() {
+                        const el = $refs.templateBody;
+                        const start = el.selectionStart;
+                        const end = el.selectionEnd;
+                        const next = this.variableNumbers.length ? Math.max(...this.variableNumbers) + 1 : 1;
+                        // Built from single-brace pieces, never written as a
+                        // literal adjacent '{{'/'}}' pair in this file —
+                        // Blade's compiler scans raw template text for that
+                        // exact two-character sequence to start an echo
+                        // region, and would otherwise try (and fail) to
+                        // compile " + next + " as PHP between them.
+                        const openBraces = '{' + '{';
+                        const closeBraces = '}' + '}';
+                        const token = openBraces + next + closeBraces;
+                        this.body = this.body.slice(0, start) + token + this.body.slice(end);
+                        $nextTick(() => { el.focus(); el.selectionStart = el.selectionEnd = start + token.length; });
+                    },
+                }"
+                class="flex flex-col gap-2"
+            >
+                <flux:field>
+                    <flux:label>{{ __('Message') }}</flux:label>
+                    <textarea
+                        x-ref="templateBody"
+                        x-model="body"
+                        rows="4"
+                        placeholder="{{ __('Write the message normally, e.g. Hi there, following up on your inquiry.') }}"
+                        class="w-full rounded-lg border border-zinc-300/80 bg-zinc-100/90 px-3 py-1.5 text-sm text-zinc-800 shadow-xs focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-zinc-700/80 dark:bg-zinc-900/90 dark:text-zinc-200"
+                    ></textarea>
+                    <flux:description>
+                        {{ __('Click "Insert Variable" wherever you want something that changes per lead (like their name) to go — no placeholders at all is also fine.') }}
+                    </flux:description>
+                </flux:field>
+
+                <div class="flex items-center justify-between gap-2">
+                    <flux:button type="button" size="xs" icon="plus" x-on:click="insertVariable()">{{ __('Insert Variable') }}</flux:button>
+                    <flux:text size="xs" variant="subtle" x-text="variableNumbers.length === 1 ? '1 variable' : variableNumbers.length + ' variables'"></flux:text>
+                </div>
+
+                <div x-show="body.length > 0" x-cloak class="rounded-lg border border-zinc-200/80 bg-zinc-50 p-3 dark:border-zinc-700/80 dark:bg-zinc-900/60">
+                    <flux:text size="xs" variant="subtle">{{ __('Preview') }}</flux:text>
+                    <p class="text-sm text-zinc-700 dark:text-zinc-300" x-text="body.replace(/\{\{(\d+)\}\}/g, (match, n) => '[' + @js(__('Example')) + ' ' + n + ']')"></p>
+                </div>
+            </div>
+            @error('templateBodyText') <flux:text size="sm" class="text-red-600 dark:text-red-400">{{ $message }}</flux:text> @enderror
 
             <div class="flex justify-end gap-2">
                 <flux:button type="button" wire:click="$set('showCreateTemplateModal', false)">{{ __('Cancel') }}</flux:button>
