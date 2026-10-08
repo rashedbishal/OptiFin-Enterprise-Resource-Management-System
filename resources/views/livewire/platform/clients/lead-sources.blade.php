@@ -387,13 +387,20 @@
             {{-- Body text: a plain textarea the admin writes normally, with
             an "Insert Variable" button that drops the next placeholder in
             at the cursor — never needs to know or type Meta's {{n}}
-            syntax. $wire.entangle(...).defer keeps `body` instantly
-            reactive for the client-only preview/count below without a
-            network round-trip per keystroke, syncing back to the real
-            Livewire property only when the form actually submits. --}}
+            syntax. $wire.entangle(name) keeps `body` instantly reactive for
+            the client-only preview/count below without a network
+            round-trip per keystroke, syncing back to the real Livewire
+            property only when the form actually submits — this Livewire
+            version's entangle() defaults to non-live (see
+            generateEntangleFunction in vendor/livewire/livewire/dist/
+            livewire.js), so no modifier is needed for that; there is no
+            `.defer` modifier in this version at all — chaining it reads a
+            nonexistent property and silently returns undefined, which was
+            a real bug here (the body text field always submitted empty,
+            no matter what was typed). --}}
             <div
                 x-data="{
-                    body: $wire.entangle('templateBodyText').defer,
+                    body: $wire.entangle('templateBodyText'),
                     get variableNumbers() {
                         return [...new Set([...this.body.matchAll(/\{\{(\d+)\}\}/g)].map((m) => parseInt(m[1], 10)))].sort((a, b) => a - b);
                     },
