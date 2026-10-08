@@ -88,8 +88,18 @@
             class="relative flex min-h-0 flex-1 flex-col"
             x-data="{
                 newCount: 0,
+                // Tracked continuously by the scroll listener below, NOT
+                // re-measured inside the MutationObserver callback — by the
+                // time that callback runs, the new message has already been
+                // appended and scrollHeight has already grown, so comparing
+                // scrollHeight/scrollTop/clientHeight at that point always
+                // reads as 'not near bottom' the instant anything arrives,
+                // even for a viewer who was sitting right at the bottom a
+                // moment before. This flag instead reflects where they were
+                // right before the mutation happened.
+                nearBottom: true,
                 isNearBottom(el) { return el.scrollHeight - el.scrollTop - el.clientHeight < 80 },
-                scrollToBottom(el) { el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); this.newCount = 0 },
+                scrollToBottom(el) { el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); this.newCount = 0; this.nearBottom = true },
             }"
         >
             <div
@@ -103,10 +113,10 @@
                     // visible (i.e. every time the panel opens), which is also
                     // exactly when 'always default to the bottom' should apply.
                     new IntersectionObserver((entries) => {
-                        if (entries[0].isIntersecting) { $el.scrollTop = $el.scrollHeight; newCount = 0 }
+                        if (entries[0].isIntersecting) { $el.scrollTop = $el.scrollHeight; newCount = 0; nearBottom = true }
                     }).observe($el);
                     new MutationObserver((mutations) => {
-                        if (isNearBottom($el)) {
+                        if (nearBottom) {
                             $el.scrollTop = $el.scrollHeight;
                             return;
                         }
@@ -126,7 +136,7 @@
                         newCount += added;
                     }).observe($el, { childList: true, subtree: true });
                 "
-                x-on:scroll.passive="if (isNearBottom($el)) { newCount = 0 }"
+                x-on:scroll.passive="nearBottom = isNearBottom($el); if (nearBottom) { newCount = 0 }"
                 class="flex {{ $compact ? 'max-h-48' : 'max-h-96' }} {{ $premium ? 'rounded-2xl border border-white/80 bg-[radial-gradient(105%_82%_at_100%_0%,rgba(219,234,254,0.72)_0%,rgba(219,234,254,0)_62%),radial-gradient(86%_82%_at_0%_100%,rgba(237,233,254,0.52)_0%,rgba(237,233,254,0)_66%),linear-gradient(135deg,rgba(255,255,255,0.92)_0%,rgba(248,250,252,0.84)_52%,rgba(239,246,255,0.88)_100%)] p-3 shadow-inner shadow-slate-950/5 ring-1 ring-zinc-200/70 sm:p-4 dark:border-white/10 dark:bg-[radial-gradient(105%_82%_at_100%_0%,rgba(30,58,138,0.34)_0%,rgba(30,58,138,0)_62%),radial-gradient(86%_82%_at_0%_100%,rgba(76,29,149,0.18)_0%,rgba(76,29,149,0)_66%),linear-gradient(135deg,rgba(9,9,11,0.96)_0%,rgba(24,24,27,0.92)_52%,rgba(15,23,42,0.94)_100%)] dark:shadow-black/35 dark:ring-white/5' : '' }} min-h-0 w-full flex-1 flex-col gap-4 overflow-y-auto pe-1 contain-paint"
             >
             {{-- Messenger-style feed: what the customer sent (and every
