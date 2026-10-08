@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Platform\Clients;
 
+use App\Actions\Platform\CreateMessengerMessageTemplate;
 use App\Actions\Platform\ManageWhatsAppCalling;
 use App\Enums\LeadSourceType;
 use App\Models\Conversation;
@@ -10,10 +11,12 @@ use App\Models\Lead;
 use App\Models\LeadImport;
 use App\Models\LeadSource;
 use App\Models\LeadStatus;
+use App\Models\MessengerMessageTemplate;
 use App\Models\Tenant;
 use App\Models\WebsiteForm;
 use Flux\Flux;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -68,6 +71,16 @@ class LeadSources extends Component
      */
     #[Locked]
     public array $callingDetails = [];
+
+    public bool $showCreateTemplateModal = false;
+
+    public ?string $creatingTemplateForSourceId = null;
+
+    public string $templateName = '';
+
+    public string $templateLanguage = 'en_US';
+
+    public string $templateBodyText = '';
 
     public bool $showRemoveStatusModal = false;
 
@@ -781,6 +794,61 @@ class LeadSources extends Component
             'RESTRICTED_BUSINESS_INITIATED_CALLING' => __('Business-initiated calling is restricted'),
             default => Str::headline(strtolower($type)),
         };
+    }
+
+    public function createTemplate(string $id): void
+    {
+        Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
+
+        $this->creatingTemplateForSourceId = $this->tenant->leadSources()->findOrFail($id)->id;
+        $this->reset('templateName', 'templateBodyText');
+        $this->templateLanguage = 'en_US';
+        $this->resetErrorBag();
+        $this->showCreateTemplateModal = true;
+    }
+
+    public function saveTemplate(): void
+    {
+        $validated = $this->validate([
+            'templateName' => ['required', 'string', 'max:512', 'regex:/^[a-z0-9_]+$/'],
+            'templateLanguage' => ['required', 'string', 'max:35'],
+            'templateBodyText' => ['required', 'string', 'max:1024'],
+        ], [
+            'templateName.regex' => __('Lowercase letters, numbers, and underscores only.'),
+        ]);
+
+        $result = app(CreateMessengerMessageTemplate::class)->handle(
+            Auth::guard('platform')->user(),
+            $this->tenant,
+            (string) $this->creatingTemplateForSourceId,
+            $validated['templateName'],
+            $validated['templateLanguage'],
+            $validated['templateBodyText'],
+        );
+
+        Flux::toast(variant: $result->variant, text: $result->message);
+
+        if ($result->variant === 'success') {
+            $this->showCreateTemplateModal = false;
+            $this->creatingTemplateForSourceId = null;
+        }
+    }
+
+    /**
+     * How many templates are already registered per Messenger lead source
+     * (keyed by lead_source_id) — shown next to the Create Template button
+     * so the admin isn't guessing whether a Page already has any.
+     *
+     * @return Collection<string, int>
+     */
+    #[Computed]
+    public function messengerTemplateCounts(): Collection
+    {
+        return MessengerMessageTemplate::query()
+            ->where('tenant_id', $this->tenant->id)
+            ->selectRaw('lead_source_id, count(*) as aggregate')
+            ->groupBy('lead_source_id')
+            ->pluck('aggregate', 'lead_source_id');
     }
 
     public function confirmDelete(string $id): void

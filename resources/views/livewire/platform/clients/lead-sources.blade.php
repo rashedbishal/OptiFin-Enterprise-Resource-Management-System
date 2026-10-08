@@ -222,6 +222,20 @@
                                     @endforeach
                                 </div>
                             @endif
+
+                            @if ($source->type === \App\Enums\LeadSourceType::FacebookMessenger)
+                                <div class="mt-3 flex max-w-xs flex-col gap-1.5" wire:key="messenger-templates-{{ $source->id }}">
+                                    <div class="flex flex-wrap items-center gap-1.5">
+                                        <flux:text size="xs" variant="strong">{{ __('Templates') }}</flux:text>
+                                        <flux:badge color="zinc" size="sm">
+                                            {{ __(':count registered', ['count' => $this->messengerTemplateCounts[$source->id] ?? 0]) }}
+                                        </flux:badge>
+                                    </div>
+                                    <div>
+                                        <flux:button size="xs" wire:click="createTemplate('{{ $source->id }}')">{{ __('Create Template') }}</flux:button>
+                                    </div>
+                                </div>
+                            @endif
                         </flux:table.cell>
                         <flux:table.cell>
                             <div class="flex justify-end gap-2">
@@ -328,6 +342,38 @@
         confirm-action="disableCallingConfirmed"
         :confirm-label="__('Disable calling')"
     />
+
+    <flux:modal wire:model.self="showCreateTemplateModal" :dismissible="false" class="md:w-[32rem]">
+        <form wire:submit="saveTemplate" class="flex flex-col gap-4">
+            <flux:heading size="lg">{{ __('Create Messenger Template') }}</flux:heading>
+            <flux:text variant="subtle">
+                {{ __('Submitted directly to Meta for approval — a Utility Message Template, used to re-engage a lead once their 24-hour reply window has closed.') }}
+            </flux:text>
+
+            <flux:input
+                wire:model="templateName"
+                :label="__('Template Name')"
+                :description="__('Lowercase letters, numbers, underscores only. Must be unique on this Page.')"
+                placeholder="followup_after_24h"
+                required
+            />
+
+            <flux:input wire:model="templateLanguage" :label="__('Language Code')" placeholder="en_US" required />
+
+            <flux:textarea
+                wire:model="templateBodyText"
+                :label="__('Body Text')"
+                :description="__('Use Meta\'s own numbered-placeholder syntax for variables, same as a template name\'s approved content — no placeholders at all is also a valid, 0-variable template.')"
+                rows="3"
+                required
+            />
+
+            <div class="flex justify-end gap-2">
+                <flux:button type="button" wire:click="$set('showCreateTemplateModal', false)">{{ __('Cancel') }}</flux:button>
+                <flux:button type="submit" variant="primary" wire:loading.attr="disabled" wire:target="saveTemplate">{{ __('Create') }}</flux:button>
+            </div>
+        </form>
+    </flux:modal>
 
     <x-confirm-modal
         wire:model.self="showRemoveStatusModal"
