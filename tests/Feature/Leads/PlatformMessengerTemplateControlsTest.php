@@ -64,7 +64,7 @@ test('creating a template through the component writes both the Meta call and th
     expect(MessengerMessageTemplate::where('tenant_id', $tenant->id)->where('name', 'followup_after_24h')->exists())->toBeTrue();
 });
 
-test('a source with an existing template shows its real details instead of a Create Template button', function () {
+test('a source with an existing template shows a name pill instead of a Create Template button', function () {
     $tenant = Tenant::factory()->create();
     $source = LeadSource::factory()->create([
         'tenant_id' => $tenant->id,
@@ -82,9 +82,37 @@ test('a source with an existing template shows its real details instead of a Cre
 
     pmtcComponent($tenant)
         ->assertSee('followup_after_24h')
+        // The pill shows only the name — language/body/variable count live
+        // behind it, in the details modal, not inline on the row. The
+        // modal's own content (including the body text, which appears
+        // nowhere else on this page) only renders once viewTemplate() sets
+        // a viewing source, so its absence here confirms that.
+        ->assertDontSee('Hi {{1}}, following up.')
+        ->assertDontSeeHtml('wire:click="createTemplate(\''.$source->id.'\')"');
+});
+
+test('clicking the template pill opens a modal with its full details', function () {
+    $tenant = Tenant::factory()->create();
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::FacebookMessenger,
+        'config' => ['page_id' => '1', 'page_access_token' => 'token'],
+    ]);
+    MessengerMessageTemplate::factory()->create([
+        'tenant_id' => $tenant->id,
+        'lead_source_id' => $source->id,
+        'name' => 'followup_after_24h',
+        'language' => 'en_US',
+        'body_text' => 'Hi {{1}}, following up.',
+        'variable_count' => 1,
+    ]);
+
+    pmtcComponent($tenant)
+        ->call('viewTemplate', $source->id)
+        ->assertSet('showTemplateDetailsModal', true)
         ->assertSee('en_US')
         ->assertSee('Hi {{1}}, following up.')
-        ->assertDontSeeHtml('wire:click="createTemplate(\''.$source->id.'\')"');
+        ->assertSee('1 variable');
 });
 
 test('deleting the existing template through the component calls Meta and removes the catalog row', function () {

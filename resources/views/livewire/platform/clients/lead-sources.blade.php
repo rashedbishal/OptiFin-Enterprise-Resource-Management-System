@@ -231,27 +231,21 @@
                                     <flux:text size="xs" variant="strong">{{ __('Template') }}</flux:text>
 
                                     @if ($messengerTemplate)
-                                        {{-- At most one per source (DB-enforced) — this is
-                                        the real registered template, not a count, so the
-                                        admin can see exactly what's live without checking
-                                        Meta directly. Approved content is permanently fixed
-                                        on Meta's side (confirmed with Meta — no edit
-                                        endpoint exists), so there's no "Edit" here, only
-                                        "Delete" to make way for a replacement. --}}
-                                        <div class="flex flex-col gap-1 rounded-lg border border-zinc-200/80 bg-zinc-50 p-2 dark:border-zinc-700/80 dark:bg-zinc-900/60">
-                                            <div class="flex flex-wrap items-center gap-1.5">
-                                                <flux:badge color="emerald" size="sm">{{ $messengerTemplate->name }}</flux:badge>
-                                                <flux:text size="xs" variant="subtle">{{ $messengerTemplate->language }}</flux:text>
-                                            </div>
-                                            @if ($messengerTemplate->body_text)
-                                                <flux:text size="xs" class="line-clamp-2">{{ $messengerTemplate->body_text }}</flux:text>
-                                            @endif
-                                            <flux:text size="xs" variant="subtle">
-                                                {{ trans_choice(':count variable|:count variables', $messengerTemplate->variable_count, ['count' => $messengerTemplate->variable_count]) }}
-                                            </flux:text>
-                                        </div>
+                                        {{-- At most one per source (DB-enforced) — the pill
+                                        is just the name; click it to see the full details
+                                        (language/body/variable count) and Delete Template in
+                                        a modal, rather than cluttering every row with the
+                                        whole card inline. Approved content is permanently
+                                        fixed on Meta's side (confirmed with Meta — no edit
+                                        endpoint exists), so there's no "Edit", only "Delete"
+                                        to make way for a replacement. --}}
                                         <div>
-                                            <flux:button size="xs" variant="danger" wire:click="confirmDeleteTemplate('{{ $source->id }}')">{{ __('Delete Template') }}</flux:button>
+                                            <flux:badge
+                                                color="emerald"
+                                                size="sm"
+                                                class="cursor-pointer"
+                                                wire:click="viewTemplate('{{ $source->id }}')"
+                                            >{{ $messengerTemplate->name }}</flux:badge>
                                         </div>
                                     @else
                                         <div>
@@ -457,6 +451,42 @@
                 <flux:button type="submit" variant="primary" wire:loading.attr="disabled" wire:target="saveTemplate">{{ __('Create') }}</flux:button>
             </div>
         </form>
+    </flux:modal>
+
+    {{-- Opened by clicking a Messenger row's template pill — the pill
+    itself only ever shows the name, this is the one place the full
+    registered template (language/body/variable count) is visible.
+    closable defaults true on flux:modal (see vendor/livewire/flux's own
+    modal/index.blade.php), so the corner X close button is already there
+    for free; the explicit "Close" button below is just a second, equally
+    obvious way out. --}}
+    <flux:modal wire:model.self="showTemplateDetailsModal" class="md:w-[28rem]">
+        @php
+            $viewingTemplate = $this->messengerTemplatesBySource[$viewingTemplateSourceId] ?? null;
+        @endphp
+        @if ($viewingTemplate)
+            <div class="flex flex-col gap-4">
+                <flux:heading size="lg">{{ __('Messenger Template') }}</flux:heading>
+
+                <div class="flex flex-col gap-2 rounded-lg border border-zinc-200/80 bg-zinc-50 p-3 dark:border-zinc-700/80 dark:bg-zinc-900/60">
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        <flux:badge color="emerald" size="sm">{{ $viewingTemplate->name }}</flux:badge>
+                        <flux:text size="xs" variant="subtle">{{ $viewingTemplate->language }}</flux:text>
+                    </div>
+                    @if ($viewingTemplate->body_text)
+                        <flux:text size="sm">{{ $viewingTemplate->body_text }}</flux:text>
+                    @endif
+                    <flux:text size="xs" variant="subtle">
+                        {{ trans_choice(':count variable|:count variables', $viewingTemplate->variable_count, ['count' => $viewingTemplate->variable_count]) }}
+                    </flux:text>
+                </div>
+
+                <div class="flex justify-end gap-2">
+                    <flux:button type="button" wire:click="$set('showTemplateDetailsModal', false)">{{ __('Close') }}</flux:button>
+                    <flux:button type="button" variant="danger" wire:click="confirmDeleteTemplate('{{ $viewingTemplateSourceId }}')">{{ __('Delete Template') }}</flux:button>
+                </div>
+            </div>
+        @endif
     </flux:modal>
 
     <x-confirm-modal

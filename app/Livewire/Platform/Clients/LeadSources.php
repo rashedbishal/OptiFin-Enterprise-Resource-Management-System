@@ -83,6 +83,10 @@ class LeadSources extends Component
 
     public string $templateBodyText = '';
 
+    public bool $showTemplateDetailsModal = false;
+
+    public ?string $viewingTemplateSourceId = null;
+
     public bool $showDeleteTemplateModal = false;
 
     public ?string $confirmingDeleteTemplateSourceId = null;
@@ -857,10 +861,30 @@ class LeadSources extends Component
             ->keyBy('lead_source_id');
     }
 
+    /**
+     * The pill on a Messenger row opens this instead of showing the
+     * template's details inline — clicking it is the only way to see the
+     * full registered template (name/language/body/variable count) without
+     * cluttering every row with the card. Delete Template lives inside this
+     * modal, not the row itself.
+     */
+    public function viewTemplate(string $id): void
+    {
+        Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
+
+        $this->viewingTemplateSourceId = $this->tenant->leadSources()->findOrFail($id)->id;
+        $this->showTemplateDetailsModal = true;
+    }
+
+    /**
+     * Only ever reached from the "Delete Template" button inside the view-
+     * details modal above — closes that modal so the two never stack.
+     */
     public function confirmDeleteTemplate(string $id): void
     {
         Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
 
+        $this->showTemplateDetailsModal = false;
         $this->confirmingDeleteTemplateSourceId = $this->tenant->leadSources()->findOrFail($id)->id;
         $this->showDeleteTemplateModal = true;
     }
