@@ -240,12 +240,17 @@
                                         endpoint exists), so there's no "Edit", only "Delete"
                                         to make way for a replacement. --}}
                                         <div>
-                                            <flux:badge
-                                                color="emerald"
-                                                size="sm"
-                                                class="cursor-pointer"
-                                                wire:click="viewTemplate('{{ $source->id }}')"
-                                            >{{ $messengerTemplate->name }}</flux:badge>
+                                            {{-- flux:badge has no precedent elsewhere in this
+                                            app for taking wire:click directly (it renders as
+                                            a plain <div> unless given as="button", and
+                                            whether its attribute bag reliably forwards an
+                                            arbitrary wire:click wasn't something to bet a
+                                            modal open on) — wrap it in a real <button> instead,
+                                            the same element every other click handler in this
+                                            file already uses. --}}
+                                            <button type="button" wire:click="viewTemplate('{{ $source->id }}')" class="cursor-pointer">
+                                                <flux:badge color="emerald" size="sm">{{ $messengerTemplate->name }}</flux:badge>
+                                            </button>
                                         </div>
                                     @else
                                         <div>
