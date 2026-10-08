@@ -224,16 +224,40 @@
                             @endif
 
                             @if ($source->type === \App\Enums\LeadSourceType::FacebookMessenger)
+                                @php
+                                    $messengerTemplate = $this->messengerTemplatesBySource[$source->id] ?? null;
+                                @endphp
                                 <div class="mt-3 flex max-w-xs flex-col gap-1.5" wire:key="messenger-templates-{{ $source->id }}">
-                                    <div class="flex flex-wrap items-center gap-1.5">
-                                        <flux:text size="xs" variant="strong">{{ __('Templates') }}</flux:text>
-                                        <flux:badge color="zinc" size="sm">
-                                            {{ __(':count registered', ['count' => $this->messengerTemplateCounts[$source->id] ?? 0]) }}
-                                        </flux:badge>
-                                    </div>
-                                    <div>
-                                        <flux:button size="xs" wire:click="createTemplate('{{ $source->id }}')">{{ __('Create Template') }}</flux:button>
-                                    </div>
+                                    <flux:text size="xs" variant="strong">{{ __('Template') }}</flux:text>
+
+                                    @if ($messengerTemplate)
+                                        {{-- At most one per source (DB-enforced) — this is
+                                        the real registered template, not a count, so the
+                                        admin can see exactly what's live without checking
+                                        Meta directly. Approved content is permanently fixed
+                                        on Meta's side (confirmed with Meta — no edit
+                                        endpoint exists), so there's no "Edit" here, only
+                                        "Delete" to make way for a replacement. --}}
+                                        <div class="flex flex-col gap-1 rounded-lg border border-zinc-200/80 bg-zinc-50 p-2 dark:border-zinc-700/80 dark:bg-zinc-900/60">
+                                            <div class="flex flex-wrap items-center gap-1.5">
+                                                <flux:badge color="emerald" size="sm">{{ $messengerTemplate->name }}</flux:badge>
+                                                <flux:text size="xs" variant="subtle">{{ $messengerTemplate->language }}</flux:text>
+                                            </div>
+                                            @if ($messengerTemplate->body_text)
+                                                <flux:text size="xs" class="line-clamp-2">{{ $messengerTemplate->body_text }}</flux:text>
+                                            @endif
+                                            <flux:text size="xs" variant="subtle">
+                                                {{ trans_choice(':count variable|:count variables', $messengerTemplate->variable_count, ['count' => $messengerTemplate->variable_count]) }}
+                                            </flux:text>
+                                        </div>
+                                        <div>
+                                            <flux:button size="xs" variant="danger" wire:click="confirmDeleteTemplate('{{ $source->id }}')">{{ __('Delete Template') }}</flux:button>
+                                        </div>
+                                    @else
+                                        <div>
+                                            <flux:button size="xs" wire:click="createTemplate('{{ $source->id }}')">{{ __('Create Template') }}</flux:button>
+                                        </div>
+                                    @endif
                                 </div>
                             @endif
                         </flux:table.cell>
@@ -427,6 +451,14 @@
             </div>
         </form>
     </flux:modal>
+
+    <x-confirm-modal
+        wire:model.self="showDeleteTemplateModal"
+        :title="__('Delete this template?')"
+        :description="__('This removes it from Meta as well — it can no longer be used to re-engage any lead on this source. You can create a replacement right after.')"
+        confirm-action="deleteTemplateConfirmed"
+        :confirm-label="__('Delete')"
+    />
 
     <x-confirm-modal
         wire:model.self="showRemoveStatusModal"

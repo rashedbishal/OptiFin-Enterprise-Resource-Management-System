@@ -58,7 +58,7 @@ test('a template name that is not lowercase/numbers/underscores is rejected', fu
     expect(MessengerMessageTemplate::where('tenant_id', $tenant->id)->count())->toBe(0);
 });
 
-test('a duplicate name/language on the same source is rejected', function () {
+test('a source that already has a template rejects a second one, even with a different name', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $source = messengerSource($tenant->id);
     MessengerMessageTemplate::factory()->create([
@@ -68,15 +68,34 @@ test('a duplicate name/language on the same source is rejected', function () {
         'language' => 'en',
     ]);
 
+    // One template per source, period — not just a same-name/language
+    // collision — so "New Template" is already hidden for this fully-
+    // occupied tenant (see the next test), but the server-side guard is
+    // what actually matters: set sourceId explicitly, bypassing create()'s
+    // own now-empty default, to isolate that guard from the "which source
+    // got auto-selected" concern.
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)
         ->call('create')
-        ->set('name', 'order_update')
-        ->set('language', 'en')
+        ->set('sourceId', $source->id)
+        ->set('name', 'a_totally_different_name')
+        ->set('language', 'es')
         ->call('save')
-        ->assertHasErrors('name');
+        ->assertHasErrors('sourceId');
 
     expect(MessengerMessageTemplate::where('tenant_id', $tenant->id)->count())->toBe(1);
+});
+
+test('the "New Template" button is hidden once every Messenger source already has a template', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = messengerSource($tenant->id);
+    MessengerMessageTemplate::factory()->create(['tenant_id' => $tenant->id, 'lead_source_id' => $source->id]);
+
+    // Scoped to the button's own wire:click, not a bare text search — the
+    // (visually hidden) create modal's own heading also reads "New
+    // Template" when nothing is being edited, so a plain assertDontSee()
+    // would false-positive-fail here regardless of the button itself.
+    Livewire::actingAs($clientAdmin)->test(Index::class)->assertDontSeeHtml('wire:click="create"');
 });
 
 test('toggleActive flips a template on and off without deleting it', function () {

@@ -64,6 +64,58 @@ test('creating a template through the component writes both the Meta call and th
     expect(MessengerMessageTemplate::where('tenant_id', $tenant->id)->where('name', 'followup_after_24h')->exists())->toBeTrue();
 });
 
+test('a source with an existing template shows its real details instead of a Create Template button', function () {
+    $tenant = Tenant::factory()->create();
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::FacebookMessenger,
+        'config' => ['page_id' => '1', 'page_access_token' => 'token'],
+    ]);
+    MessengerMessageTemplate::factory()->create([
+        'tenant_id' => $tenant->id,
+        'lead_source_id' => $source->id,
+        'name' => 'followup_after_24h',
+        'language' => 'en_US',
+        'body_text' => 'Hi {{1}}, following up.',
+        'variable_count' => 1,
+    ]);
+
+    pmtcComponent($tenant)
+        ->assertSee('followup_after_24h')
+        ->assertSee('en_US')
+        ->assertSee('Hi {{1}}, following up.')
+        ->assertDontSeeHtml('wire:click="createTemplate(\''.$source->id.'\')"');
+});
+
+test('deleting the existing template through the component calls Meta and removes the catalog row', function () {
+    $tenant = Tenant::factory()->create();
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::FacebookMessenger,
+        'config' => ['page_id' => '1', 'page_access_token' => 'token'],
+    ]);
+    $template = MessengerMessageTemplate::factory()->create([
+        'tenant_id' => $tenant->id,
+        'lead_source_id' => $source->id,
+        'name' => 'followup_after_24h',
+    ]);
+
+    Http::fake(['graph.facebook.com/*' => Http::response(['success' => true], 200)]);
+
+    pmtcComponent($tenant)
+        ->call('confirmDeleteTemplate', $source->id)
+        ->assertSet('showDeleteTemplateModal', true)
+        ->call('deleteTemplateConfirmed')
+        ->assertSet('showDeleteTemplateModal', false)
+        ->assertDispatched('toast-show');
+
+    expect(MessengerMessageTemplate::find($template->id))->toBeNull();
+
+    // The row goes back to offering "Create Template" once its one
+    // template is gone.
+    pmtcComponent($tenant)->assertSee('Create Template');
+});
+
 test('an invalid template name is rejected client-side without calling Meta', function () {
     $tenant = Tenant::factory()->create();
     $source = LeadSource::factory()->create([

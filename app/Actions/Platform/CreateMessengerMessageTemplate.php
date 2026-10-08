@@ -35,6 +35,11 @@ use Illuminate\Support\Facades\Log;
  * asked for separately, and Meta's required example values are generic
  * placeholders ("Example 1", ...) — they only feed Meta's own review, never
  * shown to a customer.
+ *
+ * Refuses outright if this source already has a template registered at
+ * all (see MessengerMessageTemplate's own docblock for why: one per
+ * source, DB-enforced) — the only way to change wording is
+ * DeleteMessengerMessageTemplate followed by a fresh call here.
  */
 class CreateMessengerMessageTemplate
 {
@@ -56,16 +61,15 @@ class CreateMessengerMessageTemplate
             return new MessengerTemplateActionResult('danger', __('Add the Page id and access token to this source before creating a template.'));
         }
 
-        $duplicate = MessengerMessageTemplate::query()
-            ->where('lead_source_id', $source->id)
-            ->where('name', $name)
-            ->where('language', $language)
-            ->exists();
+        // One template per source, period (see MessengerMessageTemplate's
+        // own docblock) — any existing row blocks a new one, not just a
+        // name/language collision.
+        $existing = MessengerMessageTemplate::query()->where('lead_source_id', $source->id)->exists();
 
-        if ($duplicate) {
-            $this->log($actor, $source, 'blocked_duplicate', ['name' => $name, 'language' => $language]);
+        if ($existing) {
+            $this->log($actor, $source, 'blocked_existing', ['name' => $name, 'language' => $language]);
 
-            return new MessengerTemplateActionResult('danger', __('A template with this exact name and language is already registered for this source.'));
+            return new MessengerTemplateActionResult('danger', __('This source already has a template. Delete it first to create a replacement.'));
         }
 
         $variableCount = $this->countVariables($bodyText);
@@ -98,6 +102,7 @@ class CreateMessengerMessageTemplate
             'lead_source_id' => $source->id,
             'name' => $name,
             'language' => $language,
+            'body_text' => $bodyText,
             'variable_count' => $variableCount,
             'is_active' => true,
         ]);

@@ -55,6 +55,7 @@ test('a successful create writes both the Meta template and the catalog row', fu
     expect($template->language)->toBe('en_US');
     expect($template->variable_count)->toBe(2);
     expect($template->is_active)->toBeTrue();
+    expect($template->body_text)->toBe('Hi {{1}}, following up on your inquiry about {{2}}.');
 });
 
 test('a zero-variable body never sends an example field', function () {
@@ -99,6 +100,23 @@ test('a local duplicate is blocked before ever calling Meta', function () {
 
     expect($result->variant)->toBe('danger');
     Http::assertNothingSent();
+});
+
+test('a source with an existing template blocks a second one even under a totally different name and language', function () {
+    $tenant = Tenant::factory()->create();
+    $source = cmmtSource($tenant);
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+    MessengerMessageTemplate::factory()->create([
+        'tenant_id' => $tenant->id, 'lead_source_id' => $source->id, 'name' => 'order_update', 'language' => 'en',
+    ]);
+
+    Http::fake();
+
+    $result = app(CreateMessengerMessageTemplate::class)->handle($motherAdmin, $tenant, $source->id, 'completely_different_name', 'es', 'Hola {{1}}.');
+
+    expect($result->variant)->toBe('danger');
+    Http::assertNothingSent();
+    expect(MessengerMessageTemplate::where('tenant_id', $tenant->id)->count())->toBe(1);
 });
 
 test('a non-messenger source is rejected', function () {

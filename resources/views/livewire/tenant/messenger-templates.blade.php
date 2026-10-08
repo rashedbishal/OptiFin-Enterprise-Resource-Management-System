@@ -6,7 +6,12 @@
             <flux:heading size="xl" class="hidden lg:block">{{ __('Messenger Templates') }}</flux:heading>
             <flux:text variant="subtle">{{ __('Register a Messenger Utility Message Template you\'ve already created and had approved in Meta\'s tools, so your team can send it to re-engage a lead once the 24-hour reply window has closed.') }}</flux:text>
         </div>
-        <flux:button variant="primary" icon="plus" wire:click="create">{{ __('New Template') }}</flux:button>
+        {{-- Hidden once every Messenger source already has a template —
+        at most one per source (DB-enforced), so there's nothing left to
+        register until one is deleted. --}}
+        @if ($this->sourcesAvailableForNewTemplate->isNotEmpty())
+            <flux:button variant="primary" icon="plus" wire:click="create">{{ __('New Template') }}</flux:button>
+        @endif
     </div>
 
     <flux:table>
@@ -56,11 +61,17 @@
         <form wire:submit="save" class="flex flex-col gap-6">
             <flux:heading size="lg">{{ $editingId ? __('Edit Template') : __('New Template') }}</flux:heading>
 
-            @if ($this->eligibleSources->count() > 1)
+            @php
+                // Editing keeps this template's own (already-occupied-by-
+                // itself) source selectable; creating only ever offers a
+                // source that doesn't have one yet.
+                $sourceOptions = $editingId ? $this->eligibleSources : $this->sourcesAvailableForNewTemplate;
+            @endphp
+            @if ($sourceOptions->count() > 1)
                 <x-dropdown-select
                     wire:model="sourceId"
                     :label="__('Messenger Source')"
-                    :options="$this->eligibleSources->map(fn ($source) => ['value' => $source->id, 'label' => $source->name])->toArray()"
+                    :options="$sourceOptions->map(fn ($source) => ['value' => $source->id, 'label' => $source->name])->toArray()"
                 />
             @endif
 

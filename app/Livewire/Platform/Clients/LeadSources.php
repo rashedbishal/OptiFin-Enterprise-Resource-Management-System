@@ -3,6 +3,7 @@
 namespace App\Livewire\Platform\Clients;
 
 use App\Actions\Platform\CreateMessengerMessageTemplate;
+use App\Actions\Platform\DeleteMessengerMessageTemplate;
 use App\Actions\Platform\ManageWhatsAppCalling;
 use App\Enums\LeadSourceType;
 use App\Models\Conversation;
@@ -81,6 +82,10 @@ class LeadSources extends Component
     public string $templateLanguage = 'en_US';
 
     public string $templateBodyText = '';
+
+    public bool $showDeleteTemplateModal = false;
+
+    public ?string $confirmingDeleteTemplateSourceId = null;
 
     public bool $showRemoveStatusModal = false;
 
@@ -831,24 +836,50 @@ class LeadSources extends Component
         if ($result->variant === 'success') {
             $this->showCreateTemplateModal = false;
             $this->creatingTemplateForSourceId = null;
+            unset($this->messengerTemplatesBySource);
         }
     }
 
     /**
-     * How many templates are already registered per Messenger lead source
-     * (keyed by lead_source_id) — shown next to the Create Template button
-     * so the admin isn't guessing whether a Page already has any.
+     * This tenant's Messenger templates, keyed by lead_source_id — at most
+     * one per source (DB-enforced, see MessengerMessageTemplate's own
+     * docblock), so the row shows either "Create Template" or the single
+     * existing template's real details, never a bare count to guess from.
      *
-     * @return Collection<string, int>
+     * @return Collection<string, MessengerMessageTemplate>
      */
     #[Computed]
-    public function messengerTemplateCounts(): Collection
+    public function messengerTemplatesBySource(): Collection
     {
         return MessengerMessageTemplate::query()
             ->where('tenant_id', $this->tenant->id)
-            ->selectRaw('lead_source_id, count(*) as aggregate')
-            ->groupBy('lead_source_id')
-            ->pluck('aggregate', 'lead_source_id');
+            ->get()
+            ->keyBy('lead_source_id');
+    }
+
+    public function confirmDeleteTemplate(string $id): void
+    {
+        Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
+
+        $this->confirmingDeleteTemplateSourceId = $this->tenant->leadSources()->findOrFail($id)->id;
+        $this->showDeleteTemplateModal = true;
+    }
+
+    public function deleteTemplateConfirmed(): void
+    {
+        $id = $this->confirmingDeleteTemplateSourceId;
+
+        $this->showDeleteTemplateModal = false;
+        $this->confirmingDeleteTemplateSourceId = null;
+
+        if ($id === null) {
+            return;
+        }
+
+        $result = app(DeleteMessengerMessageTemplate::class)->handle(Auth::guard('platform')->user(), $this->tenant, $id);
+
+        Flux::toast(variant: $result->variant, text: $result->message);
+        unset($this->messengerTemplatesBySource);
     }
 
     public function confirmDelete(string $id): void

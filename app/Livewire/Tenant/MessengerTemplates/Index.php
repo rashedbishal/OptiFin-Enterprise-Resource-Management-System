@@ -57,7 +57,9 @@ class Index extends Component
 
     /**
      * This tenant's Messenger lead sources — the only type a template can
-     * be registered against.
+     * be registered against. Drives mount()'s redirect (does the tenant
+     * have a Messenger source at all), not the create-form picker — see
+     * sourcesAvailableForNewTemplate() for that.
      *
      * @return Collection<int, LeadSource>
      */
@@ -69,6 +71,24 @@ class Index extends Component
             ->where('type', LeadSourceType::FacebookMessenger)
             ->orderBy('name')
             ->get();
+    }
+
+    /**
+     * eligibleSources() minus any source that already has a template — at
+     * most one per source (DB-enforced, see MessengerMessageTemplate's own
+     * docblock), so a source with one isn't offered as a place to register
+     * another. "New Template" has nothing to do once this is empty.
+     *
+     * @return Collection<int, LeadSource>
+     */
+    #[Computed]
+    public function sourcesAvailableForNewTemplate(): Collection
+    {
+        $occupied = MessengerMessageTemplate::query()
+            ->where('tenant_id', Auth::user()->tenant_id)
+            ->pluck('lead_source_id');
+
+        return $this->eligibleSources->reject(fn (LeadSource $source) => $occupied->contains($source->id));
     }
 
     /**
@@ -91,7 +111,7 @@ class Index extends Component
         $this->reset('editingId', 'name');
         $this->language = 'en';
         $this->variableCount = '0';
-        $this->sourceId = (string) $this->eligibleSources->first()?->id;
+        $this->sourceId = (string) $this->sourcesAvailableForNewTemplate->first()?->id;
         $this->resetErrorBag();
         $this->showModal = true;
     }
@@ -129,24 +149,29 @@ class Index extends Component
             'name.regex' => __('Must match the exact template name approved for this Page — lowercase letters, numbers, and underscores only.'),
         ]);
 
-        $duplicate = MessengerMessageTemplate::query()
+        // One template per source, period (see MessengerMessageTemplate's
+        // own docblock) — any existing row for this source blocks a new
+        // one, not just a name/language collision. Editing the one row
+        // this source already has is always fine (excluded via
+        // whereKeyNot); moving an edit onto a DIFFERENT, already-occupied
+        // source hits this same check too.
+        $occupied = MessengerMessageTemplate::query()
             ->where('lead_source_id', $validated['sourceId'])
-            ->where('name', $validated['name'])
-            ->where('language', $validated['language'])
             ->when($this->editingId, fn ($query) => $query->whereKeyNot($this->editingId))
             ->exists();
 
-        if ($duplicate) {
-            $this->addError('name', __('This source already has a template with this exact name and language.'));
+        if ($occupied) {
+            $this->addError('sourceId', __('This source already has a template registered — delete it first to register a different one.'));
 
             return;
         }
 
-        // Not atomic with the duplicate check above — same accepted
-        // pattern as WhatsAppTemplates\Index::save()'s identical check;
-        // the real unique(lead_source_id, name, language) constraint (see
-        // the migration) is what actually prevents a genuine race, this
-        // catch just turns it into the same graceful validation error.
+        // Not atomic with the check above — same accepted pattern as
+        // WhatsAppTemplates\Index::save()'s identical check; the real
+        // unique(lead_source_id) constraint (see the
+        // ..._for_one_per_source migration) is what actually prevents a
+        // genuine race, this catch just turns it into the same graceful
+        // validation error.
         try {
             if ($this->editingId) {
                 $template = MessengerMessageTemplate::where('tenant_id', $tenant->id)->findOrFail($this->editingId);
@@ -171,13 +196,13 @@ class Index extends Component
                 ]);
             }
         } catch (UniqueConstraintViolationException) {
-            $this->addError('name', __('This source already has a template with this exact name and language.'));
+            $this->addError('sourceId', __('This source already has a template registered — delete it first to register a different one.'));
 
             return;
         }
 
         $this->showModal = false;
-        unset($this->templates);
+        unset($this->templates, $this->sourcesAvailableForNewTemplate);
         Flux::toast(variant: 'success', text: __('Template saved.'));
     }
 
@@ -226,7 +251,7 @@ class Index extends Component
 
         $template->delete();
 
-        unset($this->templates);
+        unset($this->templates, $this->sourcesAvailableForNewTemplate);
         Flux::toast(variant: 'success', text: __('Template deleted.'));
     }
 }

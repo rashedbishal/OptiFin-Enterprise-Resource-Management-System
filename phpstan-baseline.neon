@@ -1081,6 +1081,12 @@ parameters:
 			path: app/Livewire/Tenant/MessengerTemplates/Index.php
 
 		-
+			message: '#^Access to an undefined property App\\Livewire\\Tenant\\MessengerTemplates\\Index\:\:\$sourcesAvailableForNewTemplate\.$#'
+			identifier: property.notFound
+			count: 1
+			path: app/Livewire/Tenant/MessengerTemplates/Index.php
+
+		-
 			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant\.$#'
 			identifier: property.notFound
 			count: 2
@@ -1089,7 +1095,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant_id\.$#'
 			identifier: property.notFound
-			count: 5
+			count: 6
 			path: app/Livewire/Tenant/MessengerTemplates/Index.php
 
 		-
