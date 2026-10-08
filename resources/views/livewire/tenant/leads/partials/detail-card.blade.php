@@ -75,23 +75,60 @@
         conversation and should keep its own body/HTML rendering below. --}}
         <flux:separator class="{{ $premium ? 'mb-5' : 'mb-4' }}" />
 
+        {{-- WhatsApp-style "N new message(s)" pill: the feed div below keeps
+        auto-scrolling to the bottom as before WHEN the viewer is already
+        near it, but once they've scrolled up to read older messages, a new
+        arrival no longer yanks them back down — it just grows this pill
+        instead, absolutely positioned over the feed (a sibling, outside the
+        scrollable div, so it never scrolls away with the content). Clicking
+        it scrolls to bottom and clears the count; scrolling down to the
+        bottom yourself clears it too. isNearBottom's 80px slack matches
+        "close enough that a reply bubble appearing is not a surprise." --}}
         <div
-            x-data
-            x-init="
-                // This lives inside the flyout dialog, which is display:none
-                // until opened — scrollHeight reads as 0 at Alpine's init
-                // time, before the panel is ever visible, so a plain
-                // x-init scroll-to-bottom silently no-ops. IntersectionObserver
-                // instead fires each time the element actually becomes
-                // visible (i.e. every time the panel opens), which is also
-                // exactly when 'always default to the bottom' should apply.
-                new IntersectionObserver((entries) => {
-                    if (entries[0].isIntersecting) { $el.scrollTop = $el.scrollHeight; }
-                }).observe($el);
-                new MutationObserver(() => { $el.scrollTop = $el.scrollHeight; }).observe($el, { childList: true, subtree: true });
-            "
-            class="flex {{ $compact ? 'max-h-48' : 'max-h-96' }} {{ $premium ? 'rounded-2xl border border-white/80 bg-[radial-gradient(105%_82%_at_100%_0%,rgba(219,234,254,0.72)_0%,rgba(219,234,254,0)_62%),radial-gradient(86%_82%_at_0%_100%,rgba(237,233,254,0.52)_0%,rgba(237,233,254,0)_66%),linear-gradient(135deg,rgba(255,255,255,0.92)_0%,rgba(248,250,252,0.84)_52%,rgba(239,246,255,0.88)_100%)] p-3 shadow-inner shadow-slate-950/5 ring-1 ring-zinc-200/70 sm:p-4 dark:border-white/10 dark:bg-[radial-gradient(105%_82%_at_100%_0%,rgba(30,58,138,0.34)_0%,rgba(30,58,138,0)_62%),radial-gradient(86%_82%_at_0%_100%,rgba(76,29,149,0.18)_0%,rgba(76,29,149,0)_66%),linear-gradient(135deg,rgba(9,9,11,0.96)_0%,rgba(24,24,27,0.92)_52%,rgba(15,23,42,0.94)_100%)] dark:shadow-black/35 dark:ring-white/5' : '' }} min-h-0 flex-1 flex-col gap-4 overflow-y-auto pe-1 contain-paint"
+            class="relative min-h-0 flex-1"
+            x-data="{
+                newCount: 0,
+                isNearBottom(el) { return el.scrollHeight - el.scrollTop - el.clientHeight < 80 },
+                scrollToBottom(el) { el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' }); this.newCount = 0 },
+            }"
         >
+            <div
+                x-ref="feed"
+                x-init="
+                    // This lives inside the flyout dialog, which is display:none
+                    // until opened — scrollHeight reads as 0 at Alpine's init
+                    // time, before the panel is ever visible, so a plain
+                    // x-init scroll-to-bottom silently no-ops. IntersectionObserver
+                    // instead fires each time the element actually becomes
+                    // visible (i.e. every time the panel opens), which is also
+                    // exactly when 'always default to the bottom' should apply.
+                    new IntersectionObserver((entries) => {
+                        if (entries[0].isIntersecting) { $el.scrollTop = $el.scrollHeight; newCount = 0 }
+                    }).observe($el);
+                    new MutationObserver((mutations) => {
+                        if (isNearBottom($el)) {
+                            $el.scrollTop = $el.scrollHeight;
+                            return;
+                        }
+                        // Scoped to nodes added directly to the feed itself
+                        // (one per rendered message/attachment row) — the
+                        // observer stays { subtree: true } so a date-divider
+                        // or nested content change still triggers the
+                        // near-bottom autoscroll above, but counting every
+                        // nested mutation here would wildly overcount a
+                        // single new message's own internal spans/icons.
+                        let added = 0;
+                        mutations.forEach((m) => {
+                            if (m.target === $el) {
+                                m.addedNodes.forEach((n) => { if (n.nodeType === 1) { added++ } });
+                            }
+                        });
+                        newCount += added;
+                    }).observe($el, { childList: true, subtree: true });
+                "
+                x-on:scroll.passive="if (isNearBottom($el)) { newCount = 0 }"
+                class="flex {{ $compact ? 'max-h-48' : 'max-h-96' }} {{ $premium ? 'rounded-2xl border border-white/80 bg-[radial-gradient(105%_82%_at_100%_0%,rgba(219,234,254,0.72)_0%,rgba(219,234,254,0)_62%),radial-gradient(86%_82%_at_0%_100%,rgba(237,233,254,0.52)_0%,rgba(237,233,254,0)_66%),linear-gradient(135deg,rgba(255,255,255,0.92)_0%,rgba(248,250,252,0.84)_52%,rgba(239,246,255,0.88)_100%)] p-3 shadow-inner shadow-slate-950/5 ring-1 ring-zinc-200/70 sm:p-4 dark:border-white/10 dark:bg-[radial-gradient(105%_82%_at_100%_0%,rgba(30,58,138,0.34)_0%,rgba(30,58,138,0)_62%),radial-gradient(86%_82%_at_0%_100%,rgba(76,29,149,0.18)_0%,rgba(76,29,149,0)_66%),linear-gradient(135deg,rgba(9,9,11,0.96)_0%,rgba(24,24,27,0.92)_52%,rgba(15,23,42,0.94)_100%)] dark:shadow-black/35 dark:ring-white/5' : '' }} min-h-0 w-full flex-1 flex-col gap-4 overflow-y-auto pe-1 contain-paint"
+            >
             {{-- Messenger-style feed: what the customer sent (and every
             attachment, which only ever arrives inbound) sits on the left in
             a neutral bubble; what this business sent sits on the right in a
@@ -188,6 +225,19 @@
                 </div>
                 </div>
             @endforeach
+        </div>
+
+            <button
+                type="button"
+                x-show="newCount > 0"
+                x-transition.opacity
+                x-on:click="scrollToBottom($refs.feed)"
+                x-cloak
+                class="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full bg-emerald-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-lg shadow-emerald-600/30 transition-transform hover:scale-105 cursor-pointer"
+            >
+                <flux:icon icon="arrow-down" variant="micro" class="size-3.5" />
+                <span x-text="newCount === 1 ? @js(__('1 new message')) : newCount + ' ' + @js(__('new messages'))"></span>
+            </button>
         </div>
     @elseif ($lead->isFacebookLeadAd())
         {{-- No fixed contact-form shape to fall back on (unlike every other
