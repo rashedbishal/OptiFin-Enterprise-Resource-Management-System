@@ -85,7 +85,7 @@
         bottom yourself clears it too. isNearBottom's 80px slack matches
         "close enough that a reply bubble appearing is not a surprise." --}}
         <div
-            class="relative min-h-0 flex-1"
+            class="relative flex min-h-0 flex-1 flex-col"
             x-data="{
                 newCount: 0,
                 isNearBottom(el) { return el.scrollHeight - el.scrollTop - el.clientHeight < 80 },
