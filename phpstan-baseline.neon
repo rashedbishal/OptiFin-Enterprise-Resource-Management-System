@@ -51,7 +51,7 @@ parameters:
 		-
 			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:hasModule\(\)\.$#'
 			identifier: method.notFound
-			count: 2
+			count: 1
 			path: app/Http/Middleware/EnsureModuleAccess.php
 
 		-
@@ -483,6 +483,12 @@ parameters:
 		-
 			message: '#^Access to an undefined property App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:\$tenant_id\.$#'
 			identifier: property.notFound
+			count: 5
+			path: app/Livewire/Tenant/LeadSources/Index.php
+
+		-
+			message: '#^Call to an undefined method App\\Models\\PlatformUser\|App\\Models\\TenantUser\:\:isClientAdmin\(\)\.$#'
+			identifier: method.notFound
 			count: 1
 			path: app/Livewire/Tenant/LeadSources/Index.php
 
@@ -1423,18 +1429,6 @@ parameters:
 			path: app/Models/Module.php
 
 		-
-			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:hasModule\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: app/Models/PlatformUser.php
-
-		-
-			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:hasPermissionForModule\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: app/Models/PlatformUser.php
-
-		-
 			message: '#^Method App\\Models\\PlatformUser\:\:role\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\BelongsTo does not specify its types\: TRelatedModel, TDeclaringModel$#'
 			identifier: missingType.generics
 			count: 1
@@ -1523,18 +1517,6 @@ parameters:
 			identifier: missingType.generics
 			count: 1
 			path: app/Models/Tenant.php
-
-		-
-			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:hasModule\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: app/Models/TenantUser.php
-
-		-
-			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:hasPermissionForModule\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: app/Models/TenantUser.php
 
 		-
 			message: '#^Method App\\Models\\TenantUser\:\:assignedLeads\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\HasMany does not specify its types\: TRelatedModel, TDeclaringModel$#'
@@ -1661,12 +1643,6 @@ parameters:
 			identifier: argument.type
 			count: 1
 			path: database/factories/ModuleFactory.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$tenant_id\.$#'
-			identifier: property.notFound
-			count: 1
-			path: database/factories/TenantUserFactory.php
 
 		-
 			message: '#^Parameter \#1 \$string of function ucfirst expects string, array\|string given\.$#'

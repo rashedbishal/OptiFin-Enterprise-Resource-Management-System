@@ -70,6 +70,17 @@ class Role extends Model
         return $this->hasMany(TenantUser::class);
     }
 
+    /**
+     * The inverse of LeadSource::unassignedRoles() — every lead source this
+     * role has been granted "receive unassigned leads" access to.
+     *
+     * @return BelongsToMany<LeadSource, $this>
+     */
+    public function unassignedLeadSources(): BelongsToMany
+    {
+        return $this->belongsToMany(LeadSource::class, 'lead_source_unassigned_roles')->withTimestamps();
+    }
+
     public function hasModule(string $moduleSlug): bool
     {
         return $this->modules()->where('slug', $moduleSlug)->exists();

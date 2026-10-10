@@ -21,14 +21,34 @@ class LeadPolicy
     {
         return $this->belongsToUserTenant($user, $lead)
             && $user->hasModulePermission('lead-management', 'view')
-            && ($user->isClientAdmin() || $lead->assigned_to === $user->id);
+            && ($user->isClientAdmin() || $lead->assigned_to === $user->id || $this->hasUnassignedAccess($user, $lead));
     }
 
     public function update(TenantUser $user, Lead $lead): bool
     {
         return $this->belongsToUserTenant($user, $lead)
             && $user->hasModulePermission('lead-management', 'update')
-            && ($user->isClientAdmin() || $lead->assigned_to === $user->id);
+            && ($user->isClientAdmin() || $lead->assigned_to === $user->id || $this->hasUnassignedAccess($user, $lead));
+    }
+
+    /**
+     * A Client User whose role has been granted "receive unassigned leads"
+     * access (see LeadSource::unassignedRoles()) can view/work an
+     * UNassigned lead from a qualifying source — never a once-assigned
+     * lead that later happens to belong to that source, and never a
+     * substitute for assign(), which stays Client-Admin-only below: this
+     * never lets a Client User claim ownership, only see and act on a lead
+     * nobody owns yet. Mirrors Concerns\FiltersLeadsQuery::
+     * applyAssignmentScope()'s own condition so a lead that scope surfaces
+     * in a list is never one this policy then refuses to open.
+     */
+    private function hasUnassignedAccess(TenantUser $user, Lead $lead): bool
+    {
+        if ($lead->assigned_to !== null) {
+            return false;
+        }
+
+        return $user->role->unassignedLeadSources()->whereKey($lead->source_id)->exists();
     }
 
     public function delete(TenantUser $user, Lead $lead): bool

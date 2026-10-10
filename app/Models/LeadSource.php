@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
@@ -137,6 +138,28 @@ class LeadSource extends Model
     public function leads(): HasMany
     {
         return $this->hasMany(Lead::class, 'source_id');
+    }
+
+    /**
+     * Tenant roles granted "receive unassigned leads" access to this
+     * specific source — an active TenantUser holding one of these roles can
+     * view/work an unassigned (assigned_to IS NULL) lead from this source
+     * (see LeadPolicy::view()/update()'s own hasUnassignedAccess() check and
+     * Concerns\FiltersLeadsQuery::applyAssignmentScope()), without being
+     * able to claim it themselves — LeadPolicy::assign() is untouched and
+     * stays Client-Admin-only; this is visibility/working rights only, not
+     * ownership. Per lead-source row, not per LeadSourceType, matching the
+     * tenant's own Lead Sources table granularity. Toggled from the tenant
+     * Lead Sources page (App\Livewire\Tenant\LeadSources\Index), Client-
+     * Admin-only (LeadSourcePolicy::update()) — the one other deliberate
+     * mutation exception on an otherwise Platform-Admin-managed/read-only
+     * model, alongside LeadSourcePolicy::delete().
+     *
+     * @return BelongsToMany<Role, $this>
+     */
+    public function unassignedRoles(): BelongsToMany
+    {
+        return $this->belongsToMany(Role::class, 'lead_source_unassigned_roles')->withTimestamps();
     }
 
     /**

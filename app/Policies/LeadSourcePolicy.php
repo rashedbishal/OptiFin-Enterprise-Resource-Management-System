@@ -35,4 +35,18 @@ class LeadSourcePolicy
             && $user->isClientAdmin()
             && $user->hasModulePermission('lead-management', 'delete');
     }
+
+    /**
+     * A second deliberate mutation exception on an otherwise Platform-
+     * Admin-managed/read-only model, alongside delete() above — gates
+     * toggling which roles receive unassigned leads from this source (see
+     * LeadSource::unassignedRoles()'s own docblock), not the source's own
+     * config, which stays exclusively Platform Admin territory.
+     */
+    public function update(TenantUser $user, LeadSource $leadSource): bool
+    {
+        return $user->tenant_id === $leadSource->tenant_id
+            && $user->isClientAdmin()
+            && $user->hasModulePermission('lead-management', 'update');
+    }
 }

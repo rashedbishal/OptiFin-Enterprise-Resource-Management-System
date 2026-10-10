@@ -2,6 +2,7 @@
 
 use App\Actions\Tenant\ListActiveLeadCalls;
 use App\Enums\CallRoutingMode;
+use App\Enums\LeadSourceType;
 use App\Enums\TenantUserType;
 use App\Models\Lead;
 use App\Models\LeadCall;
@@ -707,6 +708,145 @@ test('a Reverb outage never fails routing — it silently falls through to Admin
 
     expect($routing['routing_mode'])->toBe(CallRoutingMode::Assignee);
     expect($routing['routed_user_ids'])->toBe([$assignee->id]);
+});
+
+// ── "Receive unassigned leads" — role×lead-source call ringing ─────────────
+//
+// A role granted "receive unassigned leads" on a specific LeadSource (see
+// LeadSource::unassignedRoles()) joins the AdminFallback pool for THAT
+// source's calls specifically — unioned with admins, not a replacement.
+// routing_mode stays AdminFallback regardless of which pool populated it.
+
+/**
+ * A Client User whose role is granted unassigned-leads access to $source,
+ * for the CallRouter ringing tests below.
+ */
+function callRouterUnassignedRoleReceiver($tenant, LeadSource $source): TenantUser
+{
+    $user = clientUserWithLeadPermission($tenant, ['view', 'update']);
+    $source->unassignedRoles()->attach($user->role_id);
+
+    return $user->fresh();
+}
+
+test('an unassigned lead from a granted source rings the qualifying role user alongside the admin', function () {
+    $x = callRouterScenario();
+    $source = LeadSource::factory()->create(['tenant_id' => $x['tenant']->id, 'type' => LeadSourceType::Whatsapp]);
+    $lead = Lead::factory()->create(['tenant_id' => $x['tenant']->id, 'source_id' => $source->id]);
+    $receiver = callRouterUnassignedRoleReceiver($x['tenant'], $source);
+
+    $routing = app(CallRouter::class)->route($lead, leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::AdminFallback);
+    expect($routing['routed_user_ids'])->toBe(collect([$x['admin']->id, $receiver->id])->sort()->values()->all());
+});
+
+test('a qualifying role user is never rung for an unassigned lead from a DIFFERENT, non-granted source', function () {
+    $x = callRouterScenario();
+    $grantedSource = LeadSource::factory()->create(['tenant_id' => $x['tenant']->id, 'type' => LeadSourceType::Whatsapp]);
+    $otherSource = LeadSource::factory()->create(['tenant_id' => $x['tenant']->id, 'type' => LeadSourceType::Whatsapp]);
+    $lead = Lead::factory()->create(['tenant_id' => $x['tenant']->id, 'source_id' => $otherSource->id]);
+    callRouterUnassignedRoleReceiver($x['tenant'], $grantedSource);
+
+    $routing = app(CallRouter::class)->route($lead, leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::AdminFallback);
+    expect($routing['routed_user_ids'])->toBe([$x['admin']->id]);
+});
+
+test('with zero active Client Admins, a qualifying role user alone still rings — AdminFallback, not None', function () {
+    $x = callRouterScenario();
+    callRouterDeactivate($x['admin']);
+    $source = LeadSource::factory()->create(['tenant_id' => $x['tenant']->id, 'type' => LeadSourceType::Whatsapp]);
+    $lead = Lead::factory()->create(['tenant_id' => $x['tenant']->id, 'source_id' => $source->id]);
+    $receiver = callRouterUnassignedRoleReceiver($x['tenant'], $source);
+
+    $routing = app(CallRouter::class)->route($lead, leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::AdminFallback);
+    expect($routing['routed_user_ids'])->toBe([$receiver->id]);
+});
+
+test('a busy qualifying role user is excluded, same busy definition as backup receivers', function () {
+    $x = callRouterScenario();
+    $source = LeadSource::factory()->create(['tenant_id' => $x['tenant']->id, 'type' => LeadSourceType::Whatsapp]);
+    $lead = Lead::factory()->create(['tenant_id' => $x['tenant']->id, 'source_id' => $source->id]);
+    $receiver = callRouterUnassignedRoleReceiver($x['tenant'], $source);
+    callRouterMakeBusy($receiver);
+
+    $routing = app(CallRouter::class)->route($lead, leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::AdminFallback);
+    expect($routing['routed_user_ids'])->toBe([$x['admin']->id]);
+});
+
+test('an inactive qualifying role user is excluded', function () {
+    $x = callRouterScenario();
+    $source = LeadSource::factory()->create(['tenant_id' => $x['tenant']->id, 'type' => LeadSourceType::Whatsapp]);
+    $lead = Lead::factory()->create(['tenant_id' => $x['tenant']->id, 'source_id' => $source->id]);
+    $receiver = callRouterUnassignedRoleReceiver($x['tenant'], $source);
+    $receiver->update(['is_active' => false]);
+
+    $routing = app(CallRouter::class)->route($lead, leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::AdminFallback);
+    expect($routing['routed_user_ids'])->toBe([$x['admin']->id]);
+});
+
+test('a qualifying role user lacking lead-management update permission is excluded', function () {
+    $x = callRouterScenario();
+    $source = LeadSource::factory()->create(['tenant_id' => $x['tenant']->id, 'type' => LeadSourceType::Whatsapp]);
+    $lead = Lead::factory()->create(['tenant_id' => $x['tenant']->id, 'source_id' => $source->id]);
+    $viewOnly = clientUserWithLeadPermission($x['tenant'], ['view']);
+    $source->unassignedRoles()->attach($viewOnly->role_id);
+
+    $routing = app(CallRouter::class)->route($lead, leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::AdminFallback);
+    expect($routing['routed_user_ids'])->toBe([$x['admin']->id]);
+});
+
+test('an already-assigned lead never reaches the unassigned-role tier, even for a granted source', function () {
+    $x = callRouterScenario();
+    $source = LeadSource::factory()->create(['tenant_id' => $x['tenant']->id, 'type' => LeadSourceType::Whatsapp]);
+    $lead = Lead::factory()->create(['tenant_id' => $x['tenant']->id, 'source_id' => $source->id]);
+    $assignee = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
+    $lead->update(['assigned_to' => $assignee->id]);
+    callRouterUnassignedRoleReceiver($x['tenant'], $source);
+
+    $routing = app(CallRouter::class)->route($lead->fresh(), leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::Assignee);
+    expect($routing['routed_user_ids'])->toBe([$assignee->id]);
+});
+
+test('a qualifying role user from another tenant is never routed to', function () {
+    $x = callRouterScenario();
+    $source = LeadSource::factory()->create(['tenant_id' => $x['tenant']->id, 'type' => LeadSourceType::Whatsapp]);
+    $lead = Lead::factory()->create(['tenant_id' => $x['tenant']->id, 'source_id' => $source->id]);
+    ['tenant' => $otherTenant] = tenantWithLeadManagement();
+    $foreignSource = LeadSource::factory()->create(['tenant_id' => $otherTenant->id, 'type' => LeadSourceType::Whatsapp]);
+    callRouterUnassignedRoleReceiver($otherTenant, $foreignSource);
+
+    $routing = app(CallRouter::class)->route($lead, leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::AdminFallback);
+    expect($routing['routed_user_ids'])->toBe([$x['admin']->id]);
+});
+
+test('multiple qualifying role users for the same source are all rung simultaneously, deduped against the admin pool', function () {
+    $x = callRouterScenario();
+    $source = LeadSource::factory()->create(['tenant_id' => $x['tenant']->id, 'type' => LeadSourceType::Whatsapp]);
+    $lead = Lead::factory()->create(['tenant_id' => $x['tenant']->id, 'source_id' => $source->id]);
+    $receiverA = callRouterUnassignedRoleReceiver($x['tenant'], $source);
+    $receiverB = callRouterUnassignedRoleReceiver($x['tenant'], $source);
+
+    $routing = app(CallRouter::class)->route($lead, leadCreatedByThisCall: false);
+
+    expect($routing['routing_mode'])->toBe(CallRoutingMode::AdminFallback);
+    expect($routing['routed_user_ids'])->toBe(
+        collect([$x['admin']->id, $receiverA->id, $receiverB->id])->sort()->values()->all()
+    );
 });
 
 test('Reverb presence is tenant-scoped: an assignee in tenant A is never affected by tenant B\'s membership data', function () {

@@ -40,6 +40,9 @@
                             <flux:text class="text-xs" variant="subtle">{{ __('Polled automatically') }}</flux:text>
                         @endif
                     </div>
+                    @if ($this->isClientAdmin && $this->rolesEligibleForUnassigned->isNotEmpty())
+                        @include('livewire.tenant.lead-sources.partials.unassigned-role-chips', ['source' => $source])
+                    @endif
                 </div>
             @empty
                 <div class="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-200 p-8 text-center dark:border-zinc-700">
@@ -66,6 +69,15 @@
     </div>
 
     {{-- Desktop / Tablet Table View (hidden sm:block) --}}
+    @php
+        // Client-Admin-only column — see LeadSourcePolicy::update()'s own
+        // docblock for why this is the one other deliberate mutation
+        // exception on an otherwise read-only page. Drives both the extra
+        // <flux:table.column> below and every skeleton/empty row's colspan,
+        // so they never drift out of sync with each other.
+        $showUnassignedColumn = $this->isClientAdmin;
+        $columnCount = $showUnassignedColumn ? 5 : 4;
+    @endphp
     <div class="hidden sm:block">
     <flux:table>
         <flux:table.columns>
@@ -73,6 +85,9 @@
             <flux:table.column>{{ __('Type') }}</flux:table.column>
             <flux:table.column>{{ __('Webhook URL') }}</flux:table.column>
             <flux:table.column>{{ __('Status') }}</flux:table.column>
+            @if ($showUnassignedColumn)
+                <flux:table.column>{{ __('Receives Unassigned Leads') }}</flux:table.column>
+            @endif
         </flux:table.columns>
         <flux:table.rows>
             @forelse ($this->leadSources as $source)
@@ -91,10 +106,19 @@
                             {{ $source->is_active ? __('Active') : __('Inactive') }}
                         </flux:badge>
                     </flux:table.cell>
+                    @if ($showUnassignedColumn)
+                        <flux:table.cell>
+                            @if ($this->rolesEligibleForUnassigned->isNotEmpty())
+                                @include('livewire.tenant.lead-sources.partials.unassigned-role-chips', ['source' => $source])
+                            @else
+                                <flux:text class="text-xs" variant="subtle">{{ __('No eligible roles') }}</flux:text>
+                            @endif
+                        </flux:table.cell>
+                    @endif
                 </flux:table.row>
             @empty
                 <flux:table.row wire:loading.class="!hidden" wire:target="{{ $listLoadingTargets }}" @class(['!hidden' => $showSkeletonByDefault])>
-                    <flux:table.cell colspan="4">{{ __('No lead sources configured yet.') }}</flux:table.cell>
+                    <flux:table.cell colspan="{{ $columnCount }}">{{ __('No lead sources configured yet.') }}</flux:table.cell>
                 </flux:table.row>
             @endforelse
         </flux:table.rows>
@@ -112,6 +136,9 @@
                         <flux:table.cell><div class="h-5 w-20 skeleton-shimmer rounded-full"></div></flux:table.cell>
                         <flux:table.cell><div class="h-3 w-32 skeleton-shimmer rounded"></div></flux:table.cell>
                         <flux:table.cell><div class="h-5 w-16 skeleton-shimmer rounded-full"></div></flux:table.cell>
+                        @if ($showUnassignedColumn)
+                            <flux:table.cell><div class="h-5 w-24 skeleton-shimmer rounded-full"></div></flux:table.cell>
+                        @endif
                     </flux:table.row>
                 @endfor
             </flux:table.rows>

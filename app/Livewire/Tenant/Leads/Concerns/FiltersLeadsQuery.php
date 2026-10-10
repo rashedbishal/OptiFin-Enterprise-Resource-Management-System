@@ -127,11 +127,50 @@ trait FiltersLeadsQuery
      */
     private function applyAssignmentScope(Builder $query): Builder
     {
-        if (! $this->isClientAdmin) {
-            $query->assignedTo(Auth::user()->id);
+        if ($this->isClientAdmin) {
+            return $query;
         }
 
+        $unassignedSourceIds = $this->unassignedAccessibleSourceIds();
+
+        if ($unassignedSourceIds === []) {
+            $query->assignedTo(Auth::user()->id);
+
+            return $query;
+        }
+
+        // A Client User whose role has "receive unassigned leads" access
+        // (see LeadSource::unassignedRoles()) sees their own assigned leads
+        // PLUS every still-unassigned lead from a qualifying source — never
+        // a replacement for the base assigned-to-self visibility, always
+        // additive. Mirrors LeadPolicy::view()/update()'s own
+        // hasUnassignedAccess() condition at the single-lead level, so a
+        // lead this scope surfaces in a list is never one the policy then
+        // 403s on when opened.
+        $query->where(function (Builder $scoped) use ($unassignedSourceIds): void {
+            $scoped->assignedTo(Auth::user()->id)
+                ->orWhere(fn (Builder $q) => $q->unassigned()->whereIn('source_id', $unassignedSourceIds));
+        });
+
         return $query;
+    }
+
+    /**
+     * Lead source ids this Client User's role has been granted "receive
+     * unassigned leads" access to — empty for a Client Admin (never called
+     * for one) or a Client User whose role has no such grant.
+     *
+     * @return array<int, string>
+     */
+    private function unassignedAccessibleSourceIds(): array
+    {
+        $role = Auth::user()->role;
+
+        if ($role === null) {
+            return [];
+        }
+
+        return $role->unassignedLeadSources()->pluck('lead_sources.id')->all();
     }
 
     /**

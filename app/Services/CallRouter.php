@@ -34,7 +34,16 @@ use App\Models\TenantUser;
  *  3. Otherwise (unassigned, assignee unusable with no eligible backup
  *     either, or the lead was created by this very call) → mode
  *     AdminFallback, routed to every active Client Admin of the tenant who
- *     can take calls.
+ *     can take calls, UNIONED with every active TenantUser whose role has
+ *     "receive unassigned leads" access (see LeadSource::unassignedRoles())
+ *     to this call's specific lead_source_id and is not already busy — same
+ *     simultaneous fan-out as rule 2, same reasoning: an unassigned lead's
+ *     call should ring everyone who already has standing visibility/working
+ *     rights on it, not just admins. The stored routing_mode stays
+ *     AdminFallback regardless of which of the two pools actually populated
+ *     routed_user_ids (including both, or neither admins exist but
+ *     role-receivers do) — it is not a claim that every routed id is an
+ *     admin, only that this is the lead-has-no-usable-assignee tier.
  *  4. Otherwise → mode None; the call is recorded but never rings.
  *
  * A lead created by this call always skips rules 1-2 straight to rule 3:
@@ -108,11 +117,56 @@ class CallRouter
             ->values()
             ->all();
 
+        // Sorted, not just de-duped: each pool arrives individually sorted
+        // by id (both queries end in orderBy('id')) but their UNION isn't
+        // globally sorted by concatenation alone — every other multi-
+        // candidate routing_mode in this class returns ascending id order
+        // (see BackupFallback/AdminFallback's own tests), so this merge
+        // must too.
+        $routedIds = array_unique([...$this->eligibleUnassignedRoleReceivers($lead), ...$adminIds]);
+        sort($routedIds);
+
         return [
-            'routing_mode' => $adminIds === [] ? CallRoutingMode::None : CallRoutingMode::AdminFallback,
-            'routed_user_ids' => $adminIds,
+            'routing_mode' => $routedIds === [] ? CallRoutingMode::None : CallRoutingMode::AdminFallback,
+            'routed_user_ids' => $routedIds,
             'assignee_id_at_arrival' => $assigneeId,
         ];
+    }
+
+    /**
+     * "Receive unassigned leads" (see LeadSource::unassignedRoles()'s own
+     * docblock) — every active, call-capable, non-busy TenantUser whose
+     * role has been granted access to this specific call's lead_source_id.
+     * Same batched-busy-check shape as eligibleBackupReceivers() below, for
+     * the same N+1 reason.
+     *
+     * @return array<int, string>
+     */
+    private function eligibleUnassignedRoleReceivers(Lead $lead): array
+    {
+        $candidates = TenantUser::query()
+            ->with('role')
+            ->where('tenant_id', $lead->tenant_id)
+            ->where('is_active', true)
+            ->whereHas('role', fn ($query) => $query->whereHas(
+                'unassignedLeadSources',
+                fn ($q) => $q->where('lead_sources.id', $lead->source_id),
+            ))
+            ->orderBy('id')
+            ->get()
+            ->filter(fn (TenantUser $candidate): bool => $this->canTakeCalls($candidate));
+
+        if ($candidates->isEmpty()) {
+            return [];
+        }
+
+        $busyIds = $this->busyUserIds($lead->tenant_id, $candidates->pluck('id')->all());
+
+        return $candidates
+            ->reject(fn (TenantUser $candidate): bool => in_array($candidate->id, $busyIds, true))
+            ->map(fn (TenantUser $candidate): string => $candidate->id)
+            ->values()
+            ->all();
     }
 
     private function canTakeCalls(TenantUser $user): bool

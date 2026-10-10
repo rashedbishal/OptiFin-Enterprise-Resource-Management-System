@@ -41,7 +41,7 @@ class TenantUserFactory extends Factory
     public function configure(): static
     {
         return $this->afterCreating(function (TenantUser $tenantUser) {
-            if ($tenantUser->role && $tenantUser->role->tenant_id !== $tenantUser->tenant_id) {
+            if ($tenantUser->role->tenant_id !== $tenantUser->tenant_id) {
                 $tenantUser->role()->update(['tenant_id' => $tenantUser->tenant_id]);
             }
         });

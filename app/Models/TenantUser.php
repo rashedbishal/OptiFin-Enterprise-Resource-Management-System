@@ -33,6 +33,7 @@ use Spatie\Activitylog\Traits\LogsActivity;
  * @property Carbon|null $softphone_last_seen_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ * @property-read Role $role
  */
 #[Fillable(['tenant_id', 'name', 'email', 'password', 'user_type', 'role_id', 'is_active', 'is_whatsapp_backup_receiver', 'last_assigned_at'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]

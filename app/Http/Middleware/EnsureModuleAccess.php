@@ -22,7 +22,7 @@ class EnsureModuleAccess
         abort_unless(
             $tenantUser
                 && $tenantUser->tenant?->hasModule($moduleSlug)
-                && $tenantUser->role?->hasModule($moduleSlug),
+                && $tenantUser->role->hasModule($moduleSlug),
             403
         );
 

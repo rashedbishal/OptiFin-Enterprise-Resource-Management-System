@@ -3,6 +3,7 @@
 namespace App\Livewire\Tenant\Users;
 
 use App\Actions\Tenant\CreateTenantUser;
+use App\Enums\LeadSourceType;
 use App\Enums\TenantUserType;
 use App\Models\Role;
 use App\Models\TenantUser;
@@ -131,7 +132,12 @@ class Index extends Component
      * (they already receive every AdminFallback call unconditionally, see
      * App\Services\CallRouter) — the view already hides this action for
      * them, and this guard is the server-side backstop for that rule, not
-     * merely a UI omission.
+     * merely a UI omission. A user whose role already receives unassigned
+     * WhatsApp leads (receivesUnassignedWhatsAppLeads() below) is excluded
+     * the same way, for the same reason: App\Services\CallRouter already
+     * rings them simultaneously for an unassigned lead's call, making the
+     * busy-assignee-overflow toggle redundant for the sources that matter
+     * to them.
      */
     public function toggleBackupReceiver(string $id): void
     {
@@ -139,11 +145,23 @@ class Index extends Component
 
         Gate::authorize('update', $target);
 
-        if ($target->user_type === TenantUserType::ClientAdmin) {
+        if ($target->user_type === TenantUserType::ClientAdmin || $this->receivesUnassignedWhatsAppLeads($target)) {
             return;
         }
 
         $target->update(['is_whatsapp_backup_receiver' => ! $target->is_whatsapp_backup_receiver]);
+    }
+
+    /**
+     * Whether this user's role has been granted "receive unassigned leads"
+     * access (see LeadSource::unassignedRoles()'s own docblock) to any
+     * WhatsApp-type source — the one condition, besides being a Client
+     * Admin, that suppresses the Backup Calls toggle both here and in the
+     * Blade view, per toggleBackupReceiver()'s own docblock.
+     */
+    public function receivesUnassignedWhatsAppLeads(TenantUser $user): bool
+    {
+        return $user->role->unassignedLeadSources()->where('type', LeadSourceType::Whatsapp)->exists();
     }
 
     public function confirmDelete(string $id): void

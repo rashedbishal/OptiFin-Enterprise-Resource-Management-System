@@ -1,9 +1,11 @@
 <?php
 
 use App\Enums\CallRoutingMode;
+use App\Enums\LeadSourceType;
 use App\Enums\TenantUserType;
 use App\Livewire\Tenant\Users\Index;
 use App\Models\Lead;
+use App\Models\LeadSource;
 use App\Models\TenantUser;
 use App\Services\CallRouter;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -158,6 +160,38 @@ test('11. CallRouter sees the value this toggle persisted', function () {
 
     expect($routing['routing_mode'])->toBe(CallRoutingMode::BackupFallback);
     expect($routing['routed_user_ids'])->toBe([$backup->id]);
+});
+
+test('13. a Client User whose role receives unassigned leads from a WhatsApp source cannot be toggled — the capability is suppressed server-side, not merely hidden', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $admin] = tenantWithLeadManagement();
+    $target = clientUserWithLeadPermission($tenant, ['view', 'update']);
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Whatsapp]);
+    $source->unassignedRoles()->attach($target->role_id);
+
+    Livewire::actingAs($admin)->test(Index::class)->call('toggleBackupReceiver', $target->id);
+
+    expect($target->fresh()->is_whatsapp_backup_receiver)->toBeFalse();
+});
+
+test('14. the button itself is hidden for a user whose role receives unassigned leads from a WhatsApp source', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $admin] = tenantWithLeadManagement();
+    $target = clientUserWithLeadPermission($tenant, ['view', 'update']);
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Whatsapp]);
+    $source->unassignedRoles()->attach($target->role_id);
+
+    Livewire::actingAs($admin)->test(Index::class)
+        ->assertDontSeeHtml('wire:click="toggleBackupReceiver(\''.$target->id.'\')"');
+});
+
+test('15. a role granted on a non-WhatsApp source does not suppress the capability', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $admin] = tenantWithLeadManagement();
+    $target = clientUserWithLeadPermission($tenant, ['view', 'update']);
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Email]);
+    $source->unassignedRoles()->attach($target->role_id);
+
+    Livewire::actingAs($admin)->test(Index::class)->call('toggleBackupReceiver', $target->id);
+
+    expect($target->fresh()->is_whatsapp_backup_receiver)->toBeTrue();
 });
 
 test('12. revoking the capability through the UI removes future backup eligibility', function () {
