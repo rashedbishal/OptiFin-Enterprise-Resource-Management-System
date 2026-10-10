@@ -11,6 +11,7 @@ use App\Support\MessengerTemplateActionResult;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Messenger Utility Message Templates, Platform Admin side — creates and
@@ -97,6 +98,30 @@ class CreateMessengerMessageTemplate
             return new MessengerTemplateActionResult('danger', $response->json('error.message') ?? __('Meta rejected this template.'));
         }
 
+        // A 2xx response only means Meta accepted the submission for
+        // review — Messenger Utility templates approve OR reject
+        // instantly (no PENDING queue, see MessengerMessageTemplate's own
+        // docblock), so `status` here is Meta's actual, final verdict, not
+        // a placeholder. A REJECTED template can never send a message —
+        // registering it anyway (the original bug here) silently occupied
+        // this source's one-template slot with something permanently
+        // useless, forcing an unexplained delete-and-retry. Treat it as a
+        // failure instead: no catalog row, and clean up the now-orphaned
+        // rejected object on Meta's side so the same name is immediately
+        // reusable for a corrected resubmission.
+        if ($response->json('status') === 'REJECTED') {
+            $reason = $this->fetchRejectedReason($pageId, $pageAccessToken, (string) $response->json('id'));
+
+            $this->log($actor, $source, 'meta_content_rejected', ['name' => $name, 'language' => $language, 'meta_id' => $response->json('id'), 'rejected_reason' => $reason]);
+
+            $this->deleteRejectedTemplate($pageId, $pageAccessToken, $name);
+
+            return new MessengerTemplateActionResult('danger', __(
+                'Meta rejected this template\'s content (:reason) — it was never registered. A Utility template must read as an update about something the customer already has with you (an order, a request, an appointment), not an invitation to chat or an offer. Rewrite the wording and try again — the name is free to reuse.',
+                ['reason' => $reason ?? __('no reason given')],
+            ));
+        }
+
         MessengerMessageTemplate::create([
             'tenant_id' => $tenant->id,
             'lead_source_id' => $source->id,
@@ -110,6 +135,46 @@ class CreateMessengerMessageTemplate
         $this->log($actor, $source, 'created', ['name' => $name, 'language' => $language, 'meta_id' => $response->json('id'), 'status' => $response->json('status')]);
 
         return new MessengerTemplateActionResult('success', __('Template created and registered — Meta reports it as :status.', ['status' => $response->json('status') ?? 'unknown']));
+    }
+
+    /**
+     * Meta's create-template response doesn't include `rejected_reason`
+     * itself, only `status` — this follow-up GET on the template node is
+     * how the Page UI shows the detailed reason too. Best-effort: null
+     * (rendered as "no reason given") if this read itself fails, which
+     * must never block reporting the rejection to the admin.
+     */
+    private function fetchRejectedReason(string $pageId, string $pageAccessToken, string $templateId): ?string
+    {
+        $response = Http::timeout(15)->get("https://graph.facebook.com/v26.0/{$templateId}", [
+            'access_token' => $pageAccessToken,
+            'fields' => 'rejected_reason',
+        ]);
+
+        return $response->successful() ? $response->json('rejected_reason') : null;
+    }
+
+    /**
+     * Best-effort cleanup of the rejected template object Meta still
+     * created despite rejecting it — never lets a cleanup failure change
+     * the outcome reported to the admin; a leftover rejected object on
+     * Meta's side is a cosmetic issue there, not a correctness issue here
+     * (this app's own catalog never references it, since no row was
+     * created). Same query-parameter DELETE contract as
+     * DeleteMessengerMessageTemplate.
+     */
+    private function deleteRejectedTemplate(string $pageId, string $pageAccessToken, string $name): void
+    {
+        try {
+            Http::timeout(15)
+                ->withQueryParameters(['access_token' => $pageAccessToken, 'name' => $name])
+                ->delete("https://graph.facebook.com/v26.0/{$pageId}/message_templates");
+        } catch (Throwable $e) {
+            Log::warning('MESSENGER TEMPLATE CREATE: failed to clean up a rejected template on Meta', [
+                'name' => $name,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

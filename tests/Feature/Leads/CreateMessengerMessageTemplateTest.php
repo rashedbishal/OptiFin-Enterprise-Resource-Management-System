@@ -72,6 +72,44 @@ test('a zero-variable body never sends an example field', function () {
     expect(MessengerMessageTemplate::where('tenant_id', $tenant->id)->firstOrFail()->variable_count)->toBe(0);
 });
 
+test('Meta accepting the submission but instantly rejecting its content leaves no catalog row and cleans up the orphaned template', function () {
+    $tenant = Tenant::factory()->create();
+    $source = cmmtSource($tenant);
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+
+    Http::fake([
+        'graph.facebook.com/*/message_templates' => Http::sequence()
+            // The initial POST: Meta accepts the call and creates the
+            // object, but its own content review rejects it instantly —
+            // Messenger Utility templates have no PENDING queue (see
+            // MessengerMessageTemplate's own docblock), so this status is
+            // Meta's real, final verdict, not a placeholder.
+            ->push(['id' => '999', 'status' => 'REJECTED'], 200)
+            // The cleanup DELETE of the now-orphaned rejected object.
+            ->push(['success' => true], 200),
+        // The follow-up GET for the detailed reason (POST's own response
+        // never includes it).
+        'graph.facebook.com/*/999*' => Http::response(['rejected_reason' => 'INCORRECT_CATEGORY'], 200),
+    ]);
+
+    $result = app(CreateMessengerMessageTemplate::class)->handle(
+        $motherAdmin,
+        $tenant,
+        $source->id,
+        'followup_after_24',
+        'en_US',
+        'Please say a simple "Yes" to continue our conversation.',
+    );
+
+    expect($result->variant)->toBe('danger');
+    expect($result->message)->toContain('INCORRECT_CATEGORY');
+    expect(MessengerMessageTemplate::where('tenant_id', $tenant->id)->exists())->toBeFalse();
+
+    Http::assertSent(fn ($request) => $request->method() === 'DELETE'
+        && str_contains($request->url(), 'message_templates')
+        && str_contains($request->url(), 'name=followup_after_24'));
+});
+
 test('a platform rejection leaves no catalog row behind', function () {
     $tenant = Tenant::factory()->create();
     $source = cmmtSource($tenant);
