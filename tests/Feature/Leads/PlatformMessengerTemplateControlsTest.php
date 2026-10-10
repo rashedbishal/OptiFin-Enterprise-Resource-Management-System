@@ -144,6 +144,21 @@ test('deleting the existing template through the component calls Meta and remove
     pmtcComponent($tenant)->assertSee('Create Template');
 });
 
+test('the example body text is shown and can be applied with one click', function () {
+    $tenant = Tenant::factory()->create();
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::FacebookMessenger,
+        'config' => ['page_id' => '1', 'page_access_token' => 'token'],
+    ]);
+
+    pmtcComponent($tenant)
+        ->call('createTemplate', $source->id)
+        ->assertSee(LeadSources::EXAMPLE_TEMPLATE_BODY)
+        ->call('useExampleTemplateBody')
+        ->assertSet('templateBodyText', LeadSources::EXAMPLE_TEMPLATE_BODY);
+});
+
 test('an invalid template name is rejected client-side without calling Meta', function () {
     $tenant = Tenant::factory()->create();
     $source = LeadSource::factory()->create([

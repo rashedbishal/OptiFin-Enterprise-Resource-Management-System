@@ -805,6 +805,20 @@ class LeadSources extends Component
         };
     }
 
+    /**
+     * A wording Meta's own Utility-category reviewer has actually
+     * approved (confirmed live, 2026-10-10, after an earlier submission
+     * was rejected with reason INCORRECT_CATEGORY for sounding like an
+     * invitation to chat rather than a status update) — shown above the
+     * body field so a Platform Admin isn't guessing at Meta's content
+     * rules from scratch. Kept as one PHP string (not built in Blade/JS)
+     * specifically to avoid writing a literal, adjacent "{ {" pair
+     * anywhere in a .blade.php file's own source — see the body-text
+     * field's own docblock in lead-sources.blade.php for why that's a
+     * real, previously-hit bug here, not a hypothetical one.
+     */
+    public const string EXAMPLE_TEMPLATE_BODY = "Hi {{1}}, this is an update on your inquiry about {{2}}. Your request is still open on our end — reply here if you'd like us to continue assisting you.";
+
     public function createTemplate(string $id): void
     {
         Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
@@ -814,6 +828,11 @@ class LeadSources extends Component
         $this->templateLanguage = 'en_US';
         $this->resetErrorBag();
         $this->showCreateTemplateModal = true;
+    }
+
+    public function useExampleTemplateBody(): void
+    {
+        $this->templateBodyText = self::EXAMPLE_TEMPLATE_BODY;
     }
 
     public function saveTemplate(): void

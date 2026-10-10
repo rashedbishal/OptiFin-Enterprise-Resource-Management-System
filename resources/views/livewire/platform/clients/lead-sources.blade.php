@@ -419,6 +419,28 @@
                 }"
                 class="flex flex-col gap-2"
             >
+                {{-- A wording Meta's own reviewer has actually approved —
+                see LeadSources::EXAMPLE_TEMPLATE_BODY's own docblock for
+                why this is a PHP constant rather than written inline here:
+                it contains a literal, adjacent "{ {" pair, which this
+                file's own body-text field has already been bitten by once
+                (see that field's docblock below). --}}
+                <div class="flex flex-col gap-1.5 rounded-lg border border-blue-200/80 bg-blue-50 p-3 dark:border-blue-900/60 dark:bg-blue-950/40">
+                    <flux:text size="xs" variant="strong" class="text-blue-700 dark:text-blue-300">{{ __('Example Meta has approved') }}</flux:text>
+                    <p class="text-sm text-zinc-700 dark:text-zinc-300">{{ $this::EXAMPLE_TEMPLATE_BODY }}</p>
+                    <flux:text size="xs" variant="subtle">
+                        {{ __('Meta\'s Utility category needs a status update about something the customer already has with you — avoid words like "chat," "continue our conversation," or "offer," which read as an invitation rather than an update.') }}
+                    </flux:text>
+                    <div>
+                        {{-- A plain wire:click round-trip, not an Alpine
+                        assignment — $wire.entangle('templateBodyText')
+                        above is bidirectional, so once this sets the real
+                        Livewire property, the textarea's local `body`
+                        updates on its own; no extra glue needed. --}}
+                        <flux:button type="button" size="xs" wire:click="useExampleTemplateBody">{{ __('Use this example') }}</flux:button>
+                    </div>
+                </div>
+
                 <flux:field>
                     <flux:label>{{ __('Message') }}</flux:label>
                     <textarea
