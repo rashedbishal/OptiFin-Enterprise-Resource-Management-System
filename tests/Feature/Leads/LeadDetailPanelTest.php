@@ -49,7 +49,7 @@ test('updating status from the panel notifies the board instead of redirecting',
 
 test('deleting from the panel dispatches an event instead of redirecting', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
-    $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('unqualified')->id]);
 
     Livewire::actingAs($clientAdmin)
         ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
@@ -61,7 +61,7 @@ test('deleting from the panel dispatches an event instead of redirecting', funct
 
 test('the full page still redirects to the index on delete', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
-    $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('unqualified')->id]);
 
     Livewire::actingAs($clientAdmin)
         ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')

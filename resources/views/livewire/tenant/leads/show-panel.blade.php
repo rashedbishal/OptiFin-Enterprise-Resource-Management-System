@@ -1,5 +1,5 @@
 <div class="flex flex-col gap-5" wire:init="completeInitialLoad">
-    @include('livewire.tenant.leads.partials.header', ['lead' => $lead, 'canDelete' => $this->canDelete, 'compact' => true])
+    @include('livewire.tenant.leads.partials.header', ['lead' => $lead, 'compact' => true])
 
     @include('livewire.tenant.leads.partials.duplicate-warning')
 
@@ -69,8 +69,6 @@
             @endif
         </div>
     </div>
-
-    <x-confirm-password-delete-modal wire:model.self="showDeleteModal" />
 
     <x-confirm-modal
         wire:model.self="showCancelMeetingModal"

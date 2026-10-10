@@ -21,9 +21,4 @@
             </div>
         </div>
     </div>
-    @if ($canDelete && $lead->source->type->isIndividuallyDeletable())
-        <flux:button variant="danger" size="sm" wire:click="confirmDelete">
-            {{ __('Delete') }}
-        </flux:button>
-    @endif
 </div>

@@ -4,7 +4,7 @@
 ]])
 
 <div class="flex flex-1 flex-col gap-6 overflow-y-auto p-4 min-h-0 sm:p-6 lg:p-8" wire:init="completeInitialLoad">
-    @include('livewire.tenant.leads.partials.lead-hero', ['lead' => $lead, 'canDelete' => $this->canDelete])
+    @include('livewire.tenant.leads.partials.lead-hero', ['lead' => $lead])
 
     @include('livewire.tenant.leads.partials.pipeline-stepper', ['lead' => $lead])
 

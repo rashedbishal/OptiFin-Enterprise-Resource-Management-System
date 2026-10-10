@@ -29,7 +29,11 @@ function leadCallDeletionScenario(): array
     ['tenant' => $tenant, 'clientAdmin' => $admin] = tenantWithLeadManagement();
     $manual = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual]);
     $whatsapp = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Whatsapp]);
-    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $manual->id]);
+    // Unqualified: Show::confirmDelete()/delete() now also require this
+    // (see their own docblocks) — set here so every test in this file
+    // isolates the active-call protection this file is actually about,
+    // not incidentally blocked by that separate, newer check instead.
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $manual->id, 'status_id' => leadStatus('unqualified')->id]);
 
     return compact('tenant', 'admin', 'lead', 'whatsapp');
 }

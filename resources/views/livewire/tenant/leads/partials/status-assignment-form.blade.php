@@ -48,6 +48,30 @@ one submit button, wired to Show::updateStatusAndAssignment(). --}}
             <flux:button type="submit" variant="primary" size="sm">{{ __('Update') }}</flux:button>
         </div>
     </form>
+
+    {{-- The only place a lead can be deleted from on this page (moved
+    here from lead-hero.blade.php's old unconditional Delete button) —
+    deliberately offered only once a lead is marked Unqualified, so
+    deleting is the deliberate last step of closing out a lead that isn't
+    going anywhere, not a button sitting next to every other lead
+    regardless of state. isIndividuallyDeletable()/canDelete and every
+    other existing guard (merge eligibility, an active call, the
+    password re-entry) are all still enforced exactly as before by the
+    unchanged confirmDelete()/deleteConfirmed() flow this button calls
+    into — this condition only adds to when the button is offered, it
+    never removes a check. --}}
+    @if ($this->canDelete && $lead->source->type->isIndividuallyDeletable() && $lead->status->slug === 'unqualified')
+        <div class="mt-1 flex flex-col gap-2 rounded-lg border border-red-200/80 bg-red-50/60 p-3 dark:border-red-900/60 dark:bg-red-950/30">
+            <flux:text size="sm" class="text-red-700 dark:text-red-300">
+                {{ __('This lead is marked Unqualified — it can be permanently deleted from the system.') }}
+            </flux:text>
+            <div>
+                <flux:button type="button" size="sm" variant="danger" icon="trash" wire:click="confirmDelete">
+                    {{ __('Delete this lead') }}
+                </flux:button>
+            </div>
+        </div>
+    @endif
     </div>
 
     {{-- Skeleton: hidden by default, revealed only while

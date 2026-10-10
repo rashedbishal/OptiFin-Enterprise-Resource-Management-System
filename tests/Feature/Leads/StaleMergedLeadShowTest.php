@@ -41,7 +41,14 @@ function staleMergedScenario(bool $merged, string $actor = 'admin', bool $panel 
     $rep = clientUserWithLeadPermission($tenant, $repPermissions);
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual]);
     $survivor = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
-    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'assigned_to' => $rep->id, 'assigned_at' => now()]);
+    // Unqualified: Show::confirmDelete()/delete() now also require this
+    // (see their own docblocks) — set here so the confirmDelete row of
+    // the data-driven test below exercises the merge-protection guard
+    // this file is about, both in the merged case (still refused, for
+    // the expected merge reason) and the non-merged control case (must
+    // actually succeed in opening the modal, which it wouldn't if this
+    // lead were left at its default non-Unqualified status).
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'assigned_to' => $rep->id, 'assigned_at' => now(), 'status_id' => leadStatus('unqualified')->id]);
     $definition = LeadCustomFieldDefinition::factory()->create(['tenant_id' => $tenant->id]);
 
     $component = Livewire::actingAs($actor === 'rep' ? $rep : $admin)

@@ -66,6 +66,7 @@ test('the audit snapshot is taken from the Lead exactly as it was immediately be
         'name' => 'Original Name',
         'email' => 'original@example.com',
         'phone' => '+15559998888',
+        'status_id' => leadStatus('unqualified')->id,
     ]);
     $preDeleteIdentifier = $lead->identifier;
 
@@ -330,7 +331,7 @@ test('when the audit action reports the Lead already gone, Index::delete() does 
 test('when the audit action reports the Lead already gone, Show::delete() does not attempt to delete it again', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::WebsiteForm]);
-    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'status_id' => leadStatus('unqualified')->id]);
 
     app()->bind(RecordLeadDeletionAudit::class, fn () => new class extends RecordLeadDeletionAudit
     {

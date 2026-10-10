@@ -107,12 +107,11 @@
             @endif
 
             <div class="flex w-full flex-wrap gap-2 lg:w-auto lg:justify-end">
-                @if ($canDelete && $lead->source->type->isIndividuallyDeletable())
-                    <flux:button type="button" size="sm" variant="danger" icon="trash" wire:click="confirmDelete" class="flex-1 sm:flex-none">
-                        {{ __('Delete') }}
-                    </flux:button>
-                @endif
-
+                {{-- Delete moved to the Status & Assignment card (see
+                status-assignment-form.blade.php) — it's now only offered
+                once the lead's status is Unqualified, which this hero
+                banner has no natural place to gate on without duplicating
+                that card's own condition. --}}
                 <flux:button type="button" size="sm" icon="arrow-left" :href="$backToLeadsUrl" wire:navigate class="flex-1 sm:flex-none">
                     {{ __('Back to Leads') }}
                 </flux:button>

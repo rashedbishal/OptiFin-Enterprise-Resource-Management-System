@@ -3465,6 +3465,20 @@ class Show extends Component
             return;
         }
 
+        // Deleting a lead is only ever offered once it's marked Unqualified
+        // — see the Status & Assignment card's own docblock for why
+        // (status-assignment-form.blade.php is this page's only delete
+        // entry point). Checked here too, not just the button's own
+        // visibility condition: the button hiding isn't enough on its own
+        // (same discipline as isIndividuallyDeletable() below, and as
+        // Index::deleteSource()'s own re-check) — a direct call to this
+        // action must be refused exactly like a click would have been.
+        if ($this->lead->status->slug !== 'unqualified') {
+            Flux::toast(variant: 'danger', text: __('This lead can only be deleted once its status is Unqualified.'));
+
+            return;
+        }
+
         // PROD-1 — advisory only: refuses early, before a password is typed,
         // for a merged survivor. delete() re-evaluates inside its own
         // transaction and stays the authoritative check.
@@ -3580,6 +3594,16 @@ class Show extends Component
 
         if (! $this->lead->source->type->isIndividuallyDeletable()) {
             Flux::toast(variant: 'danger', text: __('This lead\'s source type cannot be deleted individually.'));
+
+            return;
+        }
+
+        // Authoritative re-check, same reasoning as confirmDelete()'s own
+        // — a password-confirmed submission must be refused exactly like
+        // the button being hidden/confirmDelete() would have been, not
+        // just whichever of the two a caller happened to go through.
+        if ($this->lead->status->slug !== 'unqualified') {
+            Flux::toast(variant: 'danger', text: __('This lead can only be deleted once its status is Unqualified.'));
 
             return;
         }

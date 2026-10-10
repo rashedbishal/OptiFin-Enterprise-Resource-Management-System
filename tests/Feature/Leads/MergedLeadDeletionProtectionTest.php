@@ -47,8 +47,13 @@ function mergedDeletionScenario(LeadSourceType $sourceType = LeadSourceType::Man
 {
     ['tenant' => $tenant, 'clientAdmin' => $admin] = tenantWithLeadManagement();
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => $sourceType]);
-    $survivor = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'name' => 'Survivor Lead']);
-    $loser = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'name' => 'Loser Lead']);
+    // Unqualified: Show::confirmDelete()/delete() now also require this
+    // (see their own docblocks) — set here so this merge-protection
+    // scenario isn't incidentally blocked by that separate, newer check
+    // too, which would make the toast assertions below ambiguous about
+    // which guard actually fired.
+    $survivor = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'name' => 'Survivor Lead', 'status_id' => leadStatus('unqualified')->id]);
+    $loser = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'name' => 'Loser Lead', 'status_id' => leadStatus('unqualified')->id]);
 
     LeadNote::create(['lead_id' => $survivor->id, 'tenant_user_id' => $admin->id, 'note' => 'survivor note']);
     LeadNote::create(['lead_id' => $loser->id, 'tenant_user_id' => $admin->id, 'note' => 'loser note']);
@@ -343,7 +348,7 @@ test('bulk delete of the chain: the top survivor is refused and both losers are 
 test('a normal lead still deletes through Show', function () {
     ['tenant' => $tenant, 'clientAdmin' => $admin] = tenantWithLeadManagement();
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual]);
-    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'status_id' => leadStatus('unqualified')->id]);
 
     $component = Livewire::actingAs($admin)->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')->call('delete');
 
@@ -371,7 +376,7 @@ test('a normal lead still deletes through Index, and its confirm opener still op
 test('Show::confirmDelete still opens for a normal lead', function () {
     ['tenant' => $tenant, 'clientAdmin' => $admin] = tenantWithLeadManagement();
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual]);
-    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'status_id' => leadStatus('unqualified')->id]);
 
     $component = Livewire::actingAs($admin)->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')->call('confirmDelete');
 

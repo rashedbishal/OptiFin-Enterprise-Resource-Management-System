@@ -187,7 +187,7 @@ test('a user without delete permission cannot even open the delete password moda
 test('deleting a lead from the detail page also requires the correct password', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::WebsiteForm]);
-    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'status_id' => leadStatus('unqualified')->id]);
 
     Livewire::actingAs($clientAdmin)
         ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
@@ -247,30 +247,60 @@ test('a client admin can still delete a manual lead', function () {
     expect(Lead::find($lead->id))->toBeNull();
 });
 
-test('the detail page does not show a delete button for a protected-source lead', function () {
+test('the detail page does not show a delete button for a protected-source lead, even when Unqualified', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Whatsapp]);
-    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'status_id' => leadStatus('unqualified')->id]);
 
     Livewire::actingAs($clientAdmin)
         ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
+        ->call('switchTab', 'activity')
         ->assertDontSeeHtml('wire:click="confirmDelete"');
 });
 
-test('the detail page shows a delete button for an allowed-source lead', function () {
+test('the detail page shows a delete button for an allowed-source lead once it is marked Unqualified', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual]);
-    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'status_id' => leadStatus('unqualified')->id]);
 
+    // The Status & Assignment card (this button's only home, see its own
+    // docblock) lives on the Activity Timeline tab, not the default
+    // Overview tab — see show.blade.php/.ai/rules/partials.md.
     Livewire::actingAs($clientAdmin)
         ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
+        ->call('switchTab', 'activity')
         ->assertSeeHtml('wire:click="confirmDelete"');
 });
 
-test('the lead panel does not show a delete button for a protected-source lead', function () {
+test('the detail page does not show a delete button for an allowed-source lead that is not Unqualified yet', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
-    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Whatsapp]);
-    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'status_id' => leadStatus('new')->id]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
+        ->call('switchTab', 'activity')
+        ->assertDontSeeHtml('wire:click="confirmDelete"');
+});
+
+test('a direct confirmDelete call is still refused server-side when the lead is not Unqualified — the button hiding is not enough on its own', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'status_id' => leadStatus('new')->id]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
+        ->call('confirmDelete')
+        ->assertSet('showDeleteModal', false)
+        ->assertDispatched('toast-show');
+
+    expect(Lead::find($lead->id))->not->toBeNull();
+});
+
+test('the lead panel never shows a delete button at all, regardless of source type or status — delete now lives only on the full-page Status & Assignment card', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'status_id' => leadStatus('unqualified')->id]);
 
     Livewire::actingAs($clientAdmin)
         ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
