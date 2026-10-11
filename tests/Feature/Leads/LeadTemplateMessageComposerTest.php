@@ -60,7 +60,20 @@ test('a client admin can send a registered template once the window has closed',
     expect($message->sent_by)->toBe($clientAdmin->id);
 });
 
-test('picking a different template resizes the variable inputs and clears stale values', function () {
+/**
+ * Picking a template and sizing its variable fields is now entirely
+ * Alpine-driven client-side (see message-composer-card.blade.php's own
+ * x-data) — switching the picker away from wire:model.live means there is
+ * no longer a server-side "template just changed" hook to resize
+ * $templateVariableValues automatically; that convenience moved to the
+ * browser (untestable from Pest, which has no JS engine). What stays a
+ * real server-side concern is safety: a submission whose variable count
+ * doesn't match the picked template's must still be rejected, whether
+ * that mismatch came from a stale value, a slow/failed Alpine watcher, or
+ * a tampered request — sendTemplateMessage()'s own validate() is the
+ * thing actually protecting that now, proven directly below.
+ */
+test('submitting a variable-count mismatch is rejected by validation, not silently sent', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $source = LeadSource::factory()->create([
         'tenant_id' => $tenant->id,
@@ -75,12 +88,21 @@ test('picking a different template resizes the variable inputs and clears stale 
         'tenant_id' => $tenant->id, 'lead_source_id' => $source->id, 'variable_count' => 2,
     ]);
 
-    $component = Livewire::actingAs($clientAdmin)
+    Http::fake();
+
+    Livewire::actingAs($clientAdmin)
         ->test(Show::class, ['lead' => $lead])
         ->call('completeInitialLoad')
-        ->set('selectedTemplateId', $twoVariableTemplate->id);
+        ->set('selectedTemplateId', $twoVariableTemplate->id)
+        // Stale single-value array, as if picked from a previous
+        // (0- or 1-variable) template and never resized — exactly what
+        // Alpine's client-side watcher exists to prevent in the browser.
+        ->set('templateVariableValues', ['only-one-value'])
+        ->call('sendTemplateMessage')
+        ->assertHasErrors(['templateVariableValues']);
 
-    expect($component->get('templateVariableValues'))->toHaveCount(2);
+    Http::assertNothingSent();
+    expect(Message::where('lead_id', $lead->id)->exists())->toBeFalse();
 });
 
 test('a merged lead cannot be sent a template either', function () {

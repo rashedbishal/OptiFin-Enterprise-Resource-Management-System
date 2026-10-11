@@ -2637,9 +2637,15 @@ class Show extends Component
 
     /**
      * The catalog row (whichever channel it's from) behind the composer's
-     * currently-picked $selectedTemplateId — the single place both
-     * updatedSelectedTemplateId() and sendTemplateMessage() resolve it, so
-     * the two never drift to different catalogs for the same channel.
+     * currently-picked $selectedTemplateId — the single place
+     * sendTemplateMessage() resolves it. The picker and its variable
+     * fields are entirely Alpine-driven now (see message-composer-card.
+     * blade.php's own x-data) — $selectedTemplateId/$templateVariableValues
+     * only ever sync to the server when the form actually submits, so
+     * there's no equivalent server-side "template just changed" hook to
+     * keep in sync with this anymore; sendTemplateMessage()'s own
+     * validate() is what actually protects a tampered/mismatched
+     * submission.
      */
     private function resolveSelectedTemplate(): WhatsAppMessageTemplate|MessengerMessageTemplate|null
     {
@@ -2648,22 +2654,6 @@ class Show extends Component
             MessageChannel::Messenger => $this->messengerTemplates->firstWhere('id', $this->selectedTemplateId),
             default => null,
         };
-    }
-
-    /**
-     * Livewire's own property-updated hook, fired automatically by the
-     * composer's wire:model.live="selectedTemplateId" dropdown — resizes
-     * $templateVariableValues to exactly the newly-picked template's
-     * variable_count, clearing any stale values a previously-picked
-     * template left behind, so the view renders exactly the right number
-     * of value inputs. A tampered/foreign/inactive template id just clears
-     * the array, same defensive shape as every other picker on this page.
-     */
-    public function updatedSelectedTemplateId(): void
-    {
-        $template = $this->resolveSelectedTemplate();
-        $this->templateVariableValues = $template === null ? [] : array_fill(0, $template->variable_count, '');
-        $this->resetErrorBag();
     }
 
     /**

@@ -75,7 +75,24 @@
                         \App\Enums\MessageChannel::Messenger => $this->messengerTemplates,
                         default => collect(),
                     };
-                    $selectedTemplate = $templates->firstWhere('id', $this->selectedTemplateId);
+
+                    // Everything the picker/field-count/preview below need,
+                    // handed to Alpine once so picking a template never
+                    // needs a server round trip (the field count/preview
+                    // used to require one, via wire:model.live — this is
+                    // what made the fields feel slow to appear). bodyText
+                    // is only ever populated for a Messenger template (see
+                    // MessengerMessageTemplate's own docblock); a WhatsApp
+                    // template is registered, never authored, in this app,
+                    // so its wording is never known here — the preview box
+                    // below simply doesn't render for one.
+                    $templatesPayload = $templates->map(fn ($template) => [
+                        'id' => $template->id,
+                        'name' => $template->name,
+                        'language' => $template->language,
+                        'variableCount' => $template->variable_count,
+                        'bodyText' => $template instanceof \App\Models\MessengerMessageTemplate ? $template->body_text : null,
+                    ])->values();
                 @endphp
 
                 @if ($templateEligibility && $templateEligibility->eligible && $templates->isNotEmpty())
@@ -85,27 +102,88 @@
                         </flux:callout.text>
                     </flux:callout>
 
-                    <form wire:submit="sendTemplateMessage" class="flex flex-col gap-2">
+                    {{-- x-model/x-model on the generated fields below only
+                    works correctly once $wire.entangle() values are
+                    genuinely reactive end to end, which is why this whole
+                    block (picker included) stays inside one x-data scope
+                    rather than mixing a PHP-rendered picker with an
+                    Alpine-rendered field list — see the body-text field in
+                    Platform\Clients\LeadSources' Create Template modal for
+                    the same "no literal adjacent { { in this file's own
+                    source" discipline the helper methods below follow. --}}
+                    <form
+                        wire:submit="sendTemplateMessage"
+                        class="flex flex-col gap-2"
+                        x-data="{
+                            templates: @js($templatesPayload),
+                            selectedId: $wire.entangle('selectedTemplateId'),
+                            values: $wire.entangle('templateVariableValues'),
+                            get selected() {
+                                return this.templates.find((t) => t.id === this.selectedId) ?? null;
+                            },
+                            get variableNumbers() {
+                                return this.selected ? Array.from({ length: this.selected.variableCount }, (_, i) => i + 1) : [];
+                            },
+                            placeholderLabel(n) {
+                                const openBraces = '{' + '{';
+                                const closeBraces = '}' + '}';
+                                return 'Placeholder ' + openBraces + n + closeBraces;
+                            },
+                            get preview() {
+                                if (! this.selected || ! this.selected.bodyText) { return null; }
+                                const openBraces = '{' + '{';
+                                const closeBraces = '}' + '}';
+                                let text = this.selected.bodyText;
+                                this.variableNumbers.forEach((n) => {
+                                    const token = openBraces + n + closeBraces;
+                                    const value = this.values[n - 1];
+                                    text = text.split(token).join(value ? value : token);
+                                });
+                                return text;
+                            },
+                        }"
+                        x-init="$watch('selectedId', () => { values = variableNumbers.map(() => ''); })"
+                    >
                         <x-dropdown-select
-                            wire:model.live="selectedTemplateId"
+                            wire:model="selectedTemplateId"
                             :placeholder="__('Choose a template…')"
                             :options="$templates->map(fn ($template) => ['value' => $template->id, 'label' => __(':name (:language)', ['name' => $template->name, 'language' => $template->language])])->toArray()"
                         />
 
-                        @if ($selectedTemplate)
-                            @for ($i = 0; $i < $selectedTemplate->variable_count; $i++)
-                                <flux:input
-                                    wire:model="templateVariableValues.{{ $i }}"
-                                    :label="__('Variable :n', ['n' => $i + 1])"
-                                    :placeholder="__('Value :n', ['n' => $i + 1])"
-                                />
-                                @error('templateVariableValues.'.$i) <flux:text size="sm" class="text-red-600 dark:text-red-400">{{ $message }}</flux:text> @enderror
-                            @endfor
+                        <div x-show="selected" x-cloak class="flex flex-col gap-2">
+                            <template x-for="n in variableNumbers" :key="n">
+                                <div class="flex flex-col gap-1">
+                                    <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300" x-text="placeholderLabel(n)"></label>
+                                    <input
+                                        type="text"
+                                        x-model="values[n - 1]"
+                                        :placeholder="placeholderLabel(n)"
+                                        class="w-full rounded-lg border border-zinc-300/80 bg-zinc-100/90 px-3 py-1.5 text-sm text-zinc-800 shadow-xs focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-zinc-700/80 dark:bg-zinc-900/90 dark:text-zinc-200"
+                                    >
+                                </div>
+                            </template>
+
+                            {{-- Only ever non-null for a Messenger template
+                            (see $templatesPayload's own comment above) — a
+                            live, friendly stand-in for "Variable 1/Variable
+                            2", showing exactly where in the real message
+                            each value lands as it's typed. --}}
+                            <div x-show="preview" x-cloak class="rounded-lg border border-zinc-200/80 bg-zinc-50 p-3 dark:border-zinc-700/80 dark:bg-zinc-900/60">
+                                <flux:text size="xs" variant="subtle">{{ __('Preview') }}</flux:text>
+                                <p class="text-sm text-zinc-700 dark:text-zinc-300" x-text="preview"></p>
+                            </div>
+
+                            @error('templateVariableValues') <flux:text size="sm" class="text-red-600 dark:text-red-400">{{ $message }}</flux:text> @enderror
+                            @foreach ($errors->get('templateVariableValues.*') as $fieldErrors)
+                                @foreach ($fieldErrors as $fieldError)
+                                    <flux:text size="sm" class="text-red-600 dark:text-red-400">{{ $fieldError }}</flux:text>
+                                @endforeach
+                            @endforeach
 
                             <div class="flex justify-end">
                                 <flux:button type="submit" variant="primary" size="sm">{{ __('Send Template') }}</flux:button>
                             </div>
-                        @endif
+                        </div>
                     </form>
                 @else
                     <flux:callout variant="subtle" icon="lock-closed" :heading="__('Sending is not available right now')">

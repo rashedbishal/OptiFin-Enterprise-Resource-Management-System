@@ -37,6 +37,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/{Models/Task.php,Models/TaskStatusLog.php,Enums/TaskStatus.php,Console/Commands/SendTaskAlertNotifications.php} | .ai/rules/models-commands.md |
 | app/Models/{PlatformUser,TenantUser}.php, app/Models/{LeadAssignment,LeadNote,LeadStatusLog,LeadDetailUpdateLog}.php | .ai/rules/models.md |
 | app/Livewire/Tenant/Leads/Show.php,app/Notifications/MeetingCancelledNotification.php,app/Notifications/FollowUpCancelledNotification.php | .ai/rules/notifications.md |
+| resources/views/livewire/tenant/leads/partials/message-composer-card.blade.php,app/Livewire/Tenant/Leads/Show.php | .ai/rules/partials-livewire-tenant-leads.md |
 | resources/views/livewire/tenant/leads/partials/{lead-card,header}.blade.php,resources/views/livewire/tenant/leads-kanban.blade.php | .ai/rules/partials-views-livewire-tenant.md |
 | resources/views/livewire/tenant/leads/show.blade.php,resources/views/livewire/tenant/leads/partials/{lead-hero,pipeline-stepper,contact-info-card,pipeline-attributes-card}.blade.php | .ai/rules/partials.md |
 | app/Http/Controllers/Api/LeadWebhookController.php,app/Enums/LeadSourceType.php,app/Livewire/Platform/Clients/LeadSources.php,resources/views/livewire/platform/clients/lead-sources.blade.php | .ai/rules/platform-clients.md |
