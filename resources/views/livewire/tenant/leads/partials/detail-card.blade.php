@@ -1,7 +1,8 @@
 @php
     $compact ??= false;
     $premium ??= false;
-    $hasConversation = count($lead->messageTimeline()) > 0;
+    $timelineMessageCount = count($lead->messageTimeline());
+    $hasConversation = $timelineMessageCount > 0;
 
     // Self-contained (like activity-card.blade.php) since this partial is
     // shared by two callers (show.blade.php, show-panel.blade.php) that
@@ -41,7 +42,7 @@
 
         @if ($premium && $hasConversation)
             <span class="hidden shrink-0 rounded-full border border-zinc-200 bg-white px-2.5 py-1 text-xs font-medium text-zinc-500 sm:inline-flex dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400">
-                {{ trans_choice(':count message|:count messages', count($lead->messageTimeline()), ['count' => count($lead->messageTimeline())]) }}
+                {{ trans_choice(':count message|:count messages', $timelineMessageCount, ['count' => $timelineMessageCount]) }}
             </span>
         @endif
     </div>

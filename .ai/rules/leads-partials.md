@@ -5,6 +5,7 @@ paths:
   - 'resources/views/livewire/tenant/leads/partials/{deals-card,tasks-card,notes-card}.blade.php'
   - resources/views/livewire/tenant/leads/partials/notes-card.blade.php
   - resources/views/livewire/tenant/leads/partials/calls-card.blade.php
+  - 'resources/views/livewire/tenant/leads/partials/{messenger-chat-card,detail-card}.blade.php'
 ---
 
 # Leads Partials
@@ -40,3 +41,8 @@ The Calls card must use the existing LeadCall status/claimant data and direct Wh
 
 ## Notes need large fixed list and tile dimensions
 Supersedes “Notes need a larger viewport-aware scroll area”: the viewport-aware cap made Notes too short in flyouts. Keep the list at max-h-[48rem] with internal scrolling, and each note tile at min-h-32 so its content has a readable area. Deals and Tasks remain max-h-96.
+
+## Compute $lead->messageTimeline() once per render, never call it twice
+Lead::messageTimeline() is a plain model method, not a Livewire #[Computed] property — nothing memoizes it, so every call re-runs its query. Both detail-card.blade.php and messenger-chat-card.blade.php used to call it twice in their top @php block (once for $hasConversation, then again inside trans_choice()'s two count() args — three calls total per render once you count both). Fixed by computing `$timelineMessageCount = count($lead->messageTimeline())` once and reusing that variable everywhere in the partial, including both trans_choice() args.
+
+Confirmed via a DB::listen query-count diagnostic on Show::sendMessage(): collapsed this query from 4x to 2x per render (the remaining 2x is Show::timeline()'s own, separate, legitimate call — merges in attachments on top of messageTimeline(), see [[Deliberately NOT done: Show::timeline()]] in show-paneltenant-leads-partials.md), plus an extra 2-query drop in a downstream tenant_users sentBy eager-load that was tied 1:1 to each redundant messageTimeline() collection fetch. Zero behavior change — same data, computed once instead of three times. If you add a new usage of $lead->messageTimeline() to either partial, read the existing $timelineMessageCount (or $hasConversation) variable instead of calling the method again.
