@@ -3470,9 +3470,15 @@ class Show extends Component
         // (status-assignment-form.blade.php is this page's only delete
         // entry point). Checked here too, not just the button's own
         // visibility condition: the button hiding isn't enough on its own
-        // (same discipline as isIndividuallyDeletable() below, and as
-        // Index::deleteSource()'s own re-check) — a direct call to this
-        // action must be refused exactly like a click would have been.
+        // (same discipline as Index::deleteSource()'s own re-check) — a
+        // direct call to this action must be refused exactly like a click
+        // would have been. Deliberately NOT also gated by
+        // LeadSourceType::isIndividuallyDeletable() the way Index::delete()/
+        // performBulkDelete() still are — once Unqualified, a lead from any
+        // source (including WhatsApp/Messenger/other automated channels)
+        // may be deleted from here; that source-type restriction stays in
+        // force only for the table row/bulk delete paths, which have no
+        // Unqualified gate of their own to rely on instead.
         if ($this->lead->status->slug !== 'unqualified') {
             Flux::toast(variant: 'danger', text: __('This lead can only be deleted once its status is Unqualified.'));
 
@@ -3592,16 +3598,12 @@ class Show extends Component
             return;
         }
 
-        if (! $this->lead->source->type->isIndividuallyDeletable()) {
-            Flux::toast(variant: 'danger', text: __('This lead\'s source type cannot be deleted individually.'));
-
-            return;
-        }
-
         // Authoritative re-check, same reasoning as confirmDelete()'s own
         // — a password-confirmed submission must be refused exactly like
         // the button being hidden/confirmDelete() would have been, not
-        // just whichever of the two a caller happened to go through.
+        // just whichever of the two a caller happened to go through. See
+        // confirmDelete()'s own docblock for why this is deliberately NOT
+        // also gated by isIndividuallyDeletable() — unlike Index::delete().
         if ($this->lead->status->slug !== 'unqualified') {
             Flux::toast(variant: 'danger', text: __('This lead can only be deleted once its status is Unqualified.'));
 

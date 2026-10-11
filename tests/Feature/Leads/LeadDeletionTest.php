@@ -221,10 +221,10 @@ test('a client admin cannot delete a protected-source lead from the index', func
     expect(Lead::find($lead->id))->not->toBeNull();
 });
 
-test('a client admin cannot delete a protected-source lead from the detail page', function () {
+test('a client admin cannot delete a non-Unqualified protected-source lead from the detail page', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Whatsapp]);
-    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'status_id' => leadStatus('new')->id]);
 
     Livewire::actingAs($clientAdmin)
         ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
@@ -232,6 +232,32 @@ test('a client admin cannot delete a protected-source lead from the detail page'
         ->assertDispatched('toast-show');
 
     expect(Lead::find($lead->id))->not->toBeNull();
+});
+
+/**
+ * Confirmed live: a real tenant marked a WhatsApp lead Unqualified and
+ * unassigned, expecting to be able to delete it, and couldn't — the
+ * detail page's delete flow was still inheriting
+ * LeadSourceType::isIndividuallyDeletable()'s table/bulk-delete-only
+ * restriction. Show::delete()/confirmDelete() no longer check it: once
+ * Unqualified, a lead from ANY source (including WhatsApp/Messenger/other
+ * automated channels) is deletable from the detail page specifically —
+ * see Show::delete()'s own docblock. Index::delete()/performBulkDelete()
+ * are untouched and still enforce isIndividuallyDeletable() with no
+ * Unqualified exception, matching the "a client admin cannot delete a
+ * protected-source lead from the index" test above.
+ */
+test('a client admin CAN delete a protected-source (WhatsApp) lead from the detail page once it is Unqualified', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Whatsapp]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'status_id' => leadStatus('unqualified')->id]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
+        ->call('delete')
+        ->assertRedirect(route('tenant-leads.index'));
+
+    expect(Lead::find($lead->id))->toBeNull();
 });
 
 test('a client admin can still delete a manual lead', function () {
@@ -247,7 +273,18 @@ test('a client admin can still delete a manual lead', function () {
     expect(Lead::find($lead->id))->toBeNull();
 });
 
-test('the detail page does not show a delete button for a protected-source lead, even when Unqualified', function () {
+test('the detail page does not show a delete button for a protected-source lead that is not Unqualified yet', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Whatsapp]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'status_id' => leadStatus('new')->id]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
+        ->call('switchTab', 'activity')
+        ->assertDontSeeHtml('wire:click="confirmDelete"');
+});
+
+test('the detail page shows a delete button for a protected-source (WhatsApp) lead once it is Unqualified', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Whatsapp]);
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'status_id' => leadStatus('unqualified')->id]);
@@ -255,7 +292,7 @@ test('the detail page does not show a delete button for a protected-source lead,
     Livewire::actingAs($clientAdmin)
         ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
         ->call('switchTab', 'activity')
-        ->assertDontSeeHtml('wire:click="confirmDelete"');
+        ->assertSeeHtml('wire:click="confirmDelete"');
 });
 
 test('the detail page shows a delete button for an allowed-source lead once it is marked Unqualified', function () {
