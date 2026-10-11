@@ -10,10 +10,12 @@ message-composer-card.blade.php themselves are untouched, since both are
 still used as-is by show-panel.blade.php's flyout; this file is NOT a
 replacement for either, it's a third, dedicated view that only ever
 renders when $this->messagingChannel is present (same condition
-message-composer-card.blade.php itself already self-guards on). The
-Sent/Failed/Resend activity log that used to live at the bottom of the
-composer card now lives in its own outbound-activity-log-card.blade.php
-instead — see that file for why. --}}
+message-composer-card.blade.php itself already self-guards on). Two
+pieces that used to live at the bottom of the composer card now live in
+outbound-activity-log-card.blade.php instead — the Sent/Failed/Resend
+log, and (added once the template form's own height was squeezing this
+card's thread down to almost nothing) the template-send form shown once
+the reply window has closed. See that file's own docblock for both. --}}
 @php
     $channel = $this->messagingChannel;
 @endphp
@@ -353,126 +355,14 @@ instead — see that file for why. --}}
                             <flux:button type="submit" variant="primary" size="sm" wire:loading.attr="disabled" wire:target="{{ $uploadTargets }}">{{ __('Send') }}</flux:button>
                         </div>
                     </form>
-                @else
-                    @php
-                        // Message Templates (WhatsApp or Messenger) — the
-                        // composer's recovery path once the window has closed.
-                        // templateEligibility being eligible means "every other
-                        // check (merged, consent, credentials) passed — only
-                        // the window itself is what's blocking the normal
-                        // composer", so this never offers a template for a
-                        // merged/consent-withdrawn lead, without needing to
-                        // string-match $eligibility->reason.
-                        $templateEligibility = $this->templateEligibility;
-                        $templates = match ($channel) {
-                            \App\Enums\MessageChannel::Whatsapp => $this->whatsappTemplates,
-                            \App\Enums\MessageChannel::Messenger => $this->messengerTemplates,
-                            default => collect(),
-                        };
-
-                        // Everything the picker/field-count/preview below need,
-                        // handed to Alpine once so picking a template never
-                        // needs a server round trip (the field count/preview
-                        // used to require one, via wire:model.live — this is
-                        // what made the fields feel slow to appear). bodyText
-                        // is only ever populated for a Messenger template (see
-                        // MessengerMessageTemplate's own docblock); a WhatsApp
-                        // template is registered, never authored, in this app,
-                        // so its wording is never known here — the preview box
-                        // below simply doesn't render for one.
-                        $templatesPayload = $templates->map(fn ($template) => [
-                            'id' => $template->id,
-                            'name' => $template->name,
-                            'language' => $template->language,
-                            'variableCount' => $template->variable_count,
-                            'bodyText' => $template instanceof \App\Models\MessengerMessageTemplate ? $template->body_text : null,
-                        ])->values();
-                    @endphp
-
-                    @if ($templateEligibility && $templateEligibility->eligible && $templates->isNotEmpty())
-                        <flux:callout variant="subtle" icon="clock" :heading="__('The reply window has expired')">
-                            <flux:callout.text>
-                                {{ __('Send an approved template to re-engage this lead — once they reply, free-form replies work again.') }}
-                            </flux:callout.text>
-                        </flux:callout>
-
-                        <form
-                            wire:submit="sendTemplateMessage"
-                            class="flex flex-col gap-2"
-                            x-data="{
-                                templates: @js($templatesPayload),
-                                selectedId: $wire.entangle('selectedTemplateId'),
-                                values: $wire.entangle('templateVariableValues'),
-                                get selected() {
-                                    return this.templates.find((t) => t.id === this.selectedId) ?? null;
-                                },
-                                get variableNumbers() {
-                                    return this.selected ? Array.from({ length: this.selected.variableCount }, (_, i) => i + 1) : [];
-                                },
-                                placeholderLabel(n) {
-                                    const openBraces = '{' + '{';
-                                    const closeBraces = '}' + '}';
-                                    return 'Placeholder ' + openBraces + n + closeBraces;
-                                },
-                                get preview() {
-                                    if (! this.selected || ! this.selected.bodyText) { return null; }
-                                    const openBraces = '{' + '{';
-                                    const closeBraces = '}' + '}';
-                                    let text = this.selected.bodyText;
-                                    this.variableNumbers.forEach((n) => {
-                                        const token = openBraces + n + closeBraces;
-                                        const value = this.values[n - 1];
-                                        text = text.split(token).join(value ? value : token);
-                                    });
-                                    return text;
-                                },
-                            }"
-                            x-init="$watch('selectedId', () => { values = variableNumbers.map(() => ''); })"
-                        >
-                            <x-dropdown-select
-                                wire:model="selectedTemplateId"
-                                :placeholder="__('Choose a template…')"
-                                :options="$templates->map(fn ($template) => ['value' => $template->id, 'label' => __(':name (:language)', ['name' => $template->name, 'language' => $template->language])])->toArray()"
-                            />
-
-                            <div x-show="selected" x-cloak class="flex flex-col gap-2">
-                                <template x-for="n in variableNumbers" :key="n">
-                                    <div class="flex flex-col gap-1">
-                                        <label class="text-sm font-medium text-zinc-700 dark:text-zinc-300" x-text="placeholderLabel(n)"></label>
-                                        <input
-                                            type="text"
-                                            x-model="values[n - 1]"
-                                            :placeholder="placeholderLabel(n)"
-                                            class="w-full rounded-lg border border-zinc-300/80 bg-zinc-100/90 px-3 py-1.5 text-sm text-zinc-800 shadow-xs focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-zinc-700/80 dark:bg-zinc-900/90 dark:text-zinc-200"
-                                        >
-                                    </div>
-                                </template>
-
-                                <div x-show="preview" x-cloak class="rounded-lg border border-zinc-200/80 bg-zinc-50 p-3 dark:border-zinc-700/80 dark:bg-zinc-900/60">
-                                    <flux:text size="xs" variant="subtle">{{ __('Preview') }}</flux:text>
-                                    <p class="text-sm text-zinc-700 dark:text-zinc-300" x-text="preview"></p>
-                                </div>
-
-                                @error('templateVariableValues') <flux:text size="sm" class="text-red-600 dark:text-red-400">{{ $message }}</flux:text> @enderror
-                                @foreach ($errors->get('templateVariableValues.*') as $fieldErrors)
-                                    @foreach ($fieldErrors as $fieldError)
-                                        <flux:text size="sm" class="text-red-600 dark:text-red-400">{{ $fieldError }}</flux:text>
-                                    @endforeach
-                                @endforeach
-
-                                <div class="flex justify-end">
-                                    <flux:button type="submit" variant="primary" size="sm">{{ __('Send Template') }}</flux:button>
-                                </div>
-                            </div>
-                        </form>
-                    @else
-                        <flux:callout variant="subtle" icon="lock-closed" :heading="__('Sending is not available right now')">
-                            <flux:callout.text>
-                                {{ $eligibility?->reason ?? __('This channel has no conversation history yet.') }}
-                            </flux:callout.text>
-                        </flux:callout>
-                    @endif
                 @endif
+                {{-- Once the reply window has closed, the composer shows
+                nothing here at all — the template-send form (and the
+                "sending is not available" lock message) moved to
+                outbound-activity-log-card.blade.php instead, at the
+                user's request: the template form's own height was
+                squeezing the thread above down to almost nothing in this
+                fixed max-h card. See that file's own docblock. --}}
             @endif
         </div>
 

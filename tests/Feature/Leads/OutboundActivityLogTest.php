@@ -8,6 +8,7 @@ use App\Models\Conversation;
 use App\Models\Lead;
 use App\Models\LeadSource;
 use App\Models\Message;
+use App\Models\WhatsAppMessageTemplate;
 use App\Services\LeadMergeService;
 use Livewire\Livewire;
 
@@ -182,4 +183,55 @@ test('Resend on a failed message in the activity log is still only offered to a 
         ->test(Show::class, ['lead' => $x['lead']])
         ->call('completeInitialLoad')
         ->assertDontSeeHtml('wire:click="resendMessage(\''.$x['message']->id.'\')"');
+});
+
+/*
+ * The template-send form (shown once the reply window has closed) moved
+ * here from the Messenger-style chat card, at the user's request — its
+ * own height was squeezing the chat card's conversation thread down to
+ * almost nothing. Same markup/Alpine/wire: bindings, only relocated.
+ */
+
+test('once the reply window has closed, the template form renders inside the Activity Log card', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => ['phone_number_id' => '1', 'access_token' => 'token'],
+    ]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+    Conversation::factory()->windowExpired()->create([
+        'tenant_id' => $tenant->id, 'lead_id' => $lead->id, 'lead_source_id' => $source->id,
+    ]);
+    WhatsAppMessageTemplate::factory()->create(['tenant_id' => $tenant->id, 'lead_source_id' => $source->id, 'variable_count' => 0]);
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->call('completeInitialLoad')
+        ->assertSee('Activity Log')
+        ->assertSee('The reply window has expired')
+        ->assertSeeHtml('wire:submit="sendTemplateMessage"');
+});
+
+test('with no templates registered at all, the "sending is not available" lock message still renders inside the Activity Log card', function () {
+    ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => ['phone_number_id' => '1', 'access_token' => 'token'],
+    ]);
+    $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id]);
+    Conversation::factory()->windowExpired()->create([
+        'tenant_id' => $tenant->id, 'lead_id' => $lead->id, 'lead_source_id' => $source->id,
+    ]);
+    // Deliberately no WhatsAppMessageTemplate at all — $templates is empty,
+    // so templateEligibility's own "eligible" doesn't matter; the locked
+    // branch is what must render.
+
+    Livewire::actingAs($clientAdmin)
+        ->test(Show::class, ['lead' => $lead])
+        ->call('completeInitialLoad')
+        ->assertSee('Activity Log')
+        ->assertSee('Sending is not available right now')
+        ->assertDontSeeHtml('wire:submit="sendTemplateMessage"');
 });
