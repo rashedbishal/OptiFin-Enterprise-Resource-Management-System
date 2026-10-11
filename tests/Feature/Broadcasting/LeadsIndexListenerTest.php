@@ -33,7 +33,14 @@ test('the leads index listens for lead.received on its own tenant channel, and o
 
     $newLead = Lead::factory()->create(['tenant_id' => $tenant->id, 'status_id' => leadStatus('new')->id]);
 
-    $component->call('onLeadReceived', ['lead' => ['id' => $newLead->id]]);
+    // Flat {id: ...}, matching LeadReceived::broadcastWith()'s real payload
+    // shape (same shape as LeadUpdated's) — not nested under a "lead" key.
+    // A prior version of this test passed the nested shape, which matched
+    // a real bug in onLeadReceived() (it checked $payload['lead']['id'])
+    // rather than the actual broadcast payload, so it never caught that
+    // the "recently created" highlight silently never fired for a real,
+    // live-arrived lead.
+    $component->call('onLeadReceived', ['id' => $newLead->id]);
 
     expect($component->instance()->recentlyCreatedLeadId)->toBe($newLead->id);
     expect($component->get('boardLeads')->collapse()->pluck('id'))->toContain($newLead->id);

@@ -13,6 +13,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Console/Commands/SendLeadAlertNotifications.php | .ai/rules/console-commands.md |
 | app/Http/Controllers/Api/LeadWebhookController.php | .ai/rules/controllers-api.md |
 | app/Livewire/Tenant/NotificationBell.php,resources/views/livewire/tenant/notification-bell.blade.php,resources/css/app.css | .ai/rules/css.md |
+| app/Events/{LeadReceived,LeadUpdated}.php,app/Livewire/Tenant/Leads/Index.php | .ai/rules/events-livewire-tenant-leads.md |
 | app/Models/{Lead,Tenant}.php,app/Actions/Platform/CreateClient.php,database/factories/TenantFactory.php | .ai/rules/factories.md |
 | app/Jobs/ProcessEmailLeadSource.php | .ai/rules/jobs.md |
 | resources/{js,css}/** | .ai/rules/jscss.md |

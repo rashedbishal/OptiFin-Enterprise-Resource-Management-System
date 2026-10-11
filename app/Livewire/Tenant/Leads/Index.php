@@ -522,8 +522,16 @@ class Index extends Component
 
     public function onLeadReceived($payload = null): void
     {
-        if (is_array($payload) && isset($payload['lead']['id'])) {
-            $this->recentlyCreatedLeadId = $payload['lead']['id'];
+        // LeadReceived::broadcastWith() sends a flat {id: ...} payload (same
+        // shape as LeadUpdated's), not nested under a "lead" key — this used
+        // to check $payload['lead']['id'], which never matched a real
+        // broadcast, silently preventing the "recently created" shimmer
+        // from ever firing for a genuinely live-arrived lead (only the
+        // synchronous manual-entry path at createLead()/saveLead() ever set
+        // it). The board still refreshed either way, which is why this went
+        // unnoticed — only the highlight was missing, not the data itself.
+        if (is_array($payload) && isset($payload['id'])) {
+            $this->recentlyCreatedLeadId = $payload['id'];
         }
         $this->refreshBoard();
     }
