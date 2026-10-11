@@ -81,14 +81,41 @@ class Role extends Model
         return $this->belongsToMany(LeadSource::class, 'lead_source_unassigned_roles')->withTimestamps();
     }
 
+    /**
+     * Per-instance, per-request memoization for hasModule()/
+     * hasPermissionForModule() below — a real, measured bottleneck: a
+     * single page render can call these dozens of times (once per
+     * canUpdate()/canAssign()/canDelete()/per-row policy check across a
+     * rich page like Tenant\Leads\Show), and neither method cached its own
+     * result, so every call was a fresh query even when asking the exact
+     * same question twice in the same request. Safe to cache: a role's
+     * module/permission grants never change mid-request (role editing
+     * happens in a separate Livewire component, in a separate request),
+     * and this app doesn't run Octane, so there's no risk of a cached
+     * value leaking into a later, unrelated request — a fresh Role
+     * instance (and therefore a fresh, empty cache) is resolved every
+     * time. Keyed by slug, not module/permission id, matching these
+     * methods' own string parameters.
+     *
+     * @var array<string, bool>
+     */
+    private array $hasModuleCache = [];
+
+    /**
+     * @var array<string, bool>
+     */
+    private array $hasPermissionForModuleCache = [];
+
     public function hasModule(string $moduleSlug): bool
     {
-        return $this->modules()->where('slug', $moduleSlug)->exists();
+        return $this->hasModuleCache[$moduleSlug] ??= $this->modules()->where('slug', $moduleSlug)->exists();
     }
 
     public function hasPermissionForModule(string $moduleSlug, string $permissionSlug): bool
     {
-        return $this->modulePermissions()
+        $key = $moduleSlug.':'.$permissionSlug;
+
+        return $this->hasPermissionForModuleCache[$key] ??= $this->modulePermissions()
             ->whereHas('module', fn ($query) => $query->where('slug', $moduleSlug))
             ->whereHas('permission', fn ($query) => $query->where('slug', $permissionSlug))
             ->exists();
