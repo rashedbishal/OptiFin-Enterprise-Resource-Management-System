@@ -44,6 +44,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $attachment_name
  * @property int|null $attachment_size
  * @property string|null $resend_message_id
+ * @property Carbon|null $activity_log_hidden_at deliberately not Fillable — see Show::hideOutboundMessage()
  * @property string|null $sent_by
  * @property array<string, mixed>|null $metadata
  * @property-read Conversation $conversation
@@ -74,6 +75,7 @@ class Message extends Model
             'message_type' => MessageType::class,
             'status' => MessageStatus::class,
             'status_updated_at' => 'datetime',
+            'activity_log_hidden_at' => 'datetime',
             'metadata' => 'array',
             'template_variables' => 'array',
         ];

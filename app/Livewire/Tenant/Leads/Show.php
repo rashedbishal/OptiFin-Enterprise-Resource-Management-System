@@ -347,6 +347,17 @@ class Show extends Component
      */
     public bool $showDeleteConversationModal = false;
 
+    /**
+     * The Activity Log card's per-row "hide this entry" confirm — a plain
+     * Yes/No modal, deliberately not sharing $deletePassword/
+     * $showDeleteConversationModal: nothing is actually destroyed (see
+     * hideOutboundMessage()'s own docblock), so this doesn't belong to the
+     * same "destructive, password-gated" family as the modals above it.
+     */
+    public bool $showHideOutboundMessageModal = false;
+
+    public ?string $confirmingHideOutboundMessageId = null;
+
     public bool $showCancelMeetingModal = false;
 
     public bool $showCancelFollowUpModal = false;
@@ -1045,15 +1056,82 @@ class Show extends Component
 
     /**
      * This lead's outbound messages only, newest first — surfaced on the
-     * composer card so a rep can see prior replies and their delivery
-     * status without needing the full Activity tab.
+     * full-page Activity Log card (see outbound-activity-log-card.
+     * blade.php) so a rep can see prior replies and their delivery status
+     * without needing the full Activity tab. Excludes anything a Client
+     * Admin has hidden via hideOutboundMessage() below — that only removes
+     * an entry from THIS list; the same message's bubble in the main
+     * conversation thread (messenger-chat-card.blade.php) is unaffected,
+     * since this is a per-list visibility flag, never a real delete (see
+     * the activity_log_hidden_at migration's own docblock).
      *
      * @return Collection<int, Message>
      */
     #[Computed]
     public function outboundMessages(): Collection
     {
-        return $this->lead->messages()->where('direction', MessageDirection::Outbound)->orderByDesc('created_at')->get();
+        return $this->lead->messages()
+            ->where('direction', MessageDirection::Outbound)
+            ->whereNull('activity_log_hidden_at')
+            ->orderByDesc('created_at')
+            ->get();
+    }
+
+    /**
+     * Hides one entry from the Activity Log card's Sent/Failed/Resend
+     * list — Client Admin only (same canDelete bar as "Delete
+     * conversation"), confirmed via a plain Yes/No modal rather than the
+     * password-confirmation bar a real destructive delete uses elsewhere
+     * on this page, since nothing is actually destroyed: the message row,
+     * and its bubble in the main conversation thread, are untouched.
+     */
+    public function hideOutboundMessage(string $messageId): void
+    {
+        if (! $this->canDelete()) {
+            Flux::toast(variant: 'danger', text: __("You don't have permission to do this."));
+
+            return;
+        }
+
+        if (! $this->leadIsMutable()) {
+            return;
+        }
+
+        $message = $this->lead->messages()->where('direction', MessageDirection::Outbound)->find($messageId);
+
+        if ($message === null) {
+            return;
+        }
+
+        // Raw update, not $message->update(): same reasoning as
+        // resendMessage()'s own resend_message_id write below —
+        // activity_log_hidden_at must only ever be set by this one code
+        // path, never accidentally accepted through a model create()/
+        // update() payload elsewhere, so it's deliberately left out of
+        // Message's own #[Fillable(...)] list entirely.
+        DB::table('messages')->where('id', $message->id)->update(['activity_log_hidden_at' => now()]);
+
+        unset($this->outboundMessages);
+    }
+
+    public function confirmHideOutboundMessage(string $messageId): void
+    {
+        if (! $this->canDelete()) {
+            return;
+        }
+
+        $this->confirmingHideOutboundMessageId = $messageId;
+        $this->showHideOutboundMessageModal = true;
+    }
+
+    public function hideOutboundMessageConfirmed(): void
+    {
+        if ($this->confirmingHideOutboundMessageId) {
+            $this->hideOutboundMessage($this->confirmingHideOutboundMessageId);
+        }
+
+        $this->showHideOutboundMessageModal = false;
+        $this->confirmingHideOutboundMessageId = null;
     }
 
     #[Computed]

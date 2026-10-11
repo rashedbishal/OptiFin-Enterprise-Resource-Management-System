@@ -175,9 +175,22 @@
             <div class="grid grid-cols-[repeat(auto-fit,minmax(min(100%,18rem),1fr))] items-stretch gap-6 lg:grid-cols-3">
                 @include('livewire.tenant.leads.partials.calls-card', ['scrollable' => true])
 
-                @include('livewire.tenant.leads.partials.message-composer-card')
+                {{-- A conversational lead (WhatsApp/Messenger/Instagram) gets
+                the merged Messenger-style chat card + its own Activity Log
+                card (see those two files' own docblocks for why they exist
+                separately from message-composer-card.blade.php/detail-
+                card.blade.php) — every other lead type keeps the exact
+                original pair untouched, including message-composer-card's
+                own no-op (it already renders nothing without a channel). --}}
+                @if ($this->messagingChannel)
+                    @include('livewire.tenant.leads.partials.messenger-chat-card', ['lead' => $lead])
 
-                @include('livewire.tenant.leads.partials.detail-card', ['lead' => $lead, 'timeline' => $this->timeline, 'bodyView' => $bodyView, 'premium' => true])
+                    @include('livewire.tenant.leads.partials.outbound-activity-log-card', ['lead' => $lead])
+                @else
+                    @include('livewire.tenant.leads.partials.message-composer-card')
+
+                    @include('livewire.tenant.leads.partials.detail-card', ['lead' => $lead, 'timeline' => $this->timeline, 'bodyView' => $bodyView, 'premium' => true])
+                @endif
             </div>
         </div>
     @else
