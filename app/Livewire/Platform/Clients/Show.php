@@ -3,12 +3,16 @@
 namespace App\Livewire\Platform\Clients;
 
 use App\Actions\Platform\AssignModuleToTenant;
+use App\Actions\Platform\ManageClientAdminActivation;
 use App\Actions\Platform\RemoveModuleFromTenant;
 use App\Enums\ModuleScope;
 use App\Enums\TenantStatus;
+use App\Enums\TenantUserType;
 use App\Models\Module;
 use App\Models\Tenant;
+use App\Models\TenantUser;
 use Flux\Flux;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
@@ -35,6 +39,8 @@ class Show extends Component
     public Tenant $tenant;
 
     public string $status;
+
+    public bool $showDeactivateClientAdminModal = false;
 
     public function mount(Tenant $tenant): void
     {
@@ -127,5 +133,67 @@ class Show extends Component
     public function moduleNotConfigurable(): void
     {
         Flux::toast(text: __('No configuration is available for this module yet.'));
+    }
+
+    /**
+     * This tenant's Client Admin account(s) — in practice always exactly
+     * one (CreateClient provisions one at tenant creation; a Client Admin
+     * can never create another one through the Users page, which always
+     * creates a ClientUser — see App\Actions\Tenant\CreateTenantUser).
+     */
+    /**
+     * @return Collection<int, TenantUser>
+     */
+    #[Computed]
+    public function clientAdmins(): Collection
+    {
+        return $this->tenant->tenantUsers()->where('user_type', TenantUserType::ClientAdmin)->get();
+    }
+
+    #[Computed]
+    public function anyClientAdminActive(): bool
+    {
+        return $this->clientAdmins()->contains('is_active', true);
+    }
+
+    public function confirmDeactivateClientAdmin(): void
+    {
+        Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
+
+        $this->showDeactivateClientAdminModal = true;
+    }
+
+    /**
+     * Suspends this tenant's Client Admin and every other active tenant
+     * user alongside them — see ManageClientAdminActivation's own
+     * docblock for why. Confirmed via a modal first (deactivateClientAdmin()
+     * is the authoritative, re-checked action; confirmDeactivateClientAdmin()
+     * just opens the modal) since this is a wide-blast-radius action, not a
+     * single-row toggle like the tenant-side Users page's own toggleActive().
+     */
+    public function deactivateClientAdminConfirmed(): void
+    {
+        $this->showDeactivateClientAdminModal = false;
+        $this->deactivateClientAdmin();
+    }
+
+    public function deactivateClientAdmin(): void
+    {
+        Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
+
+        app(ManageClientAdminActivation::class)->deactivate($this->tenant);
+
+        unset($this->clientAdmins, $this->anyClientAdminActive);
+        Flux::toast(variant: 'success', text: __('Client Admin and this tenant\'s users have been deactivated.'));
+    }
+
+    public function activateClientAdmin(): void
+    {
+        Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
+
+        app(ManageClientAdminActivation::class)->activate($this->tenant);
+
+        unset($this->clientAdmins, $this->anyClientAdminActive);
+        Flux::toast(variant: 'success', text: __('Client Admin and this tenant\'s affected users have been reactivated.'));
     }
 }

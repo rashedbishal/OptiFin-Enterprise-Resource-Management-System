@@ -4,11 +4,19 @@
     <flux:heading level="2" class="sr-only">{{ __('Profile settings') }}</flux:heading>
 
     <x-settings.layout :heading="__('Profile')" :subheading="__('Update your name and email address')">
+        @if ($this->isLockedClientAdmin)
+            <flux:callout variant="subtle" icon="lock-closed" class="my-6" :heading="__('Managed by Platform Admin')">
+                <flux:callout.text>
+                    {{ __('Your account was provisioned by Platform Admin — your name and email can only be changed by them.') }}
+                </flux:callout.text>
+            </flux:callout>
+        @endif
+
         <form wire:submit="updateProfileInformation" class="my-6 w-full space-y-6">
-            <flux:input wire:model="name" :label="__('Name')" type="text" required autofocus autocomplete="name" />
+            <flux:input wire:model="name" :label="__('Name')" type="text" required autofocus autocomplete="name" :disabled="$this->isLockedClientAdmin" />
 
             <div>
-                <flux:input wire:model="email" :label="__('Email')" type="email" required autocomplete="email" />
+                <flux:input wire:model="email" :label="__('Email')" type="email" required autocomplete="email" :disabled="$this->isLockedClientAdmin" />
 
                 @if ($this->hasUnverifiedEmail)
                     <div>

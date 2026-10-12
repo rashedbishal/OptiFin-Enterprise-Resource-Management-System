@@ -16,6 +16,12 @@ class TenantUserObserver
 
     public function updating(TenantUser $tenantUser): bool
     {
+        // See TenantUser::$allowsPlatformOwnerActivationChange's own
+        // docblock — the one deliberate exception to this guard.
+        if ($tenantUser->allowsPlatformOwnerActivationChange) {
+            return true;
+        }
+
         if (! $this->isLastActiveOwner($tenantUser)) {
             return true;
         }

@@ -22,6 +22,35 @@
             </div>
         </div>
 
+        @if ($this->clientAdmins->isNotEmpty())
+            <flux:card>
+                <flux:heading size="lg" class="mb-4">{{ __('Client Admin') }}</flux:heading>
+                <flux:text class="mb-4">
+                    {{ __('Deactivating suspends the Client Admin and every other user in this tenant together; reactivating restores exactly the users this suspended.') }}
+                </flux:text>
+                <div class="flex flex-col gap-3">
+                    @foreach ($this->clientAdmins as $admin)
+                        <div class="flex items-center justify-between gap-3 rounded-lg border border-zinc-200/80 p-3 dark:border-zinc-700/80">
+                            <div>
+                                <flux:text class="font-medium">{{ $admin->name }}</flux:text>
+                                <flux:text size="sm" variant="subtle">{{ $admin->email }}</flux:text>
+                            </div>
+                            <flux:badge :color="$admin->is_active ? 'green' : 'zinc'" size="sm">
+                                {{ $admin->is_active ? __('Active') : __('Inactive') }}
+                            </flux:badge>
+                        </div>
+                    @endforeach
+                </div>
+                <div class="mt-4 flex justify-end">
+                    @if ($this->anyClientAdminActive)
+                        <flux:button size="sm" variant="danger" wire:click="confirmDeactivateClientAdmin">{{ __('Deactivate') }}</flux:button>
+                    @else
+                        <flux:button size="sm" wire:click="activateClientAdmin">{{ __('Activate') }}</flux:button>
+                    @endif
+                </div>
+            </flux:card>
+        @endif
+
         <flux:card>
             <flux:heading size="lg" class="mb-4">{{ __('Assigned Modules') }}</flux:heading>
             <div class="grid grid-cols-2 gap-3 md:grid-cols-3">
@@ -53,4 +82,12 @@
                 @endforeach
             </div>
         </flux:card>
+
+        <x-confirm-modal
+            wire:model.self="showDeactivateClientAdminModal"
+            :title="__('Deactivate this tenant\'s Client Admin?')"
+            :description="__('This immediately suspends the Client Admin and every other active user in this tenant together. Reactivating later restores exactly the users this action suspends.')"
+            confirm-action="deactivateClientAdminConfirmed"
+            :confirm-label="__('Deactivate')"
+        />
     </div>

@@ -7,18 +7,6 @@ parameters:
 			path: app/Actions/Platform/RemoveModuleFromTenant.php
 
 		-
-			message: '#^Parameter \#1 \$admins of method App\\Console\\Commands\\SendLeadAlertNotifications\:\:recipients\(\) expects Illuminate\\Database\\Eloquent\\Collection\<int, App\\Models\\TenantUser\>, Illuminate\\Database\\Eloquent\\Collection\<int, Illuminate\\Database\\Eloquent\\Model\> given\.$#'
-			identifier: argument.type
-			count: 1
-			path: app/Console/Commands/SendLeadAlertNotifications.php
-
-		-
-			message: '#^Parameter \#1 \$admins of method App\\Console\\Commands\\SendTaskAlertNotifications\:\:recipients\(\) expects Illuminate\\Database\\Eloquent\\Collection\<int, App\\Models\\TenantUser\>, Illuminate\\Database\\Eloquent\\Collection\<int, Illuminate\\Database\\Eloquent\\Model\> given\.$#'
-			identifier: argument.type
-			count: 1
-			path: app/Console/Commands/SendTaskAlertNotifications.php
-
-		-
 			message: '#^Parameter \#1 \$user of static method App\\Services\\NotificationUrlResolver\:\:resolve\(\) expects App\\Models\\TenantUser, App\\Models\\PlatformUser\|App\\Models\\TenantUser\|null given\.$#'
 			identifier: argument.type
 			count: 1
@@ -65,12 +53,6 @@ parameters:
 			identifier: missingType.iterableValue
 			count: 1
 			path: app/Jobs/ProcessEmailLeadSource.php
-
-		-
-			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:notify\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: app/Listeners/SendNewLeadNotification.php
 
 		-
 			message: '#^Method App\\Livewire\\Platform\\Admins\\Index\:\:admins\(\) has no return type specified\.$#'
@@ -1508,12 +1490,6 @@ parameters:
 
 		-
 			message: '#^Method App\\Models\\Tenant\:\:roles\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\HasMany does not specify its types\: TRelatedModel, TDeclaringModel$#'
-			identifier: missingType.generics
-			count: 1
-			path: app/Models/Tenant.php
-
-		-
-			message: '#^Method App\\Models\\Tenant\:\:tenantUsers\(\) return type with generic class Illuminate\\Database\\Eloquent\\Relations\\HasMany does not specify its types\: TRelatedModel, TDeclaringModel$#'
 			identifier: missingType.generics
 			count: 1
 			path: app/Models/Tenant.php

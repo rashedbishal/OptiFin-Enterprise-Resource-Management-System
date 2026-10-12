@@ -1,0 +1,20 @@
+---
+paths:
+  - 'app/{Policies/TenantUserPolicy.php,Livewire/Settings/{Profile,DeleteUserForm}.php,Actions/Platform/ManageClientAdminActivation.php,Models/TenantUser.php,Observers/TenantUserObserver.php}'
+---
+
+# Platform
+
+## Client Admin self-action lockout + Platform cascade activation
+Shipped 2026-10-12. A Client Admin's own account is provisioned by Platform Admin (CreateClient) — they can no longer edit (name/email/role), deactivate, or delete THEIR OWN TenantUser row anywhere in the app, only other users in their tenant:
+- TenantUserPolicy::update()/delete() both add `&& $actor->isNot($target)` — this one change covers Tenant\Users\Index's edit()/save()/toggleActive() (all share the 'update' gate) and delete(), plus the Blade view hiding those three buttons on the admin's own row.
+- The self-block had to ALSO be added to two generic, unrelated starter-kit settings pages that have NO policy check of their own and would otherwise be a loophole: Settings\Profile (name/email — new `isLockedClientAdmin()` computed, checked in updateProfileInformation(), fields disabled in the view) and Settings\DeleteUserForm (same computed, checked in deleteUser()). Both are scoped narrowly to `Auth::user() instanceof TenantUser && isClientAdmin()` — Client Users and Platform Admins are completely unaffected.
+- delete() is now an UNCONDITIONAL self-block, stricter than TenantUserObserver's pre-existing "can't delete the tenant's last active owner" guard (which still only fires when no other active owner exists).
+
+New Platform Admin capability (App\Actions\Platform\ManageClientAdminActivation, wired into Platform\Clients\Show): deactivating a tenant's Client Admin cascades to every other active TenantUser in the tenant; reactivating restores exactly the rows this action put to sleep, via TenantUser.deactivated_by_platform_at (nullable timestamp, stamped only on rows that were active at the moment of deactivation) — a row independently inactive beforehand, or reactivated independently since, is never touched by the reverse action. The deactivate step bypasses TenantUserObserver's last-owner guard via a new transient (non-persisted) `TenantUser::$allowsPlatformOwnerActivationChange` flag set momentarily right before the normal Eloquent update() — deliberately NOT a raw DB::table() bypass, so LogsActivity's own audit trail on is_active still fires normally.
+
+Trap hit while testing: Livewire's `Testable::actingAs($user, $driver)` calls `auth()->shouldUse($driver)`, which changes the DEFAULT guard for the rest of that test — after `Livewire::actingAs($motherAdmin, 'platform')`, a later `auth()->check()` (no guard arg) checks the 'platform' guard, not 'web'. Always assert `auth('web')->check()` explicitly in a test that mixes both guards.
+
+Trap hit while implementing: `Gate::authorize()` thrown AuthorizationException does NOT propagate as a raw PHP exception through `Livewire::test()->call()` — Livewire's test RequestBroker explicitly keeps normal exception-to-response handling for AuthorizationException/HttpException (see `temporarilyDisableExceptionHandlingAndMiddleware`), converting it to a captured 403 response instead. Assert with `->call(...)->assertForbidden()`, never `expect(fn() => ...)->toThrow(AuthorizationException::class)` (that pattern only works for exceptions NOT in that except-list, e.g. ModelNotFoundException). A mount()-time authorization failure (e.g. a restricted Platform Admin who also fails the page's own 'view' gate) leaves the component snapshot unusable for a subsequent ->call() — test the Gate directly instead (`Gate::forUser($user)->denies('update', $tenant)`), same established pattern as PlatformLeadSourceDeletionTest.
+
+Also fixed in passing: Tenant::tenantUsers() gained a `@return HasMany<TenantUser, $this>` generic docblock (was bare `HasMany`) — this resolved 4 pre-existing, now-stale phpstan baseline entries in unrelated files (SendLeadAlertNotifications, SendTaskAlertNotifications, SendNewLeadNotification) that were masking real type errors; baseline regenerated deliberately to drop them, net zero new errors.

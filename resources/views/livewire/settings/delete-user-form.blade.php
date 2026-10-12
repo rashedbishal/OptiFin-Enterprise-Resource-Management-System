@@ -4,11 +4,19 @@
         <flux:subheading>{{ __('Delete your account and all of its resources') }}</flux:subheading>
     </div>
 
-    <flux:modal.trigger name="confirm-user-deletion">
-        <flux:button variant="danger" x-data="" x-on:click.prevent="$dispatch('open-modal', 'confirm-user-deletion')">
-            {{ __('Delete account') }}
-        </flux:button>
-    </flux:modal.trigger>
+    @if ($this->isLockedClientAdmin)
+        <flux:callout variant="subtle" icon="lock-closed" :heading="__('Managed by Platform Admin')">
+            <flux:callout.text>
+                {{ __('Your account was provisioned by Platform Admin — only they can delete it.') }}
+            </flux:callout.text>
+        </flux:callout>
+    @else
+        <flux:modal.trigger name="confirm-user-deletion">
+            <flux:button variant="danger" x-data="" x-on:click.prevent="$dispatch('open-modal', 'confirm-user-deletion')">
+                {{ __('Delete account') }}
+            </flux:button>
+        </flux:modal.trigger>
+    @endif
 
     <flux:modal name="confirm-user-deletion" :show="$errors->isNotEmpty()" focusable class="max-w-lg">
         <form method="POST" wire:submit="deleteUser" class="space-y-6">

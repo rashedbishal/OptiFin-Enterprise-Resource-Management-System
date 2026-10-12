@@ -105,6 +105,9 @@ class Tenant extends Model
         return $this->hasMany(Role::class);
     }
 
+    /**
+     * @return HasMany<TenantUser, $this>
+     */
     public function tenantUsers(): HasMany
     {
         return $this->hasMany(TenantUser::class);

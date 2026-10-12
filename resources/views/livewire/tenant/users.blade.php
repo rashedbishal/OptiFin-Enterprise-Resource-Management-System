@@ -39,20 +39,26 @@
                         </flux:table.cell>
                         <flux:table.cell>
                             <div class="flex justify-end gap-2">
-                                <flux:button size="sm" wire:click="edit('{{ $user->id }}')">{{ __('Edit') }}</flux:button>
-                                <flux:button size="sm" wire:click="toggleActive('{{ $user->id }}')">
-                                    {{ $user->is_active ? __('Deactivate') : __('Activate') }}
-                                </flux:button>
-                                @if ($user->user_type !== \App\Enums\TenantUserType::ClientAdmin && ! $this->receivesUnassignedWhatsAppLeads($user))
-                                    <flux:tooltip content="{{ __('Allows this user to receive eligible incoming WhatsApp calls when the assigned user is unavailable or already handling another call. It does not change lead assignment or grant outbound calling access.') }}">
-                                        <flux:button size="sm" wire:click="toggleBackupReceiver('{{ $user->id }}')">
-                                            {{ $user->is_whatsapp_backup_receiver ? __('Disable Backup Calls') : __('Enable Backup Calls') }}
-                                        </flux:button>
+                                @if ($user->id === auth()->id())
+                                    <flux:tooltip content="{{ __('Your own account is provisioned by Platform Admin — only Platform Admin can edit, deactivate, or delete it.') }}">
+                                        <flux:badge size="sm">{{ __('You') }}</flux:badge>
                                     </flux:tooltip>
+                                @else
+                                    <flux:button size="sm" wire:click="edit('{{ $user->id }}')">{{ __('Edit') }}</flux:button>
+                                    <flux:button size="sm" wire:click="toggleActive('{{ $user->id }}')">
+                                        {{ $user->is_active ? __('Deactivate') : __('Activate') }}
+                                    </flux:button>
+                                    @if ($user->user_type !== \App\Enums\TenantUserType::ClientAdmin && ! $this->receivesUnassignedWhatsAppLeads($user))
+                                        <flux:tooltip content="{{ __('Allows this user to receive eligible incoming WhatsApp calls when the assigned user is unavailable or already handling another call. It does not change lead assignment or grant outbound calling access.') }}">
+                                            <flux:button size="sm" wire:click="toggleBackupReceiver('{{ $user->id }}')">
+                                                {{ $user->is_whatsapp_backup_receiver ? __('Disable Backup Calls') : __('Enable Backup Calls') }}
+                                            </flux:button>
+                                        </flux:tooltip>
+                                    @endif
+                                    <flux:button size="sm" variant="danger" wire:click="confirmDelete('{{ $user->id }}')">
+                                        {{ __('Delete') }}
+                                    </flux:button>
                                 @endif
-                                <flux:button size="sm" variant="danger" wire:click="confirmDelete('{{ $user->id }}')">
-                                    {{ __('Delete') }}
-                                </flux:button>
                             </div>
                         </flux:table.cell>
                     </flux:table.row>

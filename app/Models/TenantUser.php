@@ -29,13 +29,14 @@ use Spatie\Activitylog\Traits\LogsActivity;
  * @property string $password
  * @property string $role_id
  * @property bool $is_active
+ * @property Carbon|null $deactivated_by_platform_at
  * @property bool $is_whatsapp_backup_receiver
  * @property Carbon|null $softphone_last_seen_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Role $role
  */
-#[Fillable(['tenant_id', 'name', 'email', 'password', 'user_type', 'role_id', 'is_active', 'is_whatsapp_backup_receiver', 'last_assigned_at'])]
+#[Fillable(['tenant_id', 'name', 'email', 'password', 'user_type', 'role_id', 'is_active', 'deactivated_by_platform_at', 'is_whatsapp_backup_receiver', 'last_assigned_at'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class TenantUser extends Authenticatable
 {
@@ -50,6 +51,7 @@ class TenantUser extends Authenticatable
         return [
             'user_type' => TenantUserType::class,
             'is_active' => 'boolean',
+            'deactivated_by_platform_at' => 'datetime',
             'is_whatsapp_backup_receiver' => 'boolean',
             'softphone_last_seen_at' => 'datetime',
             'email_verified_at' => 'datetime',
@@ -77,6 +79,19 @@ class TenantUser extends Authenticatable
     {
         return $this->user_type === TenantUserType::ClientAdmin;
     }
+
+    /**
+     * Transient, in-memory only — never persisted (not a database column,
+     * not in #[Fillable] above). Set momentarily by
+     * App\Actions\Platform\ManageClientAdminActivation::deactivate() right
+     * before it calls update() on the tenant's own Client Admin, so
+     * TenantUserObserver's "can't deactivate the tenant's last active
+     * owner" guard (meant to stop a Client Admin disabling themselves —
+     * see TenantUserPolicy::update()) doesn't also block this one
+     * deliberate, Platform-Admin-initiated action. Nothing else should
+     * ever set this to true.
+     */
+    public bool $allowsPlatformOwnerActivationChange = false;
 
     /**
      * Get the user's initials

@@ -3,6 +3,7 @@
 namespace App\Livewire\Settings;
 
 use App\Concerns\ProfileValidationRules;
+use App\Models\TenantUser;
 use Flux\Flux;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Support\Facades\Auth;
@@ -30,9 +31,21 @@ class Profile extends Component
 
     /**
      * Update the profile information for the currently authenticated user.
+     * Refused outright for a Client Admin (see isLockedClientAdmin()) —
+     * this form only ever touches name/email, and their own account is
+     * provisioned by Platform Admin, not self-editable here or on the
+     * Users page (see TenantUserPolicy::update()'s own self-action guard).
+     * The view disables both fields for this case too; this is the
+     * server-side backstop, not just a UI omission.
      */
     public function updateProfileInformation(): void
     {
+        if ($this->isLockedClientAdmin()) {
+            Flux::toast(variant: 'danger', text: __('Your name and email are managed by Platform Admin and cannot be changed here.'));
+
+            return;
+        }
+
         $user = Auth::user();
 
         $validated = $this->validate($this->profileRules($user->id));
@@ -46,6 +59,17 @@ class Profile extends Component
         $user->save();
 
         Flux::toast(variant: 'success', text: __('Profile updated.'));
+    }
+
+    /**
+     * See updateProfileInformation()'s own docblock.
+     */
+    #[Computed]
+    public function isLockedClientAdmin(): bool
+    {
+        $user = Auth::user();
+
+        return $user instanceof TenantUser && $user->isClientAdmin();
     }
 
     /**
