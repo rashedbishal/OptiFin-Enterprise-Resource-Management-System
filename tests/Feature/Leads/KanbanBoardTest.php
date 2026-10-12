@@ -103,6 +103,15 @@ test('a client user\'s board search does not match location, win probability, or
         'status_id' => leadStatus('new')->id,
         'location' => 'Dhaka, Bangladesh',
         'win_probability' => 77,
+        // Pinned, not left to the factory's fake()->phoneNumber()/
+        // safeEmail() defaults: both can randomly contain "77" as a
+        // substring, which would false-positive-match the board's own
+        // phone/email search fields below and make this assertion flaky
+        // (caught failing intermittently in CI, unrelated to the search
+        // behavior itself).
+        'name' => 'Jane Doe',
+        'email' => 'jane.doe@example.com',
+        'phone' => '+1-202-555-0199',
     ]);
 
     $repComponent = Livewire::actingAs($rep)->test(Index::class)->call('completeInitialLoad')->set('search', 'dhaka');
