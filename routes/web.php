@@ -29,7 +29,11 @@ use App\Livewire\Tenant\WebsiteForms\Index as WebsiteFormsIndex;
 use App\Livewire\Tenant\WhatsAppTemplates\Index as WhatsAppTemplatesIndex;
 use Illuminate\Support\Facades\Route;
 
-Route::view('/', 'welcome')->name('home');
+// Kept as route 'home' (not removed) since the auth layouts' logo link
+// still points at it (route('home') in layouts/auth/{simple,split,card}.
+// blade.php) — only what it does changed, from rendering the starter
+// kit's unused welcome.blade.php to redirecting straight to /login.
+Route::redirect('/', '/login')->name('home');
 
 Route::middleware(['auth', 'verified', 'tenant.identify', 'tenant.active'])->group(function () {
     Route::livewire('dashboard', Dashboard::class)->name('dashboard');
