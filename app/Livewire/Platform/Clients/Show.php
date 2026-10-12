@@ -3,6 +3,7 @@
 namespace App\Livewire\Platform\Clients;
 
 use App\Actions\Platform\AssignModuleToTenant;
+use App\Actions\Platform\DeleteTenant;
 use App\Actions\Platform\ManageClientAdminActivation;
 use App\Actions\Platform\RemoveModuleFromTenant;
 use App\Enums\ModuleScope;
@@ -16,6 +17,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
@@ -41,6 +43,14 @@ class Show extends Component
     public string $status;
 
     public bool $showDeactivateClientAdminModal = false;
+
+    public bool $showDeleteTenantStep1Modal = false;
+
+    public bool $showDeleteTenantStep2Modal = false;
+
+    public string $deleteTenantPassword1 = '';
+
+    public string $deleteTenantPassword2 = '';
 
     public function mount(Tenant $tenant): void
     {
@@ -140,8 +150,7 @@ class Show extends Component
      * one (CreateClient provisions one at tenant creation; a Client Admin
      * can never create another one through the Users page, which always
      * creates a ClientUser — see App\Actions\Tenant\CreateTenantUser).
-     */
-    /**
+     *
      * @return Collection<int, TenantUser>
      */
     #[Computed]
@@ -195,5 +204,98 @@ class Show extends Component
 
         unset($this->clientAdmins, $this->anyClientAdminActive);
         Flux::toast(variant: 'success', text: __('Client Admin and this tenant\'s affected users have been reactivated.'));
+    }
+
+    /**
+     * Permanently deletes this tenant and everything it owns — Mother
+     * Admin only (TenantPolicy::delete()), and only once every Client
+     * Admin is already deactivated (see anyClientAdminActive()), since
+     * ManageClientAdminActivation::deactivate() is what suspends every
+     * other tenant user alongside them; this is the one, deliberate
+     * precondition rather than this action trying to re-derive "is it
+     * safe to erase this tenant's users" itself. Two separate password
+     * confirmations, not one — this is irreversible and wipes real
+     * client data, a deliberately heavier gate than the single-password
+     * lead-delete confirm elsewhere in the app.
+     */
+    public function confirmDeleteTenant(): void
+    {
+        Gate::forUser(Auth::guard('platform')->user())->authorize('delete', $this->tenant);
+
+        if ($this->anyClientAdminActive()) {
+            Flux::toast(variant: 'danger', text: __('Deactivate the Client Admin first — this tenant cannot be deleted while any of its users are still active.'));
+
+            return;
+        }
+
+        $this->reset('deleteTenantPassword1', 'deleteTenantPassword2');
+        $this->resetErrorBag();
+        $this->showDeleteTenantStep1Modal = true;
+    }
+
+    public function closeDeleteTenantStep1Modal(): void
+    {
+        $this->showDeleteTenantStep1Modal = false;
+        $this->reset('deleteTenantPassword1');
+        $this->resetErrorBag('deleteTenantPassword1');
+    }
+
+    public function deleteTenantStep1Confirmed(): void
+    {
+        Gate::forUser(Auth::guard('platform')->user())->authorize('delete', $this->tenant);
+
+        $this->validate(['deleteTenantPassword1' => ['required', 'string']]);
+
+        if (! Hash::check($this->deleteTenantPassword1, Auth::guard('platform')->user()->password)) {
+            $this->addError('deleteTenantPassword1', __('The password is incorrect.'));
+
+            return;
+        }
+
+        $this->showDeleteTenantStep1Modal = false;
+        $this->showDeleteTenantStep2Modal = true;
+    }
+
+    public function closeDeleteTenantStep2Modal(): void
+    {
+        $this->showDeleteTenantStep2Modal = false;
+        $this->reset('deleteTenantPassword1', 'deleteTenantPassword2');
+        $this->resetErrorBag('deleteTenantPassword2');
+    }
+
+    /**
+     * The authoritative step — every prior check (permission, the
+     * already-deactivated precondition, the first password) is advisory
+     * up to this point; this re-checks all of them itself before actually
+     * calling DeleteTenant, the same discipline Lead deletion elsewhere in
+     * this app already uses.
+     */
+    public function deleteTenantStep2Confirmed(): void
+    {
+        Gate::forUser(Auth::guard('platform')->user())->authorize('delete', $this->tenant);
+
+        if ($this->anyClientAdminActive()) {
+            Flux::toast(variant: 'danger', text: __('Deactivate the Client Admin first — this tenant cannot be deleted while any of its users are still active.'));
+
+            $this->showDeleteTenantStep2Modal = false;
+
+            return;
+        }
+
+        $this->validate(['deleteTenantPassword2' => ['required', 'string']]);
+
+        if (! Hash::check($this->deleteTenantPassword2, Auth::guard('platform')->user()->password)) {
+            $this->addError('deleteTenantPassword2', __('The password is incorrect.'));
+
+            return;
+        }
+
+        $tenantName = $this->tenant->name;
+
+        app(DeleteTenant::class)->handle($this->tenant);
+
+        Flux::toast(variant: 'success', text: __(':name has been permanently deleted.', ['name' => $tenantName]));
+
+        $this->redirect(route('admin.clients.index'), navigate: true);
     }
 }

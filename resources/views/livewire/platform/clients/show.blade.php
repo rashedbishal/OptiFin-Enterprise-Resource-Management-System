@@ -41,11 +41,15 @@
                         </div>
                     @endforeach
                 </div>
-                <div class="mt-4 flex justify-end">
+                <div class="mt-4 flex justify-end gap-2">
                     @if ($this->anyClientAdminActive)
                         <flux:button size="sm" variant="danger" wire:click="confirmDeactivateClientAdmin">{{ __('Deactivate') }}</flux:button>
                     @else
                         <flux:button size="sm" wire:click="activateClientAdmin">{{ __('Activate') }}</flux:button>
+
+                        @if (auth()->guard('platform')->user()->isMotherAdmin())
+                            <flux:button size="sm" variant="danger" wire:click="confirmDeleteTenant">{{ __('Delete Permanently') }}</flux:button>
+                        @endif
                     @endif
                 </div>
             </flux:card>
@@ -90,4 +94,60 @@
             confirm-action="deactivateClientAdminConfirmed"
             :confirm-label="__('Deactivate')"
         />
+
+        {{-- Permanent tenant deletion — Mother Admin only, two separate
+        password confirmations (not the shared x-confirm-password-delete-
+        modal component, which hardcodes a single "deletePassword" field
+        already used elsewhere for lead deletion). Step 1 warns and takes
+        the first password; only on success does step 2 open, asking for
+        the password again as the final, authoritative confirmation. --}}
+        <flux:modal wire:model.self="showDeleteTenantStep1Modal" class="md:w-96">
+            <form wire:submit="deleteTenantStep1Confirmed" class="flex flex-col gap-4">
+                <div>
+                    <flux:heading size="lg">{{ __('Permanently delete :name?', ['name' => $tenant->name]) }}</flux:heading>
+                    <flux:text class="mt-2">
+                        {{ __('This erases this client\'s entire tenant — every user, lead, message, attachment, and file — with no way to recover it. Enter your password to continue.') }}
+                    </flux:text>
+                </div>
+
+                <flux:input
+                    wire:model="deleteTenantPassword1"
+                    type="password"
+                    :label="__('Your password')"
+                    autocomplete="current-password"
+                    viewable
+                    autofocus
+                />
+
+                <div class="flex justify-end gap-2">
+                    <flux:button type="button" wire:click="closeDeleteTenantStep1Modal">{{ __('Cancel') }}</flux:button>
+                    <flux:button type="submit" variant="danger">{{ __('Continue') }}</flux:button>
+                </div>
+            </form>
+        </flux:modal>
+
+        <flux:modal wire:model.self="showDeleteTenantStep2Modal" class="md:w-96">
+            <form wire:submit="deleteTenantStep2Confirmed" class="flex flex-col gap-4">
+                <div>
+                    <flux:heading size="lg">{{ __('Final confirmation') }}</flux:heading>
+                    <flux:text class="mt-2">
+                        {{ __('Last chance — this cannot be undone. Enter your password one more time to permanently delete :name.', ['name' => $tenant->name]) }}
+                    </flux:text>
+                </div>
+
+                <flux:input
+                    wire:model="deleteTenantPassword2"
+                    type="password"
+                    :label="__('Your password, again')"
+                    autocomplete="current-password"
+                    viewable
+                    autofocus
+                />
+
+                <div class="flex justify-end gap-2">
+                    <flux:button type="button" wire:click="closeDeleteTenantStep2Modal">{{ __('Cancel') }}</flux:button>
+                    <flux:button type="submit" variant="danger">{{ __('Delete Permanently') }}</flux:button>
+                </div>
+            </form>
+        </flux:modal>
     </div>
