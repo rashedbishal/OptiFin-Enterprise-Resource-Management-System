@@ -33,6 +33,64 @@ test('testing a facebook source with a valid token subscribes the page and repor
         && $request['access_token'] === 'valid-token');
 });
 
+test('a facebook source still subscribes and reports success when the cosmetic page-name lookup fails', function () {
+    // Reproduces a real production error: a Page Access Token can be
+    // perfectly valid for pages_messaging/pages_manage_metadata (everything
+    // subscribeFacebookPageToApp() needs) while still lacking the separate,
+    // unrelated pages_read_engagement permission (or the Page Public
+    // Metadata Access feature) this cosmetic GET /{page-id}?fields=id,name
+    // lookup needs — Meta's own (#100) error. The lookup failing must never
+    // block the actually-important subscribe call.
+    Http::fake([
+        'graph.facebook.com/123/subscribed_apps*' => Http::response(['success' => true]),
+        'graph.facebook.com/123*' => Http::response(['error' => [
+            'message' => "(#100) Object does not exist, cannot be loaded due to missing permission or reviewable feature, or does not support this operation. This endpoint requires the 'pages_read_engagement' permission or the 'Page Public Content Access' feature or the 'Page Public Metadata Access' feature.",
+        ]], 400),
+    ]);
+
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+    $tenant = Tenant::factory()->create();
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::FacebookMessenger,
+        'config' => ['page_id' => '123', 'page_access_token' => 'valid-messaging-token', 'verify_token' => 'secret'],
+    ]);
+
+    Livewire::actingAs($motherAdmin, 'platform')
+        ->test(LeadSources::class, ['tenant' => $tenant])
+        ->call('testConnection', $source->id)
+        ->assertDispatched('toast-show', fn ($name, $params) => $params['dataset']['variant'] === 'success'
+            && str_contains($params['slots']['text'], '123'));
+
+    Http::assertSent(fn ($request) => $request->url() === 'https://graph.facebook.com/123/subscribed_apps'
+        && $request->method() === 'POST'
+        && $request['subscribed_fields'] === 'messages,messaging_postbacks'
+        && $request['access_token'] === 'valid-messaging-token');
+});
+
+test('a facebook lead ads source still subscribes and reports success when the cosmetic page-name lookup fails', function () {
+    Http::fake([
+        'graph.facebook.com/123/subscribed_apps*' => Http::response(['success' => true]),
+        'graph.facebook.com/123*' => Http::response(['error' => ['message' => "(#100) ... requires the 'pages_read_engagement' permission ..."]], 400),
+    ]);
+
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+    $tenant = Tenant::factory()->create();
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::FacebookLeadAds,
+        'config' => ['page_id' => '123', 'page_access_token' => 'valid-leads-token', 'verify_token' => 'secret'],
+    ]);
+
+    Livewire::actingAs($motherAdmin, 'platform')
+        ->test(LeadSources::class, ['tenant' => $tenant])
+        ->call('testConnection', $source->id)
+        ->assertDispatched('toast-show', fn ($name, $params) => $params['dataset']['variant'] === 'success');
+
+    Http::assertSent(fn ($request) => $request->url() === 'https://graph.facebook.com/123/subscribed_apps'
+        && $request['subscribed_fields'] === 'leadgen');
+});
+
 test('testing a facebook source whose page subscription fails reports failure', function () {
     Http::fake([
         'graph.facebook.com/123/subscribed_apps*' => Http::response(['error' => ['message' => 'Insufficient permission.']], 400),

@@ -1139,22 +1139,7 @@ class LeadSources extends Component
             return ['success' => false, 'message' => __('Page ID and Page Access Token must both be set.')];
         }
 
-        try {
-            $response = Http::timeout(10)->get("https://graph.facebook.com/{$pageId}", [
-                'fields' => 'id,name',
-                'access_token' => $accessToken,
-            ]);
-        } catch (ConnectionException) {
-            return ['success' => false, 'message' => __('Could not reach the Facebook Graph API.')];
-        }
-
-        if (! $response->successful()) {
-            return ['success' => false, 'message' => __('Facebook rejected the request: :error', [
-                'error' => $response->json('error.message') ?? __('unknown error'),
-            ])];
-        }
-
-        $pageName = $response->json('name') ?? $pageId;
+        $pageName = $this->fetchFacebookPageName($pageId, $accessToken) ?? $pageId;
 
         $subscription = $this->subscribeFacebookPageToApp($pageId, $accessToken, 'messages,messaging_postbacks');
 
@@ -1189,22 +1174,7 @@ class LeadSources extends Component
             return ['success' => false, 'message' => __('Page ID and Page Access Token must both be set.')];
         }
 
-        try {
-            $response = Http::timeout(10)->get("https://graph.facebook.com/{$pageId}", [
-                'fields' => 'id,name',
-                'access_token' => $accessToken,
-            ]);
-        } catch (ConnectionException) {
-            return ['success' => false, 'message' => __('Could not reach the Facebook Graph API.')];
-        }
-
-        if (! $response->successful()) {
-            return ['success' => false, 'message' => __('Facebook rejected the request: :error', [
-                'error' => $response->json('error.message') ?? __('unknown error'),
-            ])];
-        }
-
-        $pageName = $response->json('name') ?? $pageId;
+        $pageName = $this->fetchFacebookPageName($pageId, $accessToken) ?? $pageId;
 
         $subscription = $this->subscribeFacebookPageToApp($pageId, $accessToken, 'leadgen');
 
@@ -1218,6 +1188,44 @@ class LeadSources extends Component
         return ['success' => true, 'message' => __('Connected to Facebook Page ":name" and subscribed it to receive lead ad submissions.', [
             'name' => $pageName,
         ])];
+    }
+
+    /**
+     * Best-effort only — a Page's own name is purely cosmetic here (shown
+     * back to the admin in the test-connection result), never a
+     * precondition for subscribeFacebookPageToApp() below. `GET /{page-id}
+     * ?fields=id,name` can genuinely fail with a real Meta error ("(#100)
+     * ... requires the 'pages_read_engagement' permission or the 'Page
+     * Public Content Access' feature or the 'Page Public Metadata Access'
+     * feature") even when the token is perfectly valid for messaging —
+     * confirmed live in production: a Page Access Token scoped for
+     * pages_messaging/pages_manage_metadata (everything the actual
+     * subscribe call below needs) can still lack this separate,
+     * unrelated read permission. This used to abort testFacebookConnection()/
+     * testFacebookLeadAdsConnection() before they ever reached the
+     * subscribe call, so a working token with real Messenger/Lead-Ads
+     * access was reported as "broken" and the Page never got subscribed
+     * to receive events at all. Now it just falls back to the raw Page ID
+     * as the display name instead of blocking anything.
+     */
+    private function fetchFacebookPageName(string $pageId, string $accessToken): ?string
+    {
+        try {
+            $response = Http::timeout(10)->get("https://graph.facebook.com/{$pageId}", [
+                'fields' => 'id,name',
+                'access_token' => $accessToken,
+            ]);
+        } catch (ConnectionException) {
+            return null;
+        }
+
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $name = $response->json('name');
+
+        return is_string($name) && $name !== '' ? $name : null;
     }
 
     /**
