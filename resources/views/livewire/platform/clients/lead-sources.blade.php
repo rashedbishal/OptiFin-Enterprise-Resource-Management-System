@@ -573,16 +573,59 @@
                 ]) }}
             </flux:text>
 
-            <div>
-                <flux:textarea
-                    wire:model="callPermissionTemplateBody"
-                    :label="__('Message Body')"
-                    :description="$placeholderDescription"
-                    rows="4"
-                    required
-                />
-                @error('callPermissionTemplateBody') <flux:text size="sm" class="text-red-600 dark:text-red-400">{{ $message }}</flux:text> @enderror
+            {{-- A plain textarea, not <flux:textarea wire:model>, so Alpine
+            can read/set cursor position via x-ref — same reasoning and the
+            same $wire.entangle()-bidirectional-sync approach as the
+            Messenger template's own "Insert Variable" button above. Unlike
+            that free-form field, this one has exactly two FIXED, REQUIRED
+            placeholders (never a growing count) — see
+            saveCallPermissionTemplate()'s own validation — so each gets
+            its own dedicated button, disabled once already present rather
+            than letting the admin accidentally insert a second copy that
+            would fail that validation. --}}
+            <div
+                x-data="{
+                    body: $wire.entangle('callPermissionTemplateBody'),
+                    get hasName() { return /\{\{1\}\}/.test(this.body); },
+                    get hasInquiry() { return /\{\{2\}\}/.test(this.body); },
+                    insertToken(token) {
+                        const el = $refs.callPermissionTemplateBody;
+                        const start = el.selectionStart;
+                        const end = el.selectionEnd;
+                        this.body = this.body.slice(0, start) + token + this.body.slice(end);
+                        $nextTick(() => { el.focus(); el.selectionStart = el.selectionEnd = start + token.length; });
+                    },
+                }"
+                class="flex flex-col gap-2"
+            >
+                <flux:field>
+                    <flux:label>{{ __('Message Body') }}</flux:label>
+                    <textarea
+                        x-ref="callPermissionTemplateBody"
+                        x-model="body"
+                        rows="4"
+                        class="w-full rounded-lg border border-zinc-300/80 bg-zinc-100/90 px-3 py-1.5 text-sm text-zinc-800 shadow-xs focus:outline-none focus:ring-2 focus:ring-accent/40 dark:border-zinc-700/80 dark:bg-zinc-900/90 dark:text-zinc-200"
+                    ></textarea>
+                    <flux:description>{{ __('Write the message normally — use the two buttons below to drop in the lead\'s name and inquiry wherever you want them.') }}</flux:description>
+                </flux:field>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <flux:button type="button" size="xs" icon="plus" x-on:click="insertToken('{{ $openBrace.$openBrace }}1{{ $closeBrace.$closeBrace }}')" x-bind:disabled="hasName">
+                        {{ __('Insert Lead\'s Name') }}
+                    </flux:button>
+                    <flux:button type="button" size="xs" icon="plus" x-on:click="insertToken('{{ $openBrace.$openBrace }}2{{ $closeBrace.$closeBrace }}')" x-bind:disabled="hasInquiry">
+                        {{ __('Insert Lead\'s Inquiry') }}
+                    </flux:button>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-3 text-xs">
+                    <span x-show="hasName" x-cloak class="text-emerald-600 dark:text-emerald-400">{{ __("Lead's name ✓") }}</span>
+                    <span x-show="! hasName" x-cloak class="text-red-600 dark:text-red-400">{{ __("Lead's name missing") }}</span>
+                    <span x-show="hasInquiry" x-cloak class="text-emerald-600 dark:text-emerald-400">{{ __("Lead's inquiry ✓") }}</span>
+                    <span x-show="! hasInquiry" x-cloak class="text-red-600 dark:text-red-400">{{ __("Lead's inquiry missing") }}</span>
+                </div>
             </div>
+            @error('callPermissionTemplateBody') <flux:text size="sm" class="text-red-600 dark:text-red-400">{{ $message }}</flux:text> @enderror
 
             <div>
                 <flux:input

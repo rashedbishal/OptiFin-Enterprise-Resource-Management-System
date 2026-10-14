@@ -314,12 +314,26 @@ return [
     | is rejected outright, not truncated) — kept as the submitted default
     | specifically because it already fits.
     |
+    | The default `body` MUST keep exactly one {{1}} and one {{2}} —
+    | RequestLeadCallPermission::sendTemplate() always sends exactly those
+    | two text parameters (lead name, lead inquiry) when the approved
+    | template is actually used, REGARDLESS of what its own body text
+    | says. A body approved with a different variable count (confirmed
+    | live, 2026-10-14: a body with zero {{n}} placeholders got through
+    | Meta's own, much looser review and was APPROVED) silently fails the
+    | first time it's actually sent — Meta rejects a parameter-count
+    | mismatch at send time, not at template-approval time. The Livewire
+    | form's own validation (Platform\Clients\LeadSources::
+    | saveCallPermissionTemplate()) enforces this for anything the admin
+    | submits; this default must satisfy the same rule for the same
+    | reason, since it's what a brand-new form starts from.
+    |
     */
 
     'call_permission_request_template' => [
         'name' => env('CALLING_PERMISSION_REQUEST_TEMPLATE_NAME', 'call_permission_request'),
         'language' => env('CALLING_PERMISSION_REQUEST_TEMPLATE_LANGUAGE', 'en'),
-        'body' => env('CALLING_PERMISSION_REQUEST_TEMPLATE_BODY', 'We would like to call you to discuss your inquiry. Do you give us permission to call you on WhatsApp?'),
+        'body' => env('CALLING_PERMISSION_REQUEST_TEMPLATE_BODY', 'Hi {{1}}, we would like to call you to discuss your inquiry about {{2}}. Do you give us permission to call you on WhatsApp?'),
         'footer' => env('CALLING_PERMISSION_REQUEST_TEMPLATE_FOOTER', 'You can change call permissions anytime in your profile.'),
     ],
 
