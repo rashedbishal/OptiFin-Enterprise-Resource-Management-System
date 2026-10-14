@@ -6,8 +6,15 @@ use Livewire\Livewire;
 
 test('searching by name narrows the table to matching leads only', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
-    $match = Lead::factory()->create(['tenant_id' => $tenant->id, 'name' => 'Jane Doe']);
-    $other = Lead::factory()->create(['tenant_id' => $tenant->id, 'name' => 'John Smith']);
+    // email/phone pinned, not left to the factory's fake() defaults: the
+    // table search also matches email/phone (see FiltersLeadsQuery::
+    // applySearchFilter()), and Faker's auto-generated email draws from
+    // its own name pool independent of the `name` field set below — it
+    // can randomly contain "jane" as a substring and false-positive-match
+    // $other into the "Jane" search results, same flaky-test class fixed
+    // in KanbanBoardTest's own search test.
+    $match = Lead::factory()->create(['tenant_id' => $tenant->id, 'name' => 'Jane Doe', 'email' => 'jane.doe@example.com', 'phone' => '+1-202-555-0141']);
+    $other = Lead::factory()->create(['tenant_id' => $tenant->id, 'name' => 'John Smith', 'email' => 'john.smith@example.com', 'phone' => '+1-202-555-0142']);
 
     $component = Livewire::actingAs($clientAdmin)->test(Index::class)->call('completeInitialLoad')->set('search', 'Jane');
 
