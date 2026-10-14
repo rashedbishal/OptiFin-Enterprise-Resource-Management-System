@@ -2,6 +2,7 @@
 paths:
   - 'app/{Actions/Platform/DeleteTenant.php,Policies/TenantPolicy.php,Livewire/Platform/Clients/Show.php}'
   - 'app/{Actions/Platform/CreateCallPermissionRequestTemplate.php,Livewire/Platform/Clients/LeadSources.php},config/calling.php'
+  - 'app/{Actions/Platform/{CreateCallPermissionRequestTemplate,DeleteCallPermissionRequestTemplate}.php,Livewire/Platform/Clients/LeadSources.php}'
 ---
 
 # Platform Platform Clients
@@ -23,3 +24,6 @@ No local catalog row (unlike CreateMessengerMessageTemplate's MessengerMessageTe
 Real Meta validation caught live: the FOOTER component has a hard 60-character limit — a longer one is rejected outright (code 100, error_subcode 2388040), not truncated. config('calling.call_permission_request_template')['footer'] must stay at or under 60 characters if ever changed.
 
 New optional whatsapp_business_account_id config field added to LeadSourceType::Whatsapp (configFields()/configValidationRules(), nullable — see [[WhatsApp needs an explicit WABA-to-app subscription, not just a verified webhook]] in this same file, which added the field for subscribeWhatsAppWabaToApp()) is reused here as the WABA ID this new action posts to.
+
+## Call permission template has a Delete counterpart now too
+Added 2026-10-14, right after [[Platform Admin button creates the per-WABA call_permission_request template]] shipped — an approved WhatsApp template's content is permanently fixed on Meta's side (no edit endpoint), so the only way to change this template's wording is delete-then-recreate, same reasoning as DeleteMessengerMessageTemplate. App\Actions\Platform\DeleteCallPermissionRequestTemplate mirrors that action's exact shape (query-parameter DELETE contract, "already gone" treated as success, no local row to touch since this template was never tracked locally). Confirmed via a modal (confirmDeleteCallPermissionTemplate → showDeleteCallPermissionTemplateModal → deleteCallPermissionTemplateConfirmed), same discipline as the Messenger template's delete and every other destructive action on this page, since deleting it breaks Outbound Calling permission requests on that source until a replacement is created and approved (hours, not instant).

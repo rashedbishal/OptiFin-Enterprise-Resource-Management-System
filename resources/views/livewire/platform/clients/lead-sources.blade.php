@@ -267,9 +267,12 @@
                                 docblock), unlike Messenger's pill above. Always
                                 offered; re-clicking after it's already Approved just
                                 surfaces Meta's own "already exists" error. --}}
-                                <div class="mt-3 max-w-xs" wire:key="call-permission-template-{{ $source->id }}">
+                                <div class="mt-3 flex max-w-xs items-center gap-2" wire:key="call-permission-template-{{ $source->id }}">
                                     <flux:tooltip content="{{ __('Creates the one WhatsApp template Outbound Calling needs to request permission to call a lead. Submits to Meta for review — approval usually completes within a few hours.') }}">
                                         <flux:button size="xs" wire:click="createCallPermissionTemplate('{{ $source->id }}')">{{ __('Create Call Permission Template') }}</flux:button>
+                                    </flux:tooltip>
+                                    <flux:tooltip content="{{ __('Deletes it from Meta so a replacement with different wording can be created — breaks Outbound Calling permission requests on this source until a replacement is approved.') }}">
+                                        <flux:button size="xs" variant="danger" icon="trash" wire:click="confirmDeleteCallPermissionTemplate('{{ $source->id }}')" :aria-label="__('Delete call permission template')" />
                                     </flux:tooltip>
                                 </div>
                             @endif
@@ -535,6 +538,14 @@
         :title="__('Delete this template?')"
         :description="__('This removes it from Meta as well — it can no longer be used to re-engage any lead on this source. You can create a replacement right after.')"
         confirm-action="deleteTemplateConfirmed"
+        :confirm-label="__('Delete')"
+    />
+
+    <x-confirm-modal
+        wire:model.self="showDeleteCallPermissionTemplateModal"
+        :title="__('Delete the call permission template?')"
+        :description="__('This removes it from Meta as well — Outbound Calling permission requests on this source will fail until a replacement is created and approved.')"
+        confirm-action="deleteCallPermissionTemplateConfirmed"
         :confirm-label="__('Delete')"
     />
 

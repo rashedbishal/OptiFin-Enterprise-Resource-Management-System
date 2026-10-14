@@ -4,6 +4,7 @@ namespace App\Livewire\Platform\Clients;
 
 use App\Actions\Platform\CreateCallPermissionRequestTemplate;
 use App\Actions\Platform\CreateMessengerMessageTemplate;
+use App\Actions\Platform\DeleteCallPermissionRequestTemplate;
 use App\Actions\Platform\DeleteMessengerMessageTemplate;
 use App\Actions\Platform\ManageWhatsAppCalling;
 use App\Enums\LeadSourceType;
@@ -91,6 +92,10 @@ class LeadSources extends Component
     public bool $showDeleteTemplateModal = false;
 
     public ?string $confirmingDeleteTemplateSourceId = null;
+
+    public bool $showDeleteCallPermissionTemplateModal = false;
+
+    public ?string $confirmingDeleteCallPermissionTemplateSourceId = null;
 
     public bool $showRemoveStatusModal = false;
 
@@ -877,6 +882,37 @@ class LeadSources extends Component
         Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
 
         $result = app(CreateCallPermissionRequestTemplate::class)->handle(Auth::guard('platform')->user(), $this->tenant, $id);
+
+        Flux::toast(variant: $result->variant, text: $result->message);
+    }
+
+    /**
+     * See DeleteCallPermissionRequestTemplate's own docblock — the only
+     * way to change this template's wording once approved. Confirmed via
+     * modal (deleteCallPermissionTemplateConfirmed() is the authoritative,
+     * re-checked action) since this breaks Outbound Calling permission
+     * requests on this source until a replacement is created and approved.
+     */
+    public function confirmDeleteCallPermissionTemplate(string $id): void
+    {
+        Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
+
+        $this->confirmingDeleteCallPermissionTemplateSourceId = $this->tenant->leadSources()->findOrFail($id)->id;
+        $this->showDeleteCallPermissionTemplateModal = true;
+    }
+
+    public function deleteCallPermissionTemplateConfirmed(): void
+    {
+        $id = $this->confirmingDeleteCallPermissionTemplateSourceId;
+
+        $this->showDeleteCallPermissionTemplateModal = false;
+        $this->confirmingDeleteCallPermissionTemplateSourceId = null;
+
+        if ($id === null) {
+            return;
+        }
+
+        $result = app(DeleteCallPermissionRequestTemplate::class)->handle(Auth::guard('platform')->user(), $this->tenant, $id);
 
         Flux::toast(variant: $result->variant, text: $result->message);
     }
