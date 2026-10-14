@@ -14,20 +14,35 @@ use Illuminate\Support\Facades\Log;
 /**
  * Creates the one, specific WhatsApp message template App\Actions\Tenant\
  * RequestLeadCallPermission depends on existing and being Approved on a
- * tenant's own WhatsApp Business Account — config('calling.
- * call_permission_request_template') is the exact name/language/body/
- * footer contract both sides share. Deliberately narrow, NOT general
+ * tenant's own WhatsApp Business Account. Deliberately narrow, NOT general
  * WhatsApp template management: this app otherwise never creates WhatsApp
  * templates via Meta's API at all (see WhatsAppMessageTemplate's own
  * docblock — most stored WhatsApp tokens lack the
  * whatsapp_business_management scope this needs), just the one template
  * Calling cannot function without.
  *
+ * name/language are NOT admin-provided — they come from config('calling.
+ * call_permission_request_template')['name'/'language'] and must stay
+ * exactly that, since RequestLeadCallPermission::sendTemplate() hardcodes
+ * that same name/language when actually sending the approved template
+ * later; a template registered under any other name/language would simply
+ * never be found. bodyText/footerText ARE admin-provided (see
+ * Platform\Clients\LeadSources::saveCallPermissionTemplate()'s own
+ * validation) — Meta doesn't care what the wording says, only that the
+ * body contains exactly the two placeholders {{1}} (lead name) and {{2}}
+ * (lead inquiry) RequestLeadCallPermission::sendTemplate() always sends,
+ * in that exact shape. A body approved with a different variable count
+ * would pass Meta's review and then silently fail every real send
+ * afterward — this action's caller is responsible for that validation,
+ * not this action itself (same separation as every other Platform Action
+ * in this app: Gate/shape checks happen once, here, but field-level
+ * content validation belongs to the Livewire component's own validate()).
+ *
  * Confirmed live in production (2026-10-14): a missing/unapproved
  * template is exactly what makes RequestLeadCallPermission fail with
  * Meta error 132001, and since this template is per-WABA, every tenant
  * needs their own copy actually created — nothing does this
- * automatically, so Platform Admin gets a one-click button for it on the
+ * automatically, so Platform Admin gets a dedicated form for it on the
  * Lead Sources page.
  *
  * Unlike Messenger Utility templates (instant approve/reject, see
@@ -41,7 +56,7 @@ use Illuminate\Support\Facades\Log;
  */
 class CreateCallPermissionRequestTemplate
 {
-    public function handle(PlatformUser $actor, Tenant $tenant, string $leadSourceId): MessengerTemplateActionResult
+    public function handle(PlatformUser $actor, Tenant $tenant, string $leadSourceId, string $bodyText, string $footerText): MessengerTemplateActionResult
     {
         Gate::forUser($actor)->authorize('update', $tenant);
 
@@ -67,8 +82,8 @@ class CreateCallPermissionRequestTemplate
             'language' => $template['language'],
             'category' => 'UTILITY',
             'components' => [
-                ['type' => 'BODY', 'text' => $template['body']],
-                ['type' => 'FOOTER', 'text' => $template['footer']],
+                ['type' => 'BODY', 'text' => $bodyText],
+                ['type' => 'FOOTER', 'text' => $footerText],
                 ['type' => 'call_permission_request'],
             ],
         ]);

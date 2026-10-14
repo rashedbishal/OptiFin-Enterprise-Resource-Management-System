@@ -17,6 +17,7 @@ use App\Models\LeadStatus;
 use App\Models\MessengerMessageTemplate;
 use App\Models\Tenant;
 use App\Models\WebsiteForm;
+use Closure;
 use Flux\Flux;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Collection;
@@ -96,6 +97,14 @@ class LeadSources extends Component
     public bool $showDeleteCallPermissionTemplateModal = false;
 
     public ?string $confirmingDeleteCallPermissionTemplateSourceId = null;
+
+    public bool $showCreateCallPermissionTemplateModal = false;
+
+    public ?string $creatingCallPermissionTemplateForSourceId = null;
+
+    public string $callPermissionTemplateBody = '';
+
+    public string $callPermissionTemplateFooter = '';
 
     public bool $showRemoveStatusModal = false;
 
@@ -877,13 +886,73 @@ class LeadSources extends Component
      * fixed (config('calling.call_permission_request_template')), so
      * there's nothing for an admin to fill in beyond clicking the button.
      */
-    public function createCallPermissionTemplate(string $id): void
+    /**
+     * Opens the form, pre-filled from config('calling.
+     * call_permission_request_template')'s body/footer defaults — the
+     * admin can edit the wording before submitting (see
+     * saveCallPermissionTemplate()'s own validation for why the body's
+     * two placeholders can't be touched, even though the surrounding text
+     * can).
+     */
+    public function confirmCreateCallPermissionTemplate(string $id): void
     {
         Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
 
-        $result = app(CreateCallPermissionRequestTemplate::class)->handle(Auth::guard('platform')->user(), $this->tenant, $id);
+        $template = config('calling.call_permission_request_template');
+
+        $this->creatingCallPermissionTemplateForSourceId = $this->tenant->leadSources()->findOrFail($id)->id;
+        $this->callPermissionTemplateBody = $template['body'];
+        $this->callPermissionTemplateFooter = $template['footer'];
+        $this->resetErrorBag();
+        $this->showCreateCallPermissionTemplateModal = true;
+    }
+
+    /**
+     * The body MUST contain exactly one {{1}} and exactly one {{2}}, and
+     * no other {{n}} placeholder — RequestLeadCallPermission::
+     * sendTemplate() always sends exactly those two parameters (lead
+     * name, lead inquiry) when this template is actually used later. A
+     * body approved with any other variable shape would pass Meta's
+     * review here and then silently fail every real send afterward, so
+     * this is enforced before the Graph API call is ever made, not left
+     * for Meta's own (much looser) content review to catch.
+     */
+    public function saveCallPermissionTemplate(): void
+    {
+        $validated = $this->validate([
+            'callPermissionTemplateBody' => [
+                'required', 'string', 'max:1024',
+                function (string $attribute, mixed $value, Closure $fail): void {
+                    if (substr_count($value, '{{1}}') !== 1 || substr_count($value, '{{2}}') !== 1) {
+                        $fail(__('The body must contain exactly one {{1}} and one {{2}} placeholder.'));
+
+                        return;
+                    }
+
+                    preg_match_all('/\{\{(\d+)\}\}/', $value, $matches);
+
+                    if (array_diff($matches[1], ['1', '2']) !== []) {
+                        $fail(__('The body can only use the {{1}} and {{2}} placeholders — no others.'));
+                    }
+                },
+            ],
+            'callPermissionTemplateFooter' => ['required', 'string', 'max:60'],
+        ]);
+
+        $result = app(CreateCallPermissionRequestTemplate::class)->handle(
+            Auth::guard('platform')->user(),
+            $this->tenant,
+            (string) $this->creatingCallPermissionTemplateForSourceId,
+            $validated['callPermissionTemplateBody'],
+            $validated['callPermissionTemplateFooter'],
+        );
 
         Flux::toast(variant: $result->variant, text: $result->message);
+
+        if ($result->variant === 'success') {
+            $this->showCreateCallPermissionTemplateModal = false;
+            $this->creatingCallPermissionTemplateForSourceId = null;
+        }
     }
 
     /**

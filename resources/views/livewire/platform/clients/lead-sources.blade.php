@@ -269,7 +269,7 @@
                                 surfaces Meta's own "already exists" error. --}}
                                 <div class="mt-3 flex max-w-xs items-center gap-2" wire:key="call-permission-template-{{ $source->id }}">
                                     <flux:tooltip content="{{ __('Creates the one WhatsApp template Outbound Calling needs to request permission to call a lead. Submits to Meta for review — approval usually completes within a few hours.') }}">
-                                        <flux:button size="xs" wire:click="createCallPermissionTemplate('{{ $source->id }}')">{{ __('Create Call Permission Template') }}</flux:button>
+                                        <flux:button size="xs" wire:click="confirmCreateCallPermissionTemplate('{{ $source->id }}')">{{ __('Create Call Permission Template') }}</flux:button>
                                     </flux:tooltip>
                                     <flux:tooltip content="{{ __('Deletes it from Meta so a replacement with different wording can be created — breaks Outbound Calling permission requests on this source until a replacement is approved.') }}">
                                         <flux:button size="xs" variant="danger" icon="trash" wire:click="confirmDeleteCallPermissionTemplate('{{ $source->id }}')" :aria-label="__('Delete call permission template')" />
@@ -548,6 +548,59 @@
         confirm-action="deleteCallPermissionTemplateConfirmed"
         :confirm-label="__('Delete')"
     />
+
+    {{-- Literal adjacent {{ / }} anywhere in this file's raw source gets
+    misparsed as a Blade echo, even inside a quoted PHP string (confirmed
+    elsewhere in this same file — see the openBraces/closeBraces JS
+    workaround above) — placeholderDescription is built from non-adjacent
+    pieces for the same reason, not written inline below. --}}
+    @php
+        $openBrace = '{';
+        $closeBrace = '}';
+        $placeholderDescription = __('Must keep exactly one :p1 (the lead\'s name) and one :p2 (the lead\'s inquiry) — you can edit the surrounding wording freely.', [
+            'p1' => $openBrace.$openBrace.'1'.$closeBrace.$closeBrace,
+            'p2' => $openBrace.$openBrace.'2'.$closeBrace.$closeBrace,
+        ]);
+    @endphp
+
+    <flux:modal wire:model.self="showCreateCallPermissionTemplateModal" :dismissible="false" class="md:w-[32rem]">
+        <form wire:submit="saveCallPermissionTemplate" class="flex flex-col gap-4">
+            <flux:heading size="lg">{{ __('Create Call Permission Template') }}</flux:heading>
+            <flux:text variant="subtle">
+                {{ __('Submitted directly to Meta for approval. The template name and language are fixed (:name / :language) and can\'t be changed here — Outbound Calling looks this template up by that exact name and language when actually sending it.', [
+                    'name' => config('calling.call_permission_request_template')['name'],
+                    'language' => config('calling.call_permission_request_template')['language'],
+                ]) }}
+            </flux:text>
+
+            <div>
+                <flux:textarea
+                    wire:model="callPermissionTemplateBody"
+                    :label="__('Message Body')"
+                    :description="$placeholderDescription"
+                    rows="4"
+                    required
+                />
+                @error('callPermissionTemplateBody') <flux:text size="sm" class="text-red-600 dark:text-red-400">{{ $message }}</flux:text> @enderror
+            </div>
+
+            <div>
+                <flux:input
+                    wire:model="callPermissionTemplateFooter"
+                    :label="__('Footer')"
+                    :description="__('Meta\'s hard limit: 60 characters.')"
+                    maxlength="60"
+                    required
+                />
+                @error('callPermissionTemplateFooter') <flux:text size="sm" class="text-red-600 dark:text-red-400">{{ $message }}</flux:text> @enderror
+            </div>
+
+            <div class="flex justify-end gap-2">
+                <flux:button type="button" wire:click="$set('showCreateCallPermissionTemplateModal', false)">{{ __('Cancel') }}</flux:button>
+                <flux:button type="submit" variant="primary">{{ __('Submit to Meta') }}</flux:button>
+            </div>
+        </form>
+    </flux:modal>
 
     <x-confirm-modal
         wire:model.self="showRemoveStatusModal"

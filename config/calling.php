@@ -299,15 +299,20 @@ return [
     | Active, when this was built: real Meta test-number validation is still
     | pending and not claimed here.
     |
-    | body/footer are only used by App\Actions\Platform\
-    | CreateCallPermissionRequestTemplate — Platform Admin's one-click
-    | "Create Call Permission Template" button on a WhatsApp source (Lead
-    | Sources page), added after a real production gap: this template is
-    | per-WABA, so every tenant needs their own copy actually created and
-    | approved on Meta's side before RequestLeadCallPermission can ever
-    | succeed for them — nothing creates it automatically. Footer has
+    | body/footer are only the PRE-FILLED DEFAULTS Platform Admin's "Create
+    | Call Permission Template" form (Lead Sources page, WhatsApp source —
+    | see Platform\Clients\LeadSources::confirmCreateCallPermissionTemplate()/
+    | saveCallPermissionTemplate()) starts from — the admin can edit both
+    | before submitting, since Meta doesn't care what the wording says
+    | (unlike name/language above, which MUST stay fixed — see
+    | App\Actions\Platform\CreateCallPermissionRequestTemplate's own
+    | docblock for why). Added after a real production gap: this template
+    | is per-WABA, so every tenant needs their own copy actually created
+    | and approved on Meta's side before RequestLeadCallPermission can
+    | ever succeed for them — nothing creates it automatically. Footer has
     | Meta's own hard 60-character limit (confirmed live: a longer footer
-    | is rejected outright, not truncated).
+    | is rejected outright, not truncated) — kept as the submitted default
+    | specifically because it already fits.
     |
     */
 

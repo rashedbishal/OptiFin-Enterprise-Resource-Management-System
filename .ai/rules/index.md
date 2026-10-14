@@ -55,6 +55,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Events/UserNotified.php,app/Listeners/BroadcastUserNotification.php,app/Livewire/Tenant/NotificationBell.php | .ai/rules/tenant.md |
 | resources/css/themes/** | .ai/rules/themes.md |
 | app/{Models/LeadSource.php,Models/Role.php,Policies/LeadPolicy.php,Policies/LeadSourcePolicy.php,Services/CallRouter.php,Listeners/SendNewLeadNotification.php,Livewire/Tenant/LeadSources/Index.php,Livewire/Tenant/Leads/Concerns/FiltersLeadsQuery.php,Livewire/Tenant/Users/Index.php} | .ai/rules/users.md |
+| app/{Actions/Platform/CreateCallPermissionRequestTemplate.php,Livewire/Platform/Clients/LeadSources.php},resources/views/livewire/platform/clients/lead-sources.blade.php | .ai/rules/views-livewire-platform-clients.md |
 | app/Livewire/Tenant/Leads/Show.php,resources/views/livewire/tenant/leads/partials/status-assignment-form.blade.php | .ai/rules/views-livewire-tenant-leads-partials.md |
 | app/Livewire/Tenant/Leads/SourceLeads.php,resources/views/livewire/tenant/leads/source-leads.blade.php | .ai/rules/views-livewire-tenant-leads.md |
 | app/Livewire/Tenant/Leads/Index.php,resources/views/livewire/tenant/leads.blade.php | .ai/rules/views-livewire-tenant.md |
