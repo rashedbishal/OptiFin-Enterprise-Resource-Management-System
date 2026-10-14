@@ -60,8 +60,8 @@ test('sends the template and marks the row Requested when Meta live-allows it', 
         && $r->method() === 'POST'
         && $r['to'] === Wa::CALLER
         && $r['type'] === 'template'
-        && $r['template']['name'] === 'call_permission_request'
-        && $r['template']['language']['code'] === 'en'
+        && $r['template']['name'] === config('calling.call_permission_request_template')['name']
+        && $r['template']['language']['code'] === config('calling.call_permission_request_template')['language']
         && $r['template']['components'][0]['type'] === 'call_permission_request');
 
     $row = LeadCallPermission::where('lead_id', $x['lead']->id)->sole();

@@ -328,10 +328,25 @@ return [
     | submits; this default must satisfy the same rule for the same
     | reason, since it's what a brand-new form starts from.
     |
+    | `name` was bumped to _v2 after a real Meta platform behavior
+    | discovered live, 2026-10-14: deleting a WhatsApp template does NOT
+    | free up its (name, language) for immediate reuse — Meta locks that
+    | exact pair for roughly 30 days ("New English content can't be added
+    | while the existing English content is being deleted. Try again in
+    | 4 weeks or consider creating a new message template."). The
+    | original `call_permission_request`/en was deleted (after an earlier
+    | version of this template was mistakenly approved with zero {{n}}
+    | placeholders — see the body/footer comment above) and is now
+    | locked until roughly mid-November 2026 — don't reuse that name
+    | before then. If you ever need to delete-and-replace again, bump
+    | this suffix (_v3, ...) rather than waiting out the lock — see
+    | DeleteCallPermissionRequestTemplate's own docblock, which now warns
+    | about this instead of claiming an immediate replacement is possible.
+    |
     */
 
     'call_permission_request_template' => [
-        'name' => env('CALLING_PERMISSION_REQUEST_TEMPLATE_NAME', 'call_permission_request'),
+        'name' => env('CALLING_PERMISSION_REQUEST_TEMPLATE_NAME', 'call_permission_request_v2'),
         'language' => env('CALLING_PERMISSION_REQUEST_TEMPLATE_LANGUAGE', 'en'),
         'body' => env('CALLING_PERMISSION_REQUEST_TEMPLATE_BODY', 'Hi {{1}}, we would like to call you to discuss your inquiry about {{2}}. Do you give us permission to call you on WhatsApp?'),
         'footer' => env('CALLING_PERMISSION_REQUEST_TEMPLATE_FOOTER', 'You can change call permissions anytime in your profile.'),

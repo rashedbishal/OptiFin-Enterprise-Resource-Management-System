@@ -544,7 +544,7 @@
     <x-confirm-modal
         wire:model.self="showDeleteCallPermissionTemplateModal"
         :title="__('Delete the call permission template?')"
-        :description="__('This removes it from Meta as well — Outbound Calling permission requests on this source will fail until a replacement is created and approved.')"
+        :description="__('This removes it from Meta as well — Outbound Calling permission requests on this source will fail until a replacement is created and approved. Meta also locks this exact template name for about 30 days afterward, so a replacement can\'t reuse it right away — change the configured template name first if you need one immediately.')"
         confirm-action="deleteCallPermissionTemplateConfirmed"
         :confirm-label="__('Delete')"
     />

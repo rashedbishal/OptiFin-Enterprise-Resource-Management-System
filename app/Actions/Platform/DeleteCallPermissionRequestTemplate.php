@@ -26,6 +26,18 @@ use Illuminate\Support\Facades\Log;
  * (same "stays safely re-runnable" reasoning as
  * DeleteMessengerMessageTemplate) — clicking Delete when nothing exists
  * just confirms there's nothing to delete rather than erroring.
+ *
+ * UNLIKE Messenger templates, deleting this does NOT free up its (name,
+ * language) for immediate reuse — confirmed live, 2026-10-14: Meta locks
+ * that exact pair for roughly 30 days after a delete ("New English
+ * content can't be added while the existing English content is being
+ * deleted. Try again in 4 weeks or consider creating a new message
+ * template."). A Create attempt under the same name during that window
+ * fails outright, even though nothing currently exists by that name. The
+ * success message below reflects this — it deliberately does NOT claim
+ * an immediate replacement is possible. If one is needed right away, bump
+ * config('calling.call_permission_request_template')['name'] to a new
+ * value (e.g. the next _vN suffix) instead of waiting out the lock.
  */
 class DeleteCallPermissionRequestTemplate
 {
@@ -66,7 +78,7 @@ class DeleteCallPermissionRequestTemplate
 
         $this->log($actor, $source, $alreadyGone ? 'deleted_already_gone' : 'deleted', ['name' => $name]);
 
-        return new MessengerTemplateActionResult('success', __('Call permission template deleted — you can create a replacement now.'));
+        return new MessengerTemplateActionResult('success', __('Call permission template deleted. Meta locks this exact name for about 30 days afterward — to submit a replacement now, change the configured template name to a new value first.'));
     }
 
     private function graphVersion(): string
