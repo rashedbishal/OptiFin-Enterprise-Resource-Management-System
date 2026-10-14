@@ -51,6 +51,7 @@ test('switching types replaces the config keys with the new type\'s own set', fu
             'access_token' => null,
             'verify_token' => null,
             'app_secret' => null,
+            'whatsapp_business_account_id' => null,
         ]);
 });
 

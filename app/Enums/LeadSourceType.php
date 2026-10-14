@@ -113,6 +113,7 @@ enum LeadSourceType: string
                 ['key' => 'access_token', 'label' => 'Access Token', 'type' => 'password', 'sensitive' => true],
                 ['key' => 'verify_token', 'label' => 'Verify Token', 'type' => 'password', 'sensitive' => true],
                 ['key' => 'app_secret', 'label' => 'App Secret (enables webhook signature verification)', 'type' => 'password', 'sensitive' => true],
+                ['key' => 'whatsapp_business_account_id', 'label' => 'WhatsApp Business Account ID (enables automatic webhook subscription on Test Connection)', 'type' => 'text', 'sensitive' => false],
             ],
             self::Instagram => [
                 ['key' => 'auth_mode', 'label' => 'Login Via', 'type' => 'select', 'sensitive' => false, 'options' => [
@@ -220,6 +221,7 @@ enum LeadSourceType: string
                 'config.access_token' => [$sensitiveRule, 'string'],
                 'config.verify_token' => [$sensitiveRule, 'string'],
                 'config.app_secret' => ['nullable', 'string'],
+                'config.whatsapp_business_account_id' => ['nullable', 'string', 'max:255'],
             ],
             self::Instagram => [
                 'config.auth_mode' => ['required', 'in:facebook,instagram'],

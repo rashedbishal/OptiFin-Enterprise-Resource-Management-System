@@ -129,7 +129,7 @@ test('testing a facebook source with an invalid token reports failure', function
         ->assertDispatched('toast-show', fn ($name, $params) => $params['dataset']['variant'] === 'danger');
 });
 
-test('testing a whatsapp source with a valid token reports success', function () {
+test('testing a whatsapp source without a waba id reports success but notes auto-subscription is unavailable', function () {
     Http::fake(['graph.facebook.com/*' => Http::response(['display_phone_number' => '+1 555-0100', 'verified_name' => 'Acme'])]);
 
     $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
@@ -143,7 +143,71 @@ test('testing a whatsapp source with a valid token reports success', function ()
     Livewire::actingAs($motherAdmin, 'platform')
         ->test(LeadSources::class, ['tenant' => $tenant])
         ->call('testConnection', $source->id)
-        ->assertDispatched('toast-show', fn ($name, $params) => $params['dataset']['variant'] === 'success');
+        ->assertDispatched('toast-show', fn ($name, $params) => $params['dataset']['variant'] === 'success'
+            && str_contains($params['slots']['text'], 'WhatsApp Business Account ID'));
+
+    Http::assertNotSent(fn ($request) => str_contains($request->url(), 'subscribed_apps'));
+});
+
+test('testing a whatsapp source with a waba id also subscribes the app and reports success', function () {
+    // Reproduces a real production failure: a verified Callback URL with
+    // subscribed webhook fields is NOT enough for WhatsApp — Meta also
+    // requires an explicit POST /{waba-id}/subscribed_apps call, confirmed
+    // live via GET /{waba-id}/subscribed_apps returning an empty list
+    // despite a successful webhook verification handshake.
+    Http::fake([
+        'graph.facebook.com/999/subscribed_apps*' => Http::response(['success' => true]),
+        'graph.facebook.com/456*' => Http::response(['display_phone_number' => '+1 555-0100', 'verified_name' => 'Acme']),
+    ]);
+
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+    $tenant = Tenant::factory()->create();
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => [
+            'phone_number_id' => '456',
+            'access_token' => 'valid-token',
+            'verify_token' => 'secret',
+            'whatsapp_business_account_id' => '999',
+        ],
+    ]);
+
+    Livewire::actingAs($motherAdmin, 'platform')
+        ->test(LeadSources::class, ['tenant' => $tenant])
+        ->call('testConnection', $source->id)
+        ->assertDispatched('toast-show', fn ($name, $params) => $params['dataset']['variant'] === 'success'
+            && str_contains($params['slots']['text'], 'subscribed the app'));
+
+    Http::assertSent(fn ($request) => $request->url() === 'https://graph.facebook.com/999/subscribed_apps'
+        && $request->method() === 'POST'
+        && $request['access_token'] === 'valid-token');
+});
+
+test('testing a whatsapp source whose waba subscription fails reports failure', function () {
+    Http::fake([
+        'graph.facebook.com/999/subscribed_apps*' => Http::response(['error' => ['message' => 'Insufficient permission.']], 400),
+        'graph.facebook.com/456*' => Http::response(['display_phone_number' => '+1 555-0100', 'verified_name' => 'Acme']),
+    ]);
+
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+    $tenant = Tenant::factory()->create();
+    $source = LeadSource::factory()->create([
+        'tenant_id' => $tenant->id,
+        'type' => LeadSourceType::Whatsapp,
+        'config' => [
+            'phone_number_id' => '456',
+            'access_token' => 'valid-token',
+            'verify_token' => 'secret',
+            'whatsapp_business_account_id' => '999',
+        ],
+    ]);
+
+    Livewire::actingAs($motherAdmin, 'platform')
+        ->test(LeadSources::class, ['tenant' => $tenant])
+        ->call('testConnection', $source->id)
+        ->assertDispatched('toast-show', fn ($name, $params) => $params['dataset']['variant'] === 'danger'
+            && str_contains($params['slots']['text'], 'Insufficient permission.'));
 });
 
 test('testing an instagram source authenticated via facebook with a valid token reports success', function () {

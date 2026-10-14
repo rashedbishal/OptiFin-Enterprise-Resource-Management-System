@@ -1259,6 +1259,25 @@ class LeadSources extends Component
     }
 
     /**
+     * A verified Callback URL + subscribed webhook fields in Meta's App
+     * Dashboard is NOT enough on its own for WhatsApp — confirmed live in
+     * production (2026-10-14): Meta also requires the app to be explicitly
+     * subscribed to the WhatsApp Business Account itself via
+     * `POST /{waba-id}/subscribed_apps`, the WhatsApp Cloud API's own
+     * equivalent of subscribeFacebookPageToApp() below (which Messenger
+     * Pages already get automatically here). Without it, a webhook can
+     * pass Meta's verification handshake (GET, 200) and still never
+     * receive a single real event — `GET /{waba-id}/subscribed_apps`
+     * returning an empty `data` array is the definitive way to tell the
+     * two apart; a non-empty-but-wrong list or a verification failure
+     * look identical from the admin's side otherwise.
+     *
+     * whatsapp_business_account_id is deliberately optional (same
+     * backward-compatible, opt-in pattern as app_secret above) — a
+     * WhatsApp source saved before this field existed, or one an admin
+     * hasn't filled in yet, still gets a successful phone-number/token
+     * check; it just can't also auto-subscribe until the WABA ID is set.
+     *
      * @return array{success: bool, message: string}
      */
     private function testWhatsappConnection(LeadSource $source): array
@@ -1266,6 +1285,7 @@ class LeadSources extends Component
         $config = $source->config ?? [];
         $phoneNumberId = $config['phone_number_id'] ?? null;
         $accessToken = $config['access_token'] ?? null;
+        $wabaId = $config['whatsapp_business_account_id'] ?? null;
 
         if (! $phoneNumberId || ! $accessToken) {
             return ['success' => false, 'message' => __('Phone Number ID and Access Token must both be set.')];
@@ -1286,9 +1306,55 @@ class LeadSources extends Component
             ])];
         }
 
-        return ['success' => true, 'message' => __('Connected to WhatsApp number ":name" successfully.', [
-            'name' => $response->json('display_phone_number') ?? $response->json('verified_name') ?? $phoneNumberId,
+        $displayName = $response->json('display_phone_number') ?? $response->json('verified_name') ?? $phoneNumberId;
+
+        if (! $wabaId) {
+            return ['success' => true, 'message' => __('Connected to WhatsApp number ":name" successfully. Add the WhatsApp Business Account ID above to also auto-subscribe this app to receive messages — without it, the webhook can verify successfully but never actually receive one.', [
+                'name' => $displayName,
+            ])];
+        }
+
+        $subscription = $this->subscribeWhatsAppWabaToApp($wabaId, $accessToken);
+
+        if (! $subscription['success']) {
+            return ['success' => false, 'message' => __('Connected to WhatsApp number ":name", but subscribing the app to receive messages failed: :error', [
+                'name' => $displayName,
+                'error' => $subscription['error'],
+            ])];
+        }
+
+        return ['success' => true, 'message' => __('Connected to WhatsApp number ":name" and subscribed the app to receive messages.', [
+            'name' => $displayName,
         ])];
+    }
+
+    /**
+     * Subscribe this app to the given WhatsApp Business Account's webhook
+     * events via `POST /{waba-id}/subscribed_apps` — see
+     * testWhatsappConnection()'s own docblock for why this is required and
+     * not implied by a verified Callback URL alone. Unlike
+     * subscribeFacebookPageToApp() below, this call takes no
+     * `subscribed_fields` parameter — WhatsApp has no per-field
+     * subscription at this endpoint, only the App Dashboard's own Webhook
+     * fields checkboxes (e.g. `messages`) control that.
+     *
+     * @return array{success: bool, error: ?string}
+     */
+    private function subscribeWhatsAppWabaToApp(string $wabaId, string $accessToken): array
+    {
+        try {
+            $response = Http::asForm()->timeout(10)->post("https://graph.facebook.com/{$wabaId}/subscribed_apps", [
+                'access_token' => $accessToken,
+            ]);
+        } catch (ConnectionException) {
+            return ['success' => false, 'error' => __('Could not reach the Facebook Graph API.')];
+        }
+
+        if (! $response->successful() || $response->json('success') !== true) {
+            return ['success' => false, 'error' => $response->json('error.message') ?? __('unknown error')];
+        }
+
+        return ['success' => true, 'error' => null];
     }
 
     /**
