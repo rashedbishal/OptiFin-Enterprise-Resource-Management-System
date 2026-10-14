@@ -94,7 +94,7 @@ test('sends under this source\'s own stored template name, not the global defaul
         && $r['template']['name'] === 'call_permission_request_v4');
 });
 
-test('the body component carries exactly the lead name and the lead message, never Meta\'s example values', function () {
+test('the template send carries exactly one component — call_permission_request — never a body, regardless of the lead\'s name/message', function () {
     $x = rlcpScenario(['name' => 'Grace Hopper', 'message' => 'Interested in a WhatsApp calling demo.']);
     Http::fake([
         '*/call_permissions*' => Http::response(rlcpAllowed(true)),
@@ -110,85 +110,29 @@ test('the body component carries exactly the lead name and the lead message, nev
 
         $components = $r['template']['components'];
 
-        expect($components)->toHaveCount(2);
+        expect($components)->toHaveCount(1);
         expect($components[0])->toBe(['type' => 'call_permission_request']);
 
-        $body = $components[1];
-        expect($body['type'])->toBe('body');
-        expect($body['parameters'])->toHaveCount(2);
-        expect($body['parameters'][0])->toBe(['type' => 'text', 'text' => 'Grace Hopper']);
-        expect($body['parameters'][1])->toBe(['type' => 'text', 'text' => 'Interested in a WhatsApp calling demo.']);
-
-        $json = json_encode($body);
-        expect($json)->not->toContain('John')->not->toContain('your inquiry');
+        $json = json_encode($r['template']);
+        expect($json)->not->toContain('Grace Hopper')->not->toContain('calling demo');
 
         return true;
     });
 });
 
-test('a multiline inquiry is sanitized for Meta, but Lead::message stays byte-for-byte unchanged in the database', function () {
-    $original = "Hello\nHi\n1234\nHello\n0099889\n11223\nHello brother";
-    $x = rlcpScenario(['name' => 'Rashed Bishal', 'message' => $original]);
+test('a lead with no message text can still successfully receive a call permission request — the approved template sends no personalized body', function (?string $message) {
+    $x = rlcpScenario(['message' => $message]);
     Http::fake([
         '*/call_permissions*' => Http::response(rlcpAllowed(true)),
-        '*/messages' => Http::response(['messages' => [['id' => 'wamid.PERM-3']]]),
+        '*/messages' => Http::response(['messages' => [['id' => 'wamid.PERM-NOMSG']]]),
     ]);
 
     $result = app(RequestLeadCallPermission::class)->handle($x['lead'], $x['source']);
 
     expect($result->sent)->toBeTrue();
-    expect($x['lead']->fresh()->message)->toBe($original);
+    Http::assertSent(fn (Request $r) => $r->url() === RLCP_MESSAGES_URL);
 
-    Http::assertSent(function (Request $r) {
-        if ($r->url() !== RLCP_MESSAGES_URL) {
-            return false;
-        }
-
-        $params = $r['template']['components'][1]['parameters'];
-
-        expect($params[0])->toBe(['type' => 'text', 'text' => 'Rashed Bishal']);
-        expect($params[1])->toBe(['type' => 'text', 'text' => 'Hello Hi 1234 Hello 0099889 11223 Hello brother']);
-
-        return true;
-    });
-});
-
-test('CRLF, tabs and excessive spaces are all sanitized before being sent to Meta', function () {
-    $x = rlcpScenario(['message' => "Hi\r\nthere\tfriend    please    call"]);
-    Http::fake([
-        '*/call_permissions*' => Http::response(rlcpAllowed(true)),
-        '*/messages' => Http::response(['messages' => [['id' => 'wamid.PERM-4']]]),
-    ]);
-
-    app(RequestLeadCallPermission::class)->handle($x['lead'], $x['source']);
-
-    Http::assertSent(function (Request $r) {
-        if ($r->url() !== RLCP_MESSAGES_URL) {
-            return false;
-        }
-
-        $text = $r['template']['components'][1]['parameters'][1]['text'];
-
-        expect($text)
-            ->not->toContain("\r")
-            ->not->toContain("\n")
-            ->not->toContain("\t")
-            ->not->toMatch('/ {2,}/');
-
-        return true;
-    });
-});
-
-test('a lead with no message is refused before any Meta call, including the live permission check', function (?string $message) {
-    $x = rlcpScenario(['message' => $message]);
-    Http::fake(['*' => Http::response(['error' => ['message' => 'should never be called']], 500)]);
-
-    $result = app(RequestLeadCallPermission::class)->handle($x['lead'], $x['source']);
-
-    expect($result->sent)->toBeFalse();
-    expect($result->refusalReason)->toBe('lead_message_required');
-    Http::assertNothingSent();
-    expect(LeadCallPermission::where('lead_id', $x['lead']->id)->count())->toBe(0);
+    expect(LeadCallPermission::where('lead_id', $x['lead']->id)->sole()->status)->toBe(LeadCallPermissionStatus::Requested);
 })->with([null, '', '   ', "\n\t"]);
 
 test('refuses without sending anything when Meta live-reports can_perform_action false', function () {

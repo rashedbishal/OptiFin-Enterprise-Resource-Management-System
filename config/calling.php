@@ -290,65 +290,46 @@ return [
     |
     | call_permission_request_template: the approved WhatsApp Business
     | template (Meta Business Manager, per WABA) used to ask a consumer for
-    | call permission. name/language and the body's two variables (lead
-    | name, lead inquiry) are the confirmed, approved contract; the
-    | `call_permission_request` component itself remains
-    | `{"type": "call_permission_request"}` with no further fields, since
-    | Meta's public documentation does not confirm any more than that shape
-    | — see RequestLeadCallPermission. The template was In Review, not yet
-    | Active, when this was built: real Meta test-number validation is still
-    | pending and not claimed here.
+    | call permission. The `call_permission_request` component itself
+    | remains `{"type": "call_permission_request"}` with no further
+    | fields, since Meta's public documentation does not confirm any more
+    | than that shape — see RequestLeadCallPermission.
     |
-    | body/footer are only the PRE-FILLED DEFAULTS Platform Admin's "Create
-    | Call Permission Template" form (Lead Sources page, WhatsApp source —
-    | see Platform\Clients\LeadSources::confirmCreateCallPermissionTemplate()/
-    | saveCallPermissionTemplate()) starts from — the admin can edit both
-    | before submitting, since Meta doesn't care what the wording says
-    | (unlike name/language above, which MUST stay fixed — see
-    | App\Actions\Platform\CreateCallPermissionRequestTemplate's own
-    | docblock for why). Added after a real production gap: this template
-    | is per-WABA, so every tenant needs their own copy actually created
-    | and approved on Meta's side before RequestLeadCallPermission can
-    | ever succeed for them — nothing creates it automatically. Footer has
-    | Meta's own hard 60-character limit (confirmed live: a longer footer
-    | is rejected outright, not truncated) — kept as the submitted default
-    | specifically because it already fits.
+    | REVERSED 2026-10-14 after a real, live finding: this template was
+    | originally built with two body variables ({{1}} lead name, {{2}}
+    | lead inquiry) — but a real Meta content review REJECTED that
+    | version outright, while the byte-for-byte-identical-except-static
+    | wording below was APPROVED on its very first submission. Meta's
+    | review for this specific, specialized `call_permission_request`
+    | component type appears to reject a personalized body, even though
+    | the Cloud API's generic template-parameter mechanism would
+    | otherwise allow one. The body/footer below — and anything an admin
+    | submits via Platform\Clients\LeadSources::saveCallPermissionTemplate()
+    | — MUST now contain NEITHER {{1}} NOR {{2}} NOR any other {{n}}
+    | placeholder; RequestLeadCallPermission::sendTemplate() sends no
+    | `body` component at all when actually using the template, matching
+    | this static shape. Footer keeps Meta's own hard 60-character limit
+    | (confirmed live: a longer footer is rejected outright, not
+    | truncated).
     |
-    | The default `body` MUST keep exactly one {{1}} and one {{2}} —
-    | RequestLeadCallPermission::sendTemplate() always sends exactly those
-    | two text parameters (lead name, lead inquiry) when the approved
-    | template is actually used, REGARDLESS of what its own body text
-    | says. A body approved with a different variable count (confirmed
-    | live, 2026-10-14: a body with zero {{n}} placeholders got through
-    | Meta's own, much looser review and was APPROVED) silently fails the
-    | first time it's actually sent — Meta rejects a parameter-count
-    | mismatch at send time, not at template-approval time. The Livewire
-    | form's own validation (Platform\Clients\LeadSources::
-    | saveCallPermissionTemplate()) enforces this for anything the admin
-    | submits; this default must satisfy the same rule for the same
-    | reason, since it's what a brand-new form starts from.
-    |
-    | `name` was bumped to _v2 after a real Meta platform behavior
-    | discovered live, 2026-10-14: deleting a WhatsApp template does NOT
-    | free up its (name, language) for immediate reuse — Meta locks that
-    | exact pair for roughly 30 days ("New English content can't be added
-    | while the existing English content is being deleted. Try again in
-    | 4 weeks or consider creating a new message template."). The
-    | original `call_permission_request`/en was deleted (after an earlier
-    | version of this template was mistakenly approved with zero {{n}}
-    | placeholders — see the body/footer comment above) and is now
-    | locked until roughly mid-November 2026 — don't reuse that name
-    | before then. If you ever need to delete-and-replace again, bump
-    | this suffix (_v3, ...) rather than waiting out the lock — see
-    | DeleteCallPermissionRequestTemplate's own docblock, which now warns
-    | about this instead of claiming an immediate replacement is possible.
+    | `name` is bumped to a fresh _vN suffix (see
+    | App\Actions\Platform\CreateCallPermissionRequestTemplate::
+    | nextTemplateName()) every time a delete succeeds, or a create comes
+    | back REJECTED — both cases leave Meta's side unable to accept that
+    | exact name again for a while (the REJECTED-content case triggers
+    | the same ~30-day name lock as a real delete, since Create cleans up
+    | the rejected object via its own delete call). This default is the
+    | GLOBAL fallback for a source that has never had its own name stored
+    | yet — see CreateCallPermissionRequestTemplate::resolveTemplateName()
+    | — not the current name for every tenant; each source tracks and
+    | advances its own independently.
     |
     */
 
     'call_permission_request_template' => [
         'name' => env('CALLING_PERMISSION_REQUEST_TEMPLATE_NAME', 'call_permission_request_v2'),
         'language' => env('CALLING_PERMISSION_REQUEST_TEMPLATE_LANGUAGE', 'en'),
-        'body' => env('CALLING_PERMISSION_REQUEST_TEMPLATE_BODY', 'Hi {{1}}, we would like to call you to discuss your inquiry about {{2}}. Do you give us permission to call you on WhatsApp?'),
+        'body' => env('CALLING_PERMISSION_REQUEST_TEMPLATE_BODY', 'We would like to call you to discuss your inquiry. Do you give us permission to call you on WhatsApp?'),
         'footer' => env('CALLING_PERMISSION_REQUEST_TEMPLATE_FOOTER', 'You can change call permissions anytime in your profile.'),
     ],
 

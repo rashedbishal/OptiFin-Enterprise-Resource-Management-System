@@ -909,14 +909,15 @@ class LeadSources extends Component
     }
 
     /**
-     * The body MUST contain exactly one {{1}} and exactly one {{2}}, and
-     * no other {{n}} placeholder — RequestLeadCallPermission::
-     * sendTemplate() always sends exactly those two parameters (lead
-     * name, lead inquiry) when this template is actually used later. A
-     * body approved with any other variable shape would pass Meta's
-     * review here and then silently fail every real send afterward, so
-     * this is enforced before the Graph API call is ever made, not left
-     * for Meta's own (much looser) content review to catch.
+     * The body must contain NO {{n}} placeholder at all — flipped
+     * 2026-10-14 from the opposite rule (exactly {{1}}/{{2}} required)
+     * after a real Meta content review REJECTED a personalized version
+     * of this exact template while an otherwise-identical static one was
+     * APPROVED on its first submission (see CreateCallPermissionRequestTemplate's
+     * own docblock). RequestLeadCallPermission::sendTemplate() no longer
+     * sends a `body` component at all when actually using the template,
+     * so any {{n}} in the approved text would be permanently unfillable.
+     * Enforced here, before the Graph API call is ever made.
      */
     public function saveCallPermissionTemplate(): void
     {
@@ -924,16 +925,8 @@ class LeadSources extends Component
             'callPermissionTemplateBody' => [
                 'required', 'string', 'max:1024',
                 function (string $attribute, mixed $value, Closure $fail): void {
-                    if (substr_count($value, '{{1}}') !== 1 || substr_count($value, '{{2}}') !== 1) {
-                        $fail(__('The body must contain exactly one {{1}} and one {{2}} placeholder.'));
-
-                        return;
-                    }
-
-                    preg_match_all('/\{\{(\d+)\}\}/', $value, $matches);
-
-                    if (array_diff($matches[1], ['1', '2']) !== []) {
-                        $fail(__('The body can only use the {{1}} and {{2}} placeholders — no others.'));
+                    if (preg_match('/\{\{\d+\}\}/', $value) === 1) {
+                        $fail(__('The body can\'t contain any {{n}} placeholder — Meta rejects a personalized version of this specific template.'));
                     }
                 },
             ],

@@ -79,7 +79,7 @@ class DeleteCallPermissionRequestTemplate
             return new MessengerTemplateActionResult('danger', $response->json('error.message') ?? __('Meta could not delete this template.'));
         }
 
-        $nextName = $this->nextTemplateName($name);
+        $nextName = CreateCallPermissionRequestTemplate::nextTemplateName($name);
         $source->update(['config' => array_merge($config, [CreateCallPermissionRequestTemplate::TEMPLATE_NAME_CONFIG_KEY => $nextName])]);
 
         $this->log($actor, $source, $alreadyGone ? 'deleted_already_gone' : 'deleted', ['name' => $name, 'next_name' => $nextName]);
@@ -88,21 +88,6 @@ class DeleteCallPermissionRequestTemplate
             'name' => $name,
             'next' => $nextName,
         ]));
-    }
-
-    /**
-     * "foo" -> "foo_v2"; "foo_v2" -> "foo_v3"; "foo_v9" -> "foo_v10" — the
-     * same scheme already used to recover live, 2026-10-14
-     * (call_permission_request -> call_permission_request_v2), just
-     * applied automatically from here on instead of by hand.
-     */
-    private function nextTemplateName(string $current): string
-    {
-        if (preg_match('/^(.*)_v(\d+)$/', $current, $matches) === 1) {
-            return $matches[1].'_v'.((int) $matches[2] + 1);
-        }
-
-        return $current.'_v2';
     }
 
     private function graphVersion(): string

@@ -10,6 +10,7 @@ use App\Support\MessengerTemplateActionResult;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Creates the one, specific WhatsApp message template App\Actions\Tenant\
@@ -31,16 +32,18 @@ use Illuminate\Support\Facades\Log;
  * the one that actually bumps this key after a successful delete).
  *
  * bodyText/footerText ARE admin-provided (see Platform\Clients\
- * LeadSources::saveCallPermissionTemplate()'s own validation) — Meta
- * doesn't care what the wording says, only that the body contains
- * exactly the two placeholders {{1}} (lead name) and {{2}} (lead
- * inquiry) RequestLeadCallPermission::sendTemplate() always sends, in
- * that exact shape. A body approved with a different variable count
- * would pass Meta's review and then silently fail every real send
- * afterward — this action's caller is responsible for that validation,
- * not this action itself (same separation as every other Platform Action
- * in this app: Gate/shape checks happen once, here, but field-level
- * content validation belongs to the Livewire component's own validate()).
+ * LeadSources::saveCallPermissionTemplate()'s own validation) — but MUST
+ * be STATIC, containing neither {{1}} nor {{2}} nor any other {{n}}
+ * placeholder. This was originally built the opposite way (body required
+ * exactly {{1}}/{{2}} for the lead's name/inquiry), but a real, live Meta
+ * content review REJECTED that version (confirmed 2026-10-14) while the
+ * byte-for-byte-identical-except-static wording was APPROVED on its very
+ * first submission — Meta's review for this specific, specialized
+ * `call_permission_request` component type appears to reject a
+ * personalized body outright, even though the Cloud API's generic
+ * template-parameter mechanism would otherwise allow one. See
+ * RequestLeadCallPermission::sendTemplate()'s own docblock for the other
+ * half of this: it no longer sends a `body` component at all.
  *
  * Confirmed live in production (2026-10-14): a missing/unapproved
  * template is exactly what makes RequestLeadCallPermission fail with
@@ -49,17 +52,22 @@ use Illuminate\Support\Facades\Log;
  * automatically, so Platform Admin gets a dedicated form for it on the
  * Lead Sources page.
  *
- * Unlike Messenger Utility templates (instant approve/reject, see
- * CreateMessengerMessageTemplate), WhatsApp template review is
- * asynchronous — a successful create response here only ever means
- * "submitted," reported via Meta's own `status` (normally PENDING);
- * approval/rejection happens later, outside this request. No local
- * catalog row is written for the template's CONTENT — nothing in this
- * app tracks WhatsApp template approval status, matching
+ * Unlike Messenger Utility templates (instant approve/reject at the SAME
+ * fidelity — see CreateMessengerMessageTemplate), WhatsApp template
+ * review is normally asynchronous (PENDING, then approved/rejected hours
+ * later) — but Meta can ALSO reject instantly, in the very same create
+ * response (confirmed live: the personalized-body attempt above came
+ * back `status: REJECTED` synchronously). This action checks for that
+ * explicitly and treats it as a failure, the same as Messenger's own
+ * REJECTED handling — reporting a REJECTED status as "success" (the
+ * original bug here, caught the same day) is actively misleading, not
+ * just inaccurate. A later, asynchronous rejection (hours after a PENDING
+ * response) is NOT caught here — nothing in this app tracks WhatsApp
+ * template approval status after the fact, matching
  * WhatsAppMessageTemplate's existing "self-registered, never
  * Meta-tracked" philosophy. Only the NAME currently in use is tracked
- * (see TEMPLATE_NAME_CONFIG_KEY), and only because sending/deleting
- * later both need to agree on it.
+ * (see TEMPLATE_NAME_CONFIG_KEY), and only because sending/deleting later
+ * both need to agree on it.
  */
 class CreateCallPermissionRequestTemplate
 {
@@ -126,6 +134,32 @@ class CreateCallPermissionRequestTemplate
             return new MessengerTemplateActionResult('danger', $response->json('error.error_user_msg') ?? $response->json('error.message') ?? __('Meta rejected this template.'));
         }
 
+        // A 2xx response only means Meta accepted the SUBMISSION — it can
+        // still report an immediate, synchronous `status: REJECTED` in
+        // this same response (confirmed live, 2026-10-14; see this
+        // class's own docblock). Treat that as a failure, not success —
+        // same reasoning and shape as CreateMessengerMessageTemplate's own
+        // REJECTED handling. Also bump this source's name here, same as a
+        // real Delete does: the rejected object still occupies the name
+        // Meta's side, so the next attempt needs a fresh one regardless of
+        // whether the admin also clicks Delete first.
+        if ($response->json('status') === 'REJECTED') {
+            $metaId = (string) $response->json('id');
+            $reason = $this->fetchRejectedReason($wabaId, $accessToken, $metaId);
+
+            $this->log($actor, $source, 'meta_content_rejected', ['name' => $name, 'meta_id' => $metaId, 'rejected_reason' => $reason]);
+
+            $this->deleteRejectedTemplate($wabaId, $accessToken, $name);
+
+            $nextName = self::nextTemplateName($name);
+            $source->update(['config' => array_merge($config, [self::TEMPLATE_NAME_CONFIG_KEY => $nextName])]);
+
+            return new MessengerTemplateActionResult('danger', __(
+                'Meta rejected this template\'s content (:reason) — it was never approved. The next template you create for this source will automatically use a new name (":next").',
+                ['reason' => $reason ?? __('no reason given'), 'next' => $nextName],
+            ));
+        }
+
         // Persist the exact name just submitted — a no-op write if it was
         // already this source's stored name (the common case), but
         // required the first time a source creates one at all (nothing
@@ -138,6 +172,54 @@ class CreateCallPermissionRequestTemplate
             'name' => $name,
             'status' => $response->json('status') ?? 'unknown',
         ]));
+    }
+
+    /**
+     * Meta's create-template response doesn't include `rejected_reason`
+     * itself, only `status` — this follow-up GET on the template node is
+     * how the WABA's own template manager UI shows the detailed reason
+     * too (same endpoint shape as CreateMessengerMessageTemplate's
+     * identically-named method for Messenger templates). Best-effort:
+     * null (rendered as "no reason given") if this read itself fails,
+     * which must never block reporting the rejection to the admin — Meta
+     * is also known to purge a rejected object entirely sometime after
+     * creation (confirmed live: this returned "does not exist" on a
+     * retry a few hours after the original rejection), so this is a
+     * best-effort courtesy, not a guaranteed lookup.
+     */
+    private function fetchRejectedReason(string $wabaId, string $accessToken, string $templateId): ?string
+    {
+        $response = Http::timeout(15)->get("https://graph.facebook.com/{$this->graphVersion()}/{$templateId}", [
+            'access_token' => $accessToken,
+            'fields' => 'rejected_reason',
+        ]);
+
+        return $response->successful() ? $response->json('rejected_reason') : null;
+    }
+
+    /**
+     * Best-effort cleanup of the rejected template object Meta still
+     * created despite rejecting it — same query-parameter DELETE contract
+     * as DeleteCallPermissionRequestTemplate, and the same "never let a
+     * cleanup failure change the outcome reported to the admin" reasoning
+     * as CreateMessengerMessageTemplate's identically-shaped method. A
+     * leftover rejected object on Meta's side is cosmetic, not a
+     * correctness issue here — this app never references it (no catalog
+     * row was written), and the name has already been bumped regardless
+     * of whether this cleanup succeeds.
+     */
+    private function deleteRejectedTemplate(string $wabaId, string $accessToken, string $name): void
+    {
+        try {
+            Http::timeout(15)
+                ->withQueryParameters(['access_token' => $accessToken, 'name' => $name])
+                ->delete("https://graph.facebook.com/{$this->graphVersion()}/{$wabaId}/message_templates");
+        } catch (Throwable $e) {
+            Log::warning('WHATSAPP CALL PERMISSION TEMPLATE CREATE: failed to clean up a rejected template on Meta', [
+                'name' => $name,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -155,6 +237,21 @@ class CreateCallPermissionRequestTemplate
         return is_string($stored) && $stored !== ''
             ? $stored
             : (string) config('calling.call_permission_request_template')['name'];
+    }
+
+    /**
+     * "foo" -> "foo_v2"; "foo_v2" -> "foo_v3"; "foo_v9" -> "foo_v10" —
+     * shared by this class's own REJECTED cleanup above and
+     * DeleteCallPermissionRequestTemplate's normal delete path, so both
+     * "paths out of a stuck name" advance it the exact same way.
+     */
+    public static function nextTemplateName(string $current): string
+    {
+        if (preg_match('/^(.*)_v(\d+)$/', $current, $matches) === 1) {
+            return $matches[1].'_v'.((int) $matches[2] + 1);
+        }
+
+        return $current.'_v2';
     }
 
     private function graphVersion(): string

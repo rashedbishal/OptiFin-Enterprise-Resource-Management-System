@@ -7,7 +7,6 @@ use App\Enums\LeadCallPermissionStatus;
 use App\Models\Lead;
 use App\Models\LeadCallPermission;
 use App\Models\LeadSource;
-use App\Support\CallTemplateText;
 use App\Support\RequestLeadCallPermissionResult;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Carbon;
@@ -34,20 +33,19 @@ use Throwable;
  * outbound-only `calling.outbound_graph_version`, since this is not the
  * `/calls` connect action.
  *
- * The approved template's body has two variables — {{1}} the lead's name,
- * always present; {{2}} the lead's own inquiry text, `Lead::message`, which
- * is nullable. Per the approved business contract there is no fallback for
- * a blank {{2}}: a lead with no message is refused before any Meta call
- * (including the live permission check) is made at all, never sent with
- * invented or example placeholder text.
- *
- * A real Meta test send confirmed error 132018 — a template text parameter
- * may not contain a newline, a tab, or a run of more than 4 consecutive
- * spaces, none of which the repository's contract could have known ahead of
- * a live call. {{2}} is run through `CallTemplateText::sanitize()`
- * immediately before being sent — `Lead::message` itself (which
- * legitimately accumulates newline-separated follow-up messages, and is
- * rendered with them preserved on the Lead detail page) is never modified.
+ * The approved template's body is STATIC — no {{1}}/{{2}} variables, no
+ * personalization. This was originally built with two variables (lead
+ * name, lead inquiry), but a real, live Meta content review REJECTED that
+ * version (confirmed 2026-10-14) while the identical-except-static wording
+ * was APPROVED on the very first submission — Meta's review for this
+ * specific, specialized `call_permission_request` component type appears
+ * to reject a personalized body, even though the Cloud API's generic
+ * template-parameter mechanism would otherwise allow it. Since there is no
+ * variable to fill with the lead's own inquiry, a lead with no message
+ * text is no longer refused here either (a deliberate product decision,
+ * not just a technical consequence — see CreateCallPermissionRequestTemplate::
+ * saveCallPermissionTemplate() for the matching body-validation flip from
+ * "must contain {{1}}/{{2}}" to "must contain neither").
  */
 class RequestLeadCallPermission
 {
@@ -62,11 +60,6 @@ class RequestLeadCallPermission
         // either round-trip is correctly recognized as newer than this
         // request's own eventual write, never the reverse.
         $observedAt = Carbon::now();
-        $inquiry = trim((string) $lead->message);
-
-        if ($inquiry === '') {
-            return RequestLeadCallPermissionResult::refused('lead_message_required');
-        }
 
         $check = $this->check->handle($lead, $source);
 
@@ -80,7 +73,7 @@ class RequestLeadCallPermission
             return RequestLeadCallPermissionResult::refused('not_allowed', $check);
         }
 
-        $sent = $this->sendTemplate($source, (string) $lead->phone, (string) $lead->name, CallTemplateText::sanitize($inquiry));
+        $sent = $this->sendTemplate($source, (string) $lead->phone);
 
         if (! $sent) {
             return RequestLeadCallPermissionResult::refused('meta_rejected', $check);
@@ -110,13 +103,14 @@ class RequestLeadCallPermission
      * Sends the approved call_permission_request template. The
      * `call_permission_request` component itself stays exactly
      * `{"type": "call_permission_request"}` — Meta's public documentation
-     * does not confirm any further field inside it, so none is added. The
-     * `body` component carries the two approved variables as the standard
-     * Cloud API template-parameter shape (`{"type": "text", "text": ...}`,
-     * unrelated to and predating the calling-specific parts of the
-     * contract), never Meta's own example values ("John", "your inquiry").
+     * does not confirm any further field inside it, so none is added. No
+     * `body` component at all — the approved template's body is static
+     * (see this class's own docblock for why), and sending parameters for
+     * a template that defines none would itself be a mismatch Meta
+     * rejects, the same class of error a too-few/too-many count would
+     * cause for any other template.
      */
-    private function sendTemplate(LeadSource $source, string $to, string $name, string $inquiry): bool
+    private function sendTemplate(LeadSource $source, string $to): bool
     {
         $config = is_array($source->config) ? $source->config : [];
         $phoneNumberId = $config['phone_number_id'] ?? null;
@@ -151,10 +145,6 @@ class RequestLeadCallPermission
                         'language' => ['code' => $template['language']],
                         'components' => [
                             ['type' => 'call_permission_request'],
-                            ['type' => 'body', 'parameters' => [
-                                ['type' => 'text', 'text' => $name],
-                                ['type' => 'text', 'text' => $inquiry],
-                            ]],
                         ],
                     ],
                 ]);
