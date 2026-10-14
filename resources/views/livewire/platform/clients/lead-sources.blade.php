@@ -267,13 +267,18 @@
                                 docblock), unlike Messenger's pill above. Always
                                 offered; re-clicking after it's already Approved just
                                 surfaces Meta's own "already exists" error. --}}
-                                <div class="mt-3 flex max-w-xs items-center gap-2" wire:key="call-permission-template-{{ $source->id }}">
-                                    <flux:tooltip content="{{ __('Creates the one WhatsApp template Outbound Calling needs to request permission to call a lead. Submits to Meta for review — approval usually completes within a few hours.') }}">
-                                        <flux:button size="xs" wire:click="confirmCreateCallPermissionTemplate('{{ $source->id }}')">{{ __('Create Call Permission Template') }}</flux:button>
-                                    </flux:tooltip>
-                                    <flux:tooltip content="{{ __('Deletes it from Meta so a replacement with different wording can be created — breaks Outbound Calling permission requests on this source until a replacement is approved.') }}">
-                                        <flux:button size="xs" variant="danger" icon="trash" wire:click="confirmDeleteCallPermissionTemplate('{{ $source->id }}')" :aria-label="__('Delete call permission template')" />
-                                    </flux:tooltip>
+                                <div class="mt-3 flex max-w-xs flex-col gap-1.5" wire:key="call-permission-template-{{ $source->id }}">
+                                    <flux:text size="xs" variant="subtle">
+                                        {{ __('Current name: :name', ['name' => $this->callPermissionTemplateNameFor($source)]) }}
+                                    </flux:text>
+                                    <div class="flex items-center gap-2">
+                                        <flux:tooltip content="{{ __('Creates the one WhatsApp template Outbound Calling needs to request permission to call a lead. Submits to Meta for review — approval usually completes within a few hours.') }}">
+                                            <flux:button size="xs" wire:click="confirmCreateCallPermissionTemplate('{{ $source->id }}')">{{ __('Create Call Permission Template') }}</flux:button>
+                                        </flux:tooltip>
+                                        <flux:tooltip content="{{ __('Deletes it from Meta and automatically switches this source to a new template name for next time — Meta locks the deleted name for about 30 days, so reusing it immediately isn\'t possible. Breaks Outbound Calling permission requests on this source until a replacement is approved.') }}">
+                                            <flux:button size="xs" variant="danger" icon="trash" wire:click="confirmDeleteCallPermissionTemplate('{{ $source->id }}')" :aria-label="__('Delete call permission template')" />
+                                        </flux:tooltip>
+                                    </div>
                                 </div>
                             @endif
                         </flux:table.cell>
@@ -567,8 +572,8 @@
         <form wire:submit="saveCallPermissionTemplate" class="flex flex-col gap-4">
             <flux:heading size="lg">{{ __('Create Call Permission Template') }}</flux:heading>
             <flux:text variant="subtle">
-                {{ __('Submitted directly to Meta for approval. The template name and language are fixed (:name / :language) and can\'t be changed here — Outbound Calling looks this template up by that exact name and language when actually sending it.', [
-                    'name' => config('calling.call_permission_request_template')['name'],
+                {{ __('Submitted directly to Meta for approval. The template name and language are fixed for this source (:name / :language) and can\'t be changed here — Outbound Calling looks this template up by that exact name and language when actually sending it. Deleting and recreating later automatically moves to a new name.', [
+                    'name' => $creatingCallPermissionTemplateName,
                     'language' => config('calling.call_permission_request_template')['language'],
                 ]) }}
             </flux:text>

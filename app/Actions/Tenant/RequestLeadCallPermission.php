@@ -2,6 +2,7 @@
 
 namespace App\Actions\Tenant;
 
+use App\Actions\Platform\CreateCallPermissionRequestTemplate;
 use App\Enums\LeadCallPermissionStatus;
 use App\Models\Lead;
 use App\Models\LeadCallPermission;
@@ -126,6 +127,14 @@ class RequestLeadCallPermission
         }
 
         $template = config('calling.call_permission_request_template');
+        // Per-source, not the global config default — see
+        // CreateCallPermissionRequestTemplate::TEMPLATE_NAME_CONFIG_KEY's
+        // own docblock: this source may have had its template
+        // delete-and-recreated under a bumped name since the global
+        // default was last changed, and sending must always target
+        // whichever name is CURRENTLY approved for this source, not a
+        // stale one.
+        $templateName = CreateCallPermissionRequestTemplate::resolveTemplateName($source);
 
         try {
             $response = Http::withToken($accessToken)
@@ -138,7 +147,7 @@ class RequestLeadCallPermission
                     'to' => $to,
                     'type' => 'template',
                     'template' => [
-                        'name' => $template['name'],
+                        'name' => $templateName,
                         'language' => ['code' => $template['language']],
                         'components' => [
                             ['type' => 'call_permission_request'],

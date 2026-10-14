@@ -102,6 +102,8 @@ class LeadSources extends Component
 
     public ?string $creatingCallPermissionTemplateForSourceId = null;
 
+    public string $creatingCallPermissionTemplateName = '';
+
     public string $callPermissionTemplateBody = '';
 
     public string $callPermissionTemplateFooter = '';
@@ -881,15 +883,12 @@ class LeadSources extends Component
     /**
      * WhatsApp Outbound Calling's one required, per-WABA template — see
      * CreateCallPermissionRequestTemplate's own docblock for why this
-     * can't be created any other way. Unlike createTemplate()/
-     * saveTemplate() above, no modal: name/language/body/footer are all
-     * fixed (config('calling.call_permission_request_template')), so
-     * there's nothing for an admin to fill in beyond clicking the button.
-     */
-    /**
-     * Opens the form, pre-filled from config('calling.
-     * call_permission_request_template')'s body/footer defaults — the
-     * admin can edit the wording before submitting (see
+     * can't be created any other way, and why the NAME shown below is
+     * this source's own resolveTemplateName() rather than always the
+     * global config default (it changes after a delete bumps it).
+     * language/body/footer start from config('calling.
+     * call_permission_request_template')'s defaults — the admin can edit
+     * body/footer wording before submitting (see
      * saveCallPermissionTemplate()'s own validation for why the body's
      * two placeholders can't be touched, even though the surrounding text
      * can).
@@ -898,9 +897,11 @@ class LeadSources extends Component
     {
         Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
 
+        $source = $this->tenant->leadSources()->findOrFail($id);
         $template = config('calling.call_permission_request_template');
 
-        $this->creatingCallPermissionTemplateForSourceId = $this->tenant->leadSources()->findOrFail($id)->id;
+        $this->creatingCallPermissionTemplateForSourceId = $source->id;
+        $this->creatingCallPermissionTemplateName = CreateCallPermissionRequestTemplate::resolveTemplateName($source);
         $this->callPermissionTemplateBody = $template['body'];
         $this->callPermissionTemplateFooter = $template['footer'];
         $this->resetErrorBag();
@@ -984,6 +985,17 @@ class LeadSources extends Component
         $result = app(DeleteCallPermissionRequestTemplate::class)->handle(Auth::guard('platform')->user(), $this->tenant, $id);
 
         Flux::toast(variant: $result->variant, text: $result->message);
+    }
+
+    /**
+     * The row-level display of CreateCallPermissionRequestTemplate::
+     * resolveTemplateName() — lets the admin see which name is current
+     * for this source (it changes after a delete bumps it) without
+     * opening the Create modal first.
+     */
+    public function callPermissionTemplateNameFor(LeadSource $source): string
+    {
+        return CreateCallPermissionRequestTemplate::resolveTemplateName($source);
     }
 
     /**

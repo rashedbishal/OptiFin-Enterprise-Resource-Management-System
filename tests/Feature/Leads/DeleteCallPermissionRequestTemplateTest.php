@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Platform\CreateCallPermissionRequestTemplate;
 use App\Actions\Platform\DeleteCallPermissionRequestTemplate;
 use App\Enums\LeadSourceType;
 use App\Livewire\Platform\Clients\LeadSources;
@@ -31,7 +32,7 @@ function dcprtSource(Tenant $tenant): LeadSource
     ]);
 }
 
-test('a successful meta delete reports success', function () {
+test('a successful meta delete reports success and bumps this source\'s own name for next time', function () {
     $tenant = Tenant::factory()->create();
     $source = dcprtSource($tenant);
     $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
@@ -44,6 +45,44 @@ test('a successful meta delete reports success', function () {
 
     Http::assertSent(fn ($request) => $request->method() === 'DELETE'
         && $request->url() === 'https://graph.facebook.com/'.config('calling.graph_version').'/999/message_templates?access_token=waba-token&name='.config('calling.call_permission_request_template')['name']);
+
+    $deletedName = config('calling.call_permission_request_template')['name'];
+    $expectedNext = preg_match('/^(.*)_v(\d+)$/', $deletedName, $m) === 1
+        ? $m[1].'_v'.((int) $m[2] + 1)
+        : $deletedName.'_v2';
+
+    expect($result->message)->toContain($expectedNext);
+    expect($source->fresh()->config[CreateCallPermissionRequestTemplate::TEMPLATE_NAME_CONFIG_KEY])->toBe($expectedNext);
+});
+
+test('deleting a source that already has its own bumped name bumps it again, one step further', function () {
+    $tenant = Tenant::factory()->create();
+    $source = dcprtSource($tenant);
+    $source->update(['config' => array_merge($source->config, [CreateCallPermissionRequestTemplate::TEMPLATE_NAME_CONFIG_KEY => 'call_permission_request_v5'])]);
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+
+    Http::fake(['graph.facebook.com/*' => Http::response(['success' => true], 200)]);
+
+    app(DeleteCallPermissionRequestTemplate::class)->handle($motherAdmin, $tenant, $source->id);
+
+    Http::assertSent(fn ($request) => $request->method() === 'DELETE'
+        && str_contains($request->url(), 'name=call_permission_request_v5'));
+
+    expect($source->fresh()->config[CreateCallPermissionRequestTemplate::TEMPLATE_NAME_CONFIG_KEY])->toBe('call_permission_request_v6');
+});
+
+test('deleting one source\'s template never bumps another source\'s independently stored name', function () {
+    $tenant = Tenant::factory()->create();
+    $sourceA = dcprtSource($tenant);
+    $sourceB = dcprtSource($tenant);
+    $sourceB->update(['config' => array_merge($sourceB->config, [CreateCallPermissionRequestTemplate::TEMPLATE_NAME_CONFIG_KEY => 'call_permission_request_v9'])]);
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+
+    Http::fake(['graph.facebook.com/*' => Http::response(['success' => true], 200)]);
+
+    app(DeleteCallPermissionRequestTemplate::class)->handle($motherAdmin, $tenant, $sourceA->id);
+
+    expect($sourceB->fresh()->config[CreateCallPermissionRequestTemplate::TEMPLATE_NAME_CONFIG_KEY])->toBe('call_permission_request_v9');
 });
 
 test('a meta rejection reports the real error', function () {

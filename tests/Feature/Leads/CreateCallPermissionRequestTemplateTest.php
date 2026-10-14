@@ -58,6 +58,7 @@ test('a successful create submits the given body/footer under the fixed name/lan
 
     expect($result->variant)->toBe('success');
     expect($result->message)->toContain('PENDING');
+    expect($result->message)->toContain(config('calling.call_permission_request_template')['name']);
 
     Http::assertSent(fn ($request) => $request->url() === 'https://graph.facebook.com/'.config('calling.graph_version').'/999/message_templates'
         && $request['name'] === config('calling.call_permission_request_template')['name']
@@ -67,6 +68,41 @@ test('a successful create submits the given body/footer under the fixed name/lan
         && $request['components'][0] === ['type' => 'BODY', 'text' => 'Custom body with {{1}} and {{2}}.']
         && $request['components'][1] === ['type' => 'FOOTER', 'text' => 'Custom footer.']
         && $request['components'][2] === ['type' => 'call_permission_request']);
+
+    // The name just submitted is persisted onto this source's own config
+    // — the first write for a source that's never had Create called
+    // before (falls back to the global default until then).
+    expect($source->fresh()->config[CreateCallPermissionRequestTemplate::TEMPLATE_NAME_CONFIG_KEY])
+        ->toBe(config('calling.call_permission_request_template')['name']);
+});
+
+test('a source with its own stored name uses that instead of the global default', function () {
+    $tenant = Tenant::factory()->create();
+    $source = ccprtSource($tenant);
+    $source->update(['config' => array_merge($source->config, [CreateCallPermissionRequestTemplate::TEMPLATE_NAME_CONFIG_KEY => 'call_permission_request_v5'])]);
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+
+    Http::fake(['graph.facebook.com/*' => Http::response(['id' => '888', 'status' => 'PENDING'], 200)]);
+
+    app(CreateCallPermissionRequestTemplate::class)->handle($motherAdmin, $tenant, $source->id, 'Body {{1}} {{2}}.', 'Footer.');
+
+    Http::assertSent(fn ($request) => $request['name'] === 'call_permission_request_v5');
+});
+
+test('two sources each keep their own stored name independently', function () {
+    $tenant = Tenant::factory()->create();
+    $sourceA = ccprtSource($tenant);
+    $sourceB = ccprtSource($tenant);
+    $sourceA->update(['config' => array_merge($sourceA->config, [CreateCallPermissionRequestTemplate::TEMPLATE_NAME_CONFIG_KEY => 'call_permission_request_v3'])]);
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+
+    Http::fake(['graph.facebook.com/*' => Http::response(['id' => '888', 'status' => 'PENDING'], 200)]);
+
+    app(CreateCallPermissionRequestTemplate::class)->handle($motherAdmin, $tenant, $sourceB->id, 'Body {{1}} {{2}}.', 'Footer.');
+
+    // Creating B's template must never touch A's independently-stored name.
+    expect($sourceA->fresh()->config[CreateCallPermissionRequestTemplate::TEMPLATE_NAME_CONFIG_KEY])->toBe('call_permission_request_v3');
+    expect($sourceB->fresh()->config[CreateCallPermissionRequestTemplate::TEMPLATE_NAME_CONFIG_KEY])->toBe(config('calling.call_permission_request_template')['name']);
 });
 
 test('a meta rejection surfaces the real error message, e.g. a footer over the character limit', function () {
@@ -138,8 +174,23 @@ test('the form opens pre-filled with the configured defaults', function () {
         ->test(LeadSources::class, ['tenant' => $tenant])
         ->call('confirmCreateCallPermissionTemplate', $source->id)
         ->assertSet('showCreateCallPermissionTemplateModal', true)
+        ->assertSet('creatingCallPermissionTemplateName', config('calling.call_permission_request_template')['name'])
         ->assertSet('callPermissionTemplateBody', config('calling.call_permission_request_template')['body'])
         ->assertSet('callPermissionTemplateFooter', config('calling.call_permission_request_template')['footer']);
+});
+
+test('the form and the row both show this source\'s own stored name, not the global default', function () {
+    $tenant = Tenant::factory()->create();
+    $source = ccprtSource($tenant);
+    $source->update(['config' => array_merge($source->config, [CreateCallPermissionRequestTemplate::TEMPLATE_NAME_CONFIG_KEY => 'call_permission_request_v7'])]);
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create();
+
+    Livewire::actingAs($motherAdmin, 'platform')
+        ->test(LeadSources::class, ['tenant' => $tenant])
+        ->call('completeInitialLoad')
+        ->assertSee('call_permission_request_v7')
+        ->call('confirmCreateCallPermissionTemplate', $source->id)
+        ->assertSet('creatingCallPermissionTemplateName', 'call_permission_request_v7');
 });
 
 test('submitting a body missing a required placeholder is rejected without calling meta', function () {

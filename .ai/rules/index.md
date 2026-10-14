@@ -6,6 +6,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | --- | --- |
 | app/Actions/Platform/{CreateCallPermissionRequestTemplate,DeleteCallPermissionRequestTemplate}.php,config/calling.php | .ai/rules/actions-platform.md |
 | app/{Models,Livewire,Http/Controllers/Api}/** | .ai/rules/api.md |
+| app/Actions/{Platform/{CreateCallPermissionRequestTemplate,DeleteCallPermissionRequestTemplate}.php,Tenant/RequestLeadCallPermission.php} | .ai/rules/app-actions-platform.md |
 | resources/views/layouts/app.blade.php,resources/views/layouts/app/sidebar.blade.php,app/Livewire/Tenant/Leads/Index.php | .ai/rules/app-livewire-tenant-leads.md |
 | app/{Models/Deal.php,Models/DealStatusLog.php,Enums/DealStatus.php,Services/LeadMergeService.php} | .ai/rules/app-models.md |
 | app/Services/LeadMergeService.php | .ai/rules/app-services.md |

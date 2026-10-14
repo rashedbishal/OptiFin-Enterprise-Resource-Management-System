@@ -69,6 +69,31 @@ test('sends the template and marks the row Requested when Meta live-allows it', 
     expect($row->last_requested_at)->not->toBeNull();
 });
 
+test('sends under this source\'s own stored template name, not the global default, once one has been set', function () {
+    ['tenant' => $tenant] = tenantWithLeadManagement();
+    $source = Wa::source($tenant, [], [
+        'access_token' => 'RLCP-sentinel-token',
+        'call_permission_template_name' => 'call_permission_request_v4',
+    ]);
+    $lead = Lead::factory()->create([
+        'tenant_id' => $tenant->id,
+        'source_id' => $source->id,
+        'phone' => Wa::CALLER,
+        'name' => 'Ada Lovelace',
+        'message' => 'I would like a quote for a new website.',
+    ]);
+
+    Http::fake([
+        '*/call_permissions*' => Http::response(rlcpAllowed(true)),
+        '*/messages' => Http::response(['messages' => [['id' => 'wamid.PERM-4']]]),
+    ]);
+
+    app(RequestLeadCallPermission::class)->handle($lead, $source);
+
+    Http::assertSent(fn (Request $r) => $r->url() === RLCP_MESSAGES_URL
+        && $r['template']['name'] === 'call_permission_request_v4');
+});
+
 test('the body component carries exactly the lead name and the lead message, never Meta\'s example values', function () {
     $x = rlcpScenario(['name' => 'Grace Hopper', 'message' => 'Interested in a WhatsApp calling demo.']);
     Http::fake([

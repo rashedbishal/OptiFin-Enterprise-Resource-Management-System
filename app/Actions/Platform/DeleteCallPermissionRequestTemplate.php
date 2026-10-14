@@ -33,11 +33,14 @@ use Illuminate\Support\Facades\Log;
  * content can't be added while the existing English content is being
  * deleted. Try again in 4 weeks or consider creating a new message
  * template."). A Create attempt under the same name during that window
- * fails outright, even though nothing currently exists by that name. The
- * success message below reflects this — it deliberately does NOT claim
- * an immediate replacement is possible. If one is needed right away, bump
- * config('calling.call_permission_request_template')['name'] to a new
- * value (e.g. the next _vN suffix) instead of waiting out the lock.
+ * fails outright, even though nothing currently exists by that name.
+ *
+ * So a successful delete here always bumps this source's OWN stored name
+ * (see CreateCallPermissionRequestTemplate::TEMPLATE_NAME_CONFIG_KEY/
+ * resolveTemplateName()) to the next _vN suffix and persists it — the
+ * very next Create click for this source submits under a fresh name
+ * automatically, no admin action needed, and never touches any OTHER
+ * source's own stored name.
  */
 class DeleteCallPermissionRequestTemplate
 {
@@ -59,7 +62,7 @@ class DeleteCallPermissionRequestTemplate
             return new MessengerTemplateActionResult('danger', __('Add the WhatsApp Business Account ID and Access Token to this source before deleting this template.'));
         }
 
-        $name = (string) config('calling.call_permission_request_template')['name'];
+        $name = CreateCallPermissionRequestTemplate::resolveTemplateName($source);
 
         // Same query-parameter contract as DeleteMessengerMessageTemplate
         // — Meta's delete endpoint expects name/access_token in the URL,
@@ -76,9 +79,30 @@ class DeleteCallPermissionRequestTemplate
             return new MessengerTemplateActionResult('danger', $response->json('error.message') ?? __('Meta could not delete this template.'));
         }
 
-        $this->log($actor, $source, $alreadyGone ? 'deleted_already_gone' : 'deleted', ['name' => $name]);
+        $nextName = $this->nextTemplateName($name);
+        $source->update(['config' => array_merge($config, [CreateCallPermissionRequestTemplate::TEMPLATE_NAME_CONFIG_KEY => $nextName])]);
 
-        return new MessengerTemplateActionResult('success', __('Call permission template deleted. Meta locks this exact name for about 30 days afterward — to submit a replacement now, change the configured template name to a new value first.'));
+        $this->log($actor, $source, $alreadyGone ? 'deleted_already_gone' : 'deleted', ['name' => $name, 'next_name' => $nextName]);
+
+        return new MessengerTemplateActionResult('success', __('Call permission template ":name" deleted. Meta locks that exact name for about 30 days, so the next template you create for this source will automatically use a new name (":next").', [
+            'name' => $name,
+            'next' => $nextName,
+        ]));
+    }
+
+    /**
+     * "foo" -> "foo_v2"; "foo_v2" -> "foo_v3"; "foo_v9" -> "foo_v10" — the
+     * same scheme already used to recover live, 2026-10-14
+     * (call_permission_request -> call_permission_request_v2), just
+     * applied automatically from here on instead of by hand.
+     */
+    private function nextTemplateName(string $current): string
+    {
+        if (preg_match('/^(.*)_v(\d+)$/', $current, $matches) === 1) {
+            return $matches[1].'_v'.((int) $matches[2] + 1);
+        }
+
+        return $current.'_v2';
     }
 
     private function graphVersion(): string
