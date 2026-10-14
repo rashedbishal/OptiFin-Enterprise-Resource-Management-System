@@ -299,11 +299,23 @@ return [
     | Active, when this was built: real Meta test-number validation is still
     | pending and not claimed here.
     |
+    | body/footer are only used by App\Actions\Platform\
+    | CreateCallPermissionRequestTemplate — Platform Admin's one-click
+    | "Create Call Permission Template" button on a WhatsApp source (Lead
+    | Sources page), added after a real production gap: this template is
+    | per-WABA, so every tenant needs their own copy actually created and
+    | approved on Meta's side before RequestLeadCallPermission can ever
+    | succeed for them — nothing creates it automatically. Footer has
+    | Meta's own hard 60-character limit (confirmed live: a longer footer
+    | is rejected outright, not truncated).
+    |
     */
 
     'call_permission_request_template' => [
         'name' => env('CALLING_PERMISSION_REQUEST_TEMPLATE_NAME', 'call_permission_request'),
         'language' => env('CALLING_PERMISSION_REQUEST_TEMPLATE_LANGUAGE', 'en'),
+        'body' => env('CALLING_PERMISSION_REQUEST_TEMPLATE_BODY', 'We would like to call you to discuss your inquiry. Do you give us permission to call you on WhatsApp?'),
+        'footer' => env('CALLING_PERMISSION_REQUEST_TEMPLATE_FOOTER', 'You can change call permissions anytime in your profile.'),
     ],
 
 ];

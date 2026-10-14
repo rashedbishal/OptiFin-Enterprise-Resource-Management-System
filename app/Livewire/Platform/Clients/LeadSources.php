@@ -2,6 +2,7 @@
 
 namespace App\Livewire\Platform\Clients;
 
+use App\Actions\Platform\CreateCallPermissionRequestTemplate;
 use App\Actions\Platform\CreateMessengerMessageTemplate;
 use App\Actions\Platform\DeleteMessengerMessageTemplate;
 use App\Actions\Platform\ManageWhatsAppCalling;
@@ -861,6 +862,23 @@ class LeadSources extends Component
             $this->creatingTemplateForSourceId = null;
             unset($this->messengerTemplatesBySource);
         }
+    }
+
+    /**
+     * WhatsApp Outbound Calling's one required, per-WABA template — see
+     * CreateCallPermissionRequestTemplate's own docblock for why this
+     * can't be created any other way. Unlike createTemplate()/
+     * saveTemplate() above, no modal: name/language/body/footer are all
+     * fixed (config('calling.call_permission_request_template')), so
+     * there's nothing for an admin to fill in beyond clicking the button.
+     */
+    public function createCallPermissionTemplate(string $id): void
+    {
+        Gate::forUser(Auth::guard('platform')->user())->authorize('update', $this->tenant);
+
+        $result = app(CreateCallPermissionRequestTemplate::class)->handle(Auth::guard('platform')->user(), $this->tenant, $id);
+
+        Flux::toast(variant: $result->variant, text: $result->message);
     }
 
     /**

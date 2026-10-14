@@ -259,6 +259,20 @@
                                     @endif
                                 </div>
                             @endif
+
+                            @if ($source->type === \App\Enums\LeadSourceType::Whatsapp)
+                                {{-- No local record of whether this template exists or
+                                what Meta's review decided — WhatsApp templates are
+                                never tracked here (see WhatsAppMessageTemplate's own
+                                docblock), unlike Messenger's pill above. Always
+                                offered; re-clicking after it's already Approved just
+                                surfaces Meta's own "already exists" error. --}}
+                                <div class="mt-3 max-w-xs" wire:key="call-permission-template-{{ $source->id }}">
+                                    <flux:tooltip content="{{ __('Creates the one WhatsApp template Outbound Calling needs to request permission to call a lead. Submits to Meta for review — approval usually completes within a few hours.') }}">
+                                        <flux:button size="xs" wire:click="createCallPermissionTemplate('{{ $source->id }}')">{{ __('Create Call Permission Template') }}</flux:button>
+                                    </flux:tooltip>
+                                </div>
+                            @endif
                         </flux:table.cell>
                         <flux:table.cell>
                             <div class="flex justify-end gap-2">
