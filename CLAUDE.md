@@ -11,7 +11,7 @@ A multi-tenant SaaS ERP built on the Laravel Livewire starter kit (Laravel 13, P
 ## Commands
 
 ```bash
-composer run dev          # artisan serve + queue + pail + vite, all at once (primary local dev loop)
+composer run dev          # `php artisan dev`: serve + queue:listen + pail + vite + reverb:start (primary local dev loop; `php artisan dev:list` shows them)
 npm run dev                # vite only
 npm run build
 npm test                   # vitest run — browser-side tests (currently the WhatsApp softphone logic, jsdom + mocked browser APIs)
@@ -50,7 +50,7 @@ php artisan calls:reconcile-stale        # every-minute sweep: end WhatsApp call
 ## Architecture
 
 ### Dual-guard auth — two people tables, never a shared `User`
-- `App\Models\PlatformUser` (table `platform_users`, guard `platform`, routes under `/admin`, login `admin/login`) — exactly one `mother_admin` (enforced by a DB partial unique index, bypasses all authorization via `Gate::before`) plus Platform Admins.
+- `App\Models\PlatformUser` (table `platform_users`, guard `platform`, routes under `/admin`, login `admin/login`) — exactly one `mother_admin` (enforced by a DB partial unique index, bypasses all authorization via `Gate::before`) plus Platform Admins. Permanent tenant deletion (`App\Actions\Platform\DeleteTenant`) is mother-admin-only and requires the tenant's Client Admin to be deactivated first. It relies on every `tenant_id` foreign key cascading at the database level, so a new tenant-scoped table must cascade too.
 - `App\Models\TenantUser` (table `tenant_users`, guard `web`, default Fortify `/login`) — Client Admins/Users, always scoped to `tenant_id`.
 - Both share one Role → Module → Permission engine (`roles`/`modules`/`permissions`/`role_modules`/`role_permissions`/`tenant_modules` — see `App\Services\RoleService` and `App\Concerns\HasModulePermissions`). `modules.scope` (platform|tenant) gates which catalog a role can draw from.
 - All IDs are ULIDs. Extend `PlatformUser`/`TenantUser` and their existing policies/observers — don't reintroduce a generic `User` model.
@@ -88,6 +88,11 @@ Facebook Lead Ads (Instant Forms) submissions land on the same webhook URL as Me
 13. **Website Form Builder**: `WebsiteForm`/`WebsiteFormField` — a tenant may build any number of forms; every form shares one lazily-created `LeadSource` (`type = WebsiteForm`) for attribution. This app never hosts the form — the tenant's own site POSTs to `LeadWebhookController::websiteFormSubmit()`, authenticated by `token_hash`. Managed at `lead-management/leads/website-forms`.
 14. **Consent / GDPR**: `LeadConsent` (current effective state, one row per lead+`ConsentType`, upserted) + `LeadConsentEvent` (permanent append-only history) via the single `App\Actions\Tenant\RecordLeadConsent` primitive. `ConsentType`: `Privacy`/`Marketing`. A Website Form field can be typed `Consent`; manual grant/withdraw lives on the Lead detail Consent card. Merge is bespoke (`LeadMergeService::mergeConsents()`): `Withdrawn` always wins, nothing is ever silently downgraded.
 15. **In-app communication**: normalized `Conversation`/`Message` tables (additive dual-write alongside the pre-existing `Lead.source_data` JSON append — never a replacement, no historical backfill). Outbound sending (WhatsApp/Messenger/Instagram, free-form reply only, no templates/campaigns) gated by `App\Services\OutboundEligibilityService` (not merged, Privacy consent not withdrawn, source credentials present, channel's messaging window still open — Marketing consent is deliberately NOT checked for a within-window reply). Composer lives on the Lead detail/flyout only — no unified inbox.
+
+**Outbound message templates (added after Feature #15, which originally shipped free-form-only)** — for sending once the messaging window has closed, gated by `OutboundEligibilityService::evaluateForTemplate()` (same checks minus the window). A `Message` row snapshots `template_name`/`template_language`/`template_variables` at send time; never add a template FK. The two channels are deliberately asymmetric:
+- **WhatsApp** (`WhatsAppMessageTemplate`, `lead-management/leads/whatsapp-templates`): Client Admins *register* templates they already got approved in Meta's WhatsApp Manager. This app never creates WhatsApp templates via Meta's API (stored tokens lack `whatsapp_business_management`), with one narrow exception: `App\Actions\Platform\CreateCallPermissionRequestTemplate`/`DeleteCallPermissionRequestTemplate`, the Platform Admin button for the single `call_permission_request` template outbound calling depends on (per-source, auto-bumping name; language fixed by `config('calling.call_permission_request_template')`). See `.ai/rules/whats-app-templates-tenant-leads.md`, `.ai/rules/actions-platform.md`.
+- **Messenger** (`MessengerMessageTemplate`, `lead-management/leads/messenger-templates`): Platform Admin *creates* templates directly via Meta's Graph API (`CreateMessengerMessageTemplate`/`DeleteMessengerMessageTemplate`), and the catalog row is written from Meta's confirmed response. Tenants never create them, because the Page token is a credential tenants never see.
+- The template-send form lives in the Lead detail's Activity Log card, not the chat card.
 
 `App\Livewire\Tenant\Leads\Index` serves two different views from one component depending on role, not two separate Livewire components: `render()` returns `livewire.tenant.leads` (table) for Client Admins and `livewire.tenant.leads-kanban` (board, via `boardLeads()`/`boardLeadCounts()`) for Client Users, both built on the same `filteredQuery()`. Facebook Lead Ads leads are excluded from the admin table (aggregated into a "View All" row pointing at `SourceLeads` instead) but appear as normal cards on a Client User's board.
 
