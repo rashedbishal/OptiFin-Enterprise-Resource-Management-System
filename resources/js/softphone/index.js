@@ -1,4 +1,5 @@
 import { createApi } from './api.js';
+import { createCallingAppHandoff } from './calling-app.js';
 import { MODE, SoftphoneController } from './controller.js';
 import { registerCallDragButton } from './drag-button.js';
 import { createOwnership } from './ownership.js';
@@ -23,6 +24,7 @@ export function registerSoftphone(alpine) {
         let clock = null;
         let ringtone = null;
         let pushSubscriber = null;
+        let callingApp = null;
 
         const media = (audioEl) => () => {
             const supported = typeof window.RTCPeerConnection === 'function' && typeof navigator.mediaDevices?.getUserMedia === 'function';
@@ -59,6 +61,10 @@ export function registerSoftphone(alpine) {
             notificationsDismissed: false,
 
             init() {
+                // Calling companion app — see calling-app.js. Detection only;
+                // with no paired phone or no installed app this never acts.
+                callingApp = createCallingAppHandoff({ config: { ...(config.callingApp ?? {}), userId: config.userId } });
+
                 if (!window.Echo) {
                     return;
                 }
@@ -159,6 +165,13 @@ export function registerSoftphone(alpine) {
             enableAudio: () => controller?.enableAudio(),
 
             callOutbound(leadId, leadName = null, leadPhone = null) {
+                // The paired OptiFin Calling app on this phone takes the call
+                // when it can (earpiece support) — still inside the click's
+                // gesture, which the app launch needs. Otherwise, unchanged:
+                if (leadId && callingApp?.tryCall(leadId, leadName ?? null)) {
+                    return undefined;
+                }
+
                 // Called straight from the click (or the window event above)
                 // so the microphone prompt is a user gesture.
                 return leadId ? controller?.callOutbound(leadId, { id: leadId, name: leadName ?? null, phone: leadPhone ?? null }) : undefined;

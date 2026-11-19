@@ -26,6 +26,14 @@
             'subscribe' => route('tenant.push-subscriptions.store'),
             'unsubscribe' => route('tenant.push-subscriptions.destroy'),
         ],
+        // Calling companion app hand-off (resources/js/softphone/calling-app.js):
+        // only whether THIS user has a paired phone — whether the app is on
+        // the current device is detected in the browser itself.
+        'callingApp' => [
+            'paired' => auth()->user()->callingAppDevice()->exists(),
+            'packageId' => config('calling.calling_app.android_package'),
+            'scheme' => config('calling.calling_app.deep_link_scheme'),
+        ],
         'pollMs' => (int) config('calling.softphone_poll_seconds', 5) * 1000,
         'heartbeatMs' => (int) config('calling.softphone_heartbeat_seconds', 15) * 1000,
         'staleMs' => (int) config('calling.softphone_staleness_seconds', 20) * 1000,

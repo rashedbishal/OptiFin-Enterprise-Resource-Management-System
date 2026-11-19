@@ -352,11 +352,24 @@ return [
     | deep_link_scheme: the custom URL scheme the app registers (Android
     | intent filter / iOS URL type). Must match the app's own manifest.
     |
+    | android_package / android_sha256_fingerprints: published at
+    | /.well-known/assetlinks.json so Chrome on a phone can confirm the
+    | installed app really belongs to this site
+    | (navigator.getInstalledRelatedApps()) and hand a lead's Call button to
+    | it. The fingerprint is the app's signing certificate (comma-separate
+    | several during a key rotation). Empty list = no app is advertised and
+    | the browser always handles calls itself.
+    |
     */
 
     'calling_app' => [
         'pairing_code_ttl_seconds' => (int) env('CALLING_APP_PAIRING_CODE_TTL_SECONDS', 120),
         'deep_link_scheme' => env('CALLING_APP_DEEP_LINK_SCHEME', 'optifin-calling'),
+        'android_package' => env('CALLING_APP_ANDROID_PACKAGE', 'com.optifin.calling'),
+        'android_sha256_fingerprints' => array_values(array_filter(array_map('trim', explode(',', (string) env(
+            'CALLING_APP_ANDROID_SHA256_FINGERPRINTS',
+            'DE:D3:49:DE:81:76:11:DE:56:34:DF:7A:53:0F:CA:A0:B8:AE:B7:9F:4E:D6:2F:7D:7E:2A:26:54:8E:5B:39:25',
+        ))))),
     ],
 
 ];

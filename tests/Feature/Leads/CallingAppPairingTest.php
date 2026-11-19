@@ -311,3 +311,40 @@ test('a client admin cannot unpair a phone in another tenant', function () {
 
     expect(CallingAppDevice::query()->where('tenant_user_id', $y->agent->id)->exists())->toBeTrue();
 });
+
+// ── Browser → app hand-off ──────────────────────────────────────────────────
+
+test('assetlinks.json publicly links the calling app\'s package and signing key to this site', function () {
+    config([
+        'calling.calling_app.android_package' => 'com.optifin.calling',
+        'calling.calling_app.android_sha256_fingerprints' => ['AA:BB:CC'],
+    ]);
+
+    $this->getJson('/.well-known/assetlinks.json')
+        ->assertOk()
+        ->assertExactJson([[
+            'relation' => ['delegate_permission/common.handle_all_urls'],
+            'target' => [
+                'namespace' => 'android_app',
+                'package_name' => 'com.optifin.calling',
+                'sha256_cert_fingerprints' => ['AA:BB:CC'],
+            ],
+        ]]);
+});
+
+test('assetlinks.json advertises no app when no fingerprint is configured', function () {
+    config(['calling.calling_app.android_sha256_fingerprints' => []]);
+
+    $this->getJson('/.well-known/assetlinks.json')->assertOk()->assertExactJson([]);
+});
+
+test('the softphone is told whether this user has a paired phone', function () {
+    $x = Lc::make();
+    capPair($x->agent);
+
+    $paired = $this->actingAs($x->agent)->get(route('dashboard'))->getContent();
+    $unpaired = $this->actingAs($x->other)->get(route('dashboard'))->getContent();
+
+    expect($paired)->toMatch('~paired\\\\u0022:true~')
+        ->and($unpaired)->toMatch('~paired\\\\u0022:false~');
+});

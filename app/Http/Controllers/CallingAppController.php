@@ -41,6 +41,33 @@ class CallingAppController extends Controller
         ]])->header('Cache-Control', 'no-store, private');
     }
 
+    /**
+     * /.well-known/assetlinks.json — Android Digital Asset Links. Public and
+     * unauthenticated by design (Android/Chrome fetch it anonymously). Lets
+     * Chrome confirm the installed OptiFin Calling app belongs to this site,
+     * which is what makes navigator.getInstalledRelatedApps() report it and
+     * so lets a lead's Call button hand off to the app. Holds only public
+     * facts: the package name and the signing certificate's fingerprint.
+     */
+    public function assetLinks(): JsonResponse
+    {
+        $fingerprints = config('calling.calling_app.android_sha256_fingerprints');
+        $package = config('calling.calling_app.android_package');
+
+        if (! is_array($fingerprints) || $fingerprints === [] || ! is_string($package) || $package === '') {
+            return response()->json([]);
+        }
+
+        return response()->json([[
+            'relation' => ['delegate_permission/common.handle_all_urls'],
+            'target' => [
+                'namespace' => 'android_app',
+                'package_name' => $package,
+                'sha256_cert_fingerprints' => array_values($fingerprints),
+            ],
+        ]], 200, [], JSON_UNESCAPED_SLASHES)->header('Cache-Control', 'public, max-age=3600');
+    }
+
     public function me(Request $request): JsonResponse
     {
         return response()->json(['data' => ['user' => $this->userPayload($this->user($request))]]);

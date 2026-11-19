@@ -7,6 +7,12 @@
     "display": "standalone",
     "background_color": "#0e1826",
     "theme_color": "#0e1826",
+    "related_applications": [
+        {
+            "platform": "play",
+            "id": "com.optifin.calling"
+        }
+    ],
     "icons": [
         {
             "src": "/apple-touch-icon.png",

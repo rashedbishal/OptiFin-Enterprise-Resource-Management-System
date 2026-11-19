@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ActiveLeadCallsController;
+use App\Http\Controllers\CallingAppController;
 use App\Http\Controllers\LeadAttachmentController;
 use App\Http\Controllers\LeadCallController;
 use App\Http\Controllers\LeadMessageAttachmentController;
@@ -34,6 +35,10 @@ use Illuminate\Support\Facades\Route;
 // blade.php) — only what it does changed, from rendering the starter
 // kit's unused welcome.blade.php to redirecting straight to /login.
 Route::redirect('/', '/login')->name('home');
+
+// Calling companion app — Android Digital Asset Links, fetched anonymously by
+// Android/Chrome (see CallingAppController::assetLinks()).
+Route::get('.well-known/assetlinks.json', [CallingAppController::class, 'assetLinks'])->name('calling-app.asset-links');
 
 Route::middleware(['auth', 'verified', 'tenant.identify', 'tenant.active'])->group(function () {
     Route::livewire('dashboard', Dashboard::class)->name('dashboard');
