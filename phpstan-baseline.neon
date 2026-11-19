@@ -115,12 +115,6 @@ parameters:
 			path: app/Livewire/Platform/Clients/Show.php
 
 		-
-			message: '#^Cannot access property \$value on string\.$#'
-			identifier: property.nonObject
-			count: 1
-			path: app/Livewire/Platform/Clients/Show.php
-
-		-
 			message: '#^Method App\\Livewire\\Platform\\Clients\\Show\:\:assignedModuleIds\(\) has no return type specified\.$#'
 			identifier: missingType.return
 			count: 1

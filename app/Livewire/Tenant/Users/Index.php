@@ -3,8 +3,10 @@
 namespace App\Livewire\Tenant\Users;
 
 use App\Actions\Tenant\CreateTenantUser;
+use App\Actions\Tenant\UnpairCallingAppDevice;
 use App\Enums\LeadSourceType;
 use App\Enums\TenantUserType;
+use App\Models\CallingAppDevice;
 use App\Models\Role;
 use App\Models\TenantUser;
 use Flux\Flux;
@@ -34,6 +36,10 @@ class Index extends Component
 
     public ?string $confirmingDeleteId = null;
 
+    public bool $showUnpairCallingAppModal = false;
+
+    public ?string $confirmingUnpairCallingAppId = null;
+
     public function mount(): void
     {
         Gate::authorize('viewAny', [TenantUser::class, Auth::user()->tenant]);
@@ -44,7 +50,7 @@ class Index extends Component
     {
         return TenantUser::query()
             ->where('tenant_id', Auth::user()->tenant_id)
-            ->with('role')
+            ->with(['role', 'callingAppDevice'])
             ->latest()
             ->paginate(10);
     }
@@ -189,5 +195,47 @@ class Index extends Component
         $target->delete();
 
         Flux::toast(variant: 'success', text: __('User deleted.'));
+    }
+
+    public function confirmUnpairCallingApp(string $id): void
+    {
+        $this->confirmingUnpairCallingAppId = $id;
+        $this->showUnpairCallingAppModal = true;
+    }
+
+    /**
+     * A Client Admin unpairs another user's WhatsApp calling app (e.g. a
+     * lost phone, or someone leaving). Same 'update' gate as every other
+     * per-user action on this page — their own phone is unpaired from
+     * Settings → Calling app instead.
+     */
+    public function unpairCallingAppConfirmed(UnpairCallingAppDevice $action): void
+    {
+        $id = $this->confirmingUnpairCallingAppId;
+
+        $this->showUnpairCallingAppModal = false;
+        $this->confirmingUnpairCallingAppId = null;
+
+        if ($id === null) {
+            return;
+        }
+
+        $actor = Auth::guard('web')->user();
+
+        abort_unless($actor instanceof TenantUser, 403);
+
+        $target = TenantUser::query()->where('tenant_id', $actor->tenant_id)->whereKey($id)->firstOrFail();
+
+        Gate::authorize('update', $target);
+
+        $device = CallingAppDevice::query()->where('tenant_user_id', $target->id)->first();
+
+        if ($device !== null) {
+            $action->handle($device);
+        }
+
+        unset($this->users);
+
+        Flux::toast(variant: 'success', text: __('Calling app unpaired.'));
     }
 }

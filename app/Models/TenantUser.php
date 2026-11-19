@@ -11,11 +11,13 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Laravel\Fortify\TwoFactorAuthenticatable;
+use Laravel\Sanctum\HasApiTokens;
 use NotificationChannels\WebPush\HasPushSubscriptions;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
@@ -41,7 +43,7 @@ use Spatie\Activitylog\Traits\LogsActivity;
 class TenantUser extends Authenticatable
 {
     /** @use HasFactory<TenantUserFactory> */
-    use HasFactory, HasModulePermissions, HasPushSubscriptions, HasUlids, LogsActivity, Notifiable, TwoFactorAuthenticatable;
+    use HasApiTokens, HasFactory, HasModulePermissions, HasPushSubscriptions, HasUlids, LogsActivity, Notifiable, TwoFactorAuthenticatable;
 
     /**
      * @return array<string, string>
@@ -68,6 +70,17 @@ class TenantUser extends Authenticatable
     public function role(): BelongsTo
     {
         return $this->belongsTo(Role::class);
+    }
+
+    /**
+     * The one phone this user has paired with the WhatsApp calling
+     * companion app, if any (see CallingAppDevice).
+     *
+     * @return HasOne<CallingAppDevice, $this>
+     */
+    public function callingAppDevice(): HasOne
+    {
+        return $this->hasOne(CallingAppDevice::class);
     }
 
     public function assignedLeads(): HasMany

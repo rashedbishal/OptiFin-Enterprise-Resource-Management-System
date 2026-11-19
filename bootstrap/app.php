@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\AuthenticateCallingAppDevice;
 use App\Http\Middleware\EnsureModuleAccess;
 use App\Http\Middleware\EnsurePermission;
 use App\Http\Middleware\EnsureTenantActive;
@@ -31,6 +32,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => EnsurePermission::class,
             'verify.meta.signature' => VerifyMetaWebhookSignature::class,
             'throttle.fail-open' => ThrottleRequestsFailOpen::class,
+            'calling-app.device' => AuthenticateCallingAppDevice::class,
         ]);
 
         $middleware->redirectGuestsTo(fn (Request $request) => $request->is('admin/*') ? route('admin.login') : route('login'));

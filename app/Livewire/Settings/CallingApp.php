@@ -1,0 +1,76 @@
+<?php
+
+namespace App\Livewire\Settings;
+
+use App\Actions\Tenant\IssueCallingAppPairingCode;
+use App\Actions\Tenant\UnpairCallingAppDevice;
+use App\Models\CallingAppDevice;
+use App\Models\TenantUser;
+use Flux\Flux;
+use Illuminate\Support\Facades\Auth;
+use Livewire\Attributes\Computed;
+use Livewire\Attributes\Title;
+use Livewire\Component;
+
+/**
+ * Settings → Calling app: the logged-in user pairs their phone with the
+ * WhatsApp calling companion app (one phone per user) or unpairs it. The
+ * app has no login of its own — "Connect" mints a one-time code and opens
+ * the app through its deep link; the app redeems the code itself.
+ */
+#[Title('Calling app settings')]
+class CallingApp extends Component
+{
+    /**
+     * The deep link for the most recently issued pairing code — rendered as
+     * a manual "Open the app" fallback in case the automatic redirect was
+     * blocked by the browser. Never persisted anywhere.
+     */
+    public ?string $pairingLink = null;
+
+    public bool $showUnpairModal = false;
+
+    public function connect(IssueCallingAppPairingCode $action): void
+    {
+        $issued = $action->handle($this->user());
+
+        $this->pairingLink = $issued['deep_link'];
+
+        $this->dispatch('calling-app-open', link: $issued['deep_link']);
+    }
+
+    public function confirmUnpair(): void
+    {
+        $this->showUnpairModal = true;
+    }
+
+    public function unpair(UnpairCallingAppDevice $action): void
+    {
+        $this->showUnpairModal = false;
+
+        $device = $this->device();
+
+        if ($device !== null) {
+            $action->handle($device);
+        }
+
+        unset($this->device);
+
+        Flux::toast(variant: 'success', text: __('Calling app unpaired.'));
+    }
+
+    #[Computed]
+    public function device(): ?CallingAppDevice
+    {
+        return CallingAppDevice::query()->where('tenant_user_id', $this->user()->id)->first();
+    }
+
+    private function user(): TenantUser
+    {
+        $user = Auth::guard('web')->user();
+
+        abort_unless($user instanceof TenantUser, 403);
+
+        return $user;
+    }
+}

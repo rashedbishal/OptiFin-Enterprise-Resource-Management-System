@@ -31,6 +31,11 @@
                                     <flux:badge size="sm" color="indigo">{{ __('Backup Calls') }}</flux:badge>
                                 </flux:tooltip>
                             @endif
+                            @if ($user->callingAppDevice)
+                                <flux:tooltip content="{{ __('Calling app connected on :device', ['device' => $user->callingAppDevice->device_name ?? __('a phone')]) }}">
+                                    <flux:badge size="sm" color="green" icon="device-phone-mobile">{{ __('Calling App') }}</flux:badge>
+                                </flux:tooltip>
+                            @endif
                         </flux:table.cell>
                         <flux:table.cell>
                             <flux:badge :color="$user->is_active ? 'green' : 'zinc'" size="sm">
@@ -54,6 +59,9 @@
                                                 {{ $user->is_whatsapp_backup_receiver ? __('Disable Backup Calls') : __('Enable Backup Calls') }}
                                             </flux:button>
                                         </flux:tooltip>
+                                    @endif
+                                    @if ($user->callingAppDevice)
+                                        <flux:button size="sm" wire:click="confirmUnpairCallingApp('{{ $user->id }}')">{{ __('Unpair App') }}</flux:button>
                                     @endif
                                     <flux:button size="sm" variant="danger" wire:click="confirmDelete('{{ $user->id }}')">
                                         {{ __('Delete') }}
@@ -100,5 +108,13 @@
         :title="__('Delete this user?')"
         confirm-action="deleteConfirmed"
         :confirm-label="__('Delete')"
+    />
+
+    <x-confirm-modal
+        wire:model.self="showUnpairCallingAppModal"
+        :title="__('Unpair this user\'s calling app?')"
+        :description="__('Their phone will stop receiving and placing calls through the app until they connect it again from Settings → Calling app.')"
+        confirm-action="unpairCallingAppConfirmed"
+        :confirm-label="__('Unpair')"
     />
 </div>

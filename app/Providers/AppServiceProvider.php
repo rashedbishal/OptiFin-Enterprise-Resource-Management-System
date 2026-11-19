@@ -103,6 +103,15 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(60)->by('lead-call-actions:'.($request->user()?->getAuthIdentifier() ?? $request->ip()));
         });
 
+        // Calling companion app — the unauthenticated pairing-code exchange.
+        // Stock (fail-closed) throttle, unlike the call actions above: this
+        // is an auth boundary, so an unreachable limiter backend must not
+        // turn into unlimited guessing. Codes are 48 random characters, so
+        // this only blunts noise, never the real protection.
+        RateLimiter::for('calling-app-pair', function (Request $request): Limit {
+            return Limit::perMinute(10)->by('calling-app-pair:'.$request->ip());
+        });
+
         RateLimiter::for('website-form-per-form', function (Request $request): Limit {
             $formToken = (string) $request->route('form_token');
 

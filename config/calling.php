@@ -333,4 +333,30 @@ return [
         'footer' => env('CALLING_PERMISSION_REQUEST_TEMPLATE_FOOTER', 'You can change call permissions anytime in your profile.'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Calling companion app — device pairing
+    |--------------------------------------------------------------------------
+    |
+    | The native calling app (earpiece/loudspeaker support the browser can't
+    | offer) has no login screen: a logged-in user taps "Connect calling
+    | app" in Settings → Calling app, which mints a one-time pairing code
+    | and hands it to the app through a deep link; the app exchanges it for
+    | a long-lived Sanctum device token (see CallingAppDevice).
+    |
+    | pairing_code_ttl_seconds: how long that one-time code stays
+    | redeemable. Short on purpose — the browser opens the app immediately,
+    | so a code only needs to survive the app launching, and a leaked code
+    | is worthless almost at once. Used at most once regardless.
+    |
+    | deep_link_scheme: the custom URL scheme the app registers (Android
+    | intent filter / iOS URL type). Must match the app's own manifest.
+    |
+    */
+
+    'calling_app' => [
+        'pairing_code_ttl_seconds' => (int) env('CALLING_APP_PAIRING_CODE_TTL_SECONDS', 120),
+        'deep_link_scheme' => env('CALLING_APP_DEEP_LINK_SCHEME', 'optifin-calling'),
+    ],
+
 ];

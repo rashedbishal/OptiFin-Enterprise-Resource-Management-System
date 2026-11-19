@@ -1,6 +1,9 @@
 <?php
 
+use App\Http\Controllers\ActiveLeadCallsController;
 use App\Http\Controllers\Api\LeadWebhookController;
+use App\Http\Controllers\CallingAppController;
+use App\Http\Controllers\LeadCallController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('webhook')->name('api.webhook.')->group(function () {
@@ -61,4 +64,43 @@ Route::prefix('webhook')->name('api.webhook.')->group(function () {
     Route::post('website-form/{tenant_code}/{form_token}', [LeadWebhookController::class, 'websiteFormSubmit'])
         ->name('website-form.submit')
         ->middleware(['throttle:website-form-per-form', 'throttle:website-form-per-tenant']);
+});
+
+// WhatsApp calling companion app (native Android/iOS app with earpiece
+// support). No login screen: `pair` exchanges a one-time code minted by the
+// user's logged-in browser (Settings → Calling app) for a Sanctum device
+// token. Every other route authenticates with that token, then
+// `calling-app.device` bridges the user onto the `web` guard so the same
+// tenant/module middleware and the SAME call controllers/actions the
+// browser softphone uses apply unchanged — nothing here re-implements a
+// call action.
+Route::prefix('calling-app')->name('api.calling-app.')->group(function () {
+    Route::post('pair', [CallingAppController::class, 'pair'])
+        ->middleware('throttle:calling-app-pair')
+        ->name('pair');
+
+    Route::middleware(['auth:sanctum', 'calling-app.device', 'tenant.identify', 'verified', 'module:lead-management'])->group(function () {
+        Route::get('me', [CallingAppController::class, 'me'])->name('me');
+        Route::post('heartbeat', [CallingAppController::class, 'heartbeat'])->name('heartbeat');
+        Route::post('unpair', [CallingAppController::class, 'unpair'])->name('unpair');
+
+        Route::get('calls/active', ActiveLeadCallsController::class)
+            ->middleware('throttle.fail-open:lead-call-actions')
+            ->name('calls.active');
+
+        Route::middleware('throttle.fail-open:lead-call-actions')->prefix('calls/{leadCall}')->name('calls.')->group(function () {
+            Route::post('claim', [LeadCallController::class, 'claim'])->name('claim');
+            Route::post('answer', [LeadCallController::class, 'answer'])->name('answer');
+            Route::post('accept', [LeadCallController::class, 'accept'])->name('accept');
+            Route::post('reject', [LeadCallController::class, 'reject'])->name('reject');
+            Route::post('hangup', [LeadCallController::class, 'hangup'])->name('hangup');
+            Route::post('cancel-outbound', [LeadCallController::class, 'cancelOutbound'])->name('cancel-outbound');
+            Route::get('outbound-answer', [LeadCallController::class, 'outboundAnswer'])->name('outbound-answer');
+            Route::post('outbound-connected', [LeadCallController::class, 'outboundConnected'])->name('outbound-connected');
+        });
+
+        Route::post('leads/{lead}/calls/outbound', [LeadCallController::class, 'initiateOutbound'])
+            ->middleware('throttle.fail-open:lead-call-actions')
+            ->name('calls.initiate-outbound');
+    });
 });
