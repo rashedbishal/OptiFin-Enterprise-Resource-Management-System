@@ -65,6 +65,89 @@
         </div>
     @endif
 
+    {{-- App download: the APK that eligible tenant users download from
+    Settings → Calling app (latest only). Uploaded in small chunks by
+    resources/js/calling-app-apk-upload.js, so no server upload limit applies. --}}
+    <div class="flex flex-col gap-4 rounded-lg border border-zinc-200 p-4 dark:border-zinc-700" data-test="calling-app-apk">
+        <div>
+            <flux:heading size="lg">{{ __('App download') }}</flux:heading>
+            <flux:text class="mt-1 text-sm">
+                {{ __('Upload the OptiFin Calling .apk here. Users of companies whose WhatsApp number has calling switched on can then download it from Settings → Calling app, and the app tells them when a newer version is available.') }}
+            </flux:text>
+        </div>
+
+        @if ($this->release)
+            <div class="flex flex-wrap items-start justify-between gap-3 rounded-lg bg-zinc-50 p-3 dark:bg-zinc-800/60">
+                <div class="text-sm">
+                    <div class="font-medium">{{ __('Current version') }} {{ $this->release['version'] }}</div>
+                    <div class="text-zinc-500">
+                        {{ number_format($this->release['size'] / 1048576, 1) }} MB
+                        · {{ __('uploaded') }} {{ $this->release['uploaded_at']?->diffForHumans() }}@if ($this->release['uploaded_by']) {{ __('by :name', ['name' => $this->release['uploaded_by']]) }}@endif
+                    </div>
+                    @if ($this->release['notes'])
+                        <div class="mt-1 whitespace-pre-line text-zinc-600 dark:text-zinc-300">{{ $this->release['notes'] }}</div>
+                    @endif
+                </div>
+                <flux:button size="sm" variant="danger" wire:click="confirmRemoveApk">{{ __('Remove') }}</flux:button>
+            </div>
+        @else
+            <flux:text class="text-sm">{{ __('No app uploaded yet.') }}</flux:text>
+        @endif
+
+        <div
+            wire:ignore
+            x-data="callingAppApkUploader(@js([
+                'urls' => [
+                    'start' => route('admin.settings.calling-app.apk.start'),
+                    'chunk' => str_replace('/chunks/0', '/chunks/__INDEX__', route('admin.settings.calling-app.apk.chunk', ['upload' => '__UPLOAD__', 'index' => 0])),
+                    'complete' => route('admin.settings.calling-app.apk.complete', ['upload' => '__UPLOAD__']),
+                ],
+                'texts' => ['missing' => __('Choose the .apk file and enter its version.')],
+            ]))"
+            class="flex flex-col gap-3"
+        >
+            <flux:heading size="sm">{{ $this->release ? __('Upload a new version') : __('Upload the app') }}</flux:heading>
+
+            <input
+                type="file"
+                accept=".apk,application/vnd.android.package-archive"
+                x-ref="apkFile"
+                x-on:change="pick($event)"
+                x-bind:disabled="busy"
+                class="block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-zinc-100 file:px-3 file:py-2 file:text-sm file:font-medium dark:file:bg-zinc-700"
+            />
+
+            <div class="grid gap-3 sm:grid-cols-[10rem_1fr]">
+                <flux:input x-model="version" :label="__('Version')" placeholder="1.3.0" x-bind:disabled="busy" />
+                <flux:input x-model="notes" :label="__('What\'s new (optional)')" x-bind:disabled="busy" />
+            </div>
+
+            <div x-show="busy" x-cloak class="flex items-center gap-3">
+                <div class="h-2 flex-1 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
+                    <div class="h-full bg-green-600 transition-all" x-bind:style="`width: ${progress}%`"></div>
+                </div>
+                <span class="w-12 text-right text-sm tabular-nums" x-text="`${progress}%`"></span>
+            </div>
+
+            <flux:text x-show="error" x-cloak class="text-sm !text-red-600" x-text="error"></flux:text>
+
+            <div>
+                <flux:button variant="primary" icon="arrow-up-tray" x-on:click="upload()" x-bind:disabled="busy">
+                    <span x-show="!busy">{{ __('Upload') }}</span>
+                    <span x-show="busy" x-cloak>{{ __('Uploading…') }}</span>
+                </flux:button>
+            </div>
+        </div>
+    </div>
+
+    <x-confirm-modal
+        wire:model.self="showRemoveApkModal"
+        :title="__('Remove the app download?')"
+        :description="__('Users will no longer be able to download the app from Settings → Calling app. Phones that already have it keep working.')"
+        confirm-action="removeApk"
+        :confirm-label="__('Remove')"
+    />
+
     <x-confirm-modal
         wire:model.self="showRemoveModal"
         :title="__('Remove the Firebase key?')"

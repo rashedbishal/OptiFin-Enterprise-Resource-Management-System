@@ -6,6 +6,7 @@ use App\Models\CallingAppDevice;
 use App\Models\PlatformUser;
 use App\Models\Tenant;
 use App\Services\CallingAppFirebase;
+use App\Services\CallingAppRelease;
 use Flux\Flux;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
@@ -43,6 +44,8 @@ class CallingApp extends Component
     public bool $showRemoveModal = false;
 
     public ?string $testDeviceId = null;
+
+    public bool $showRemoveApkModal = false;
 
     public function mount(): void
     {
@@ -86,6 +89,44 @@ class CallingApp extends Component
         unset($this->summary);
 
         Flux::toast(variant: 'success', text: __('Firebase key removed. Incoming calls ring in the browser only.'));
+    }
+
+    public function confirmRemoveApk(): void
+    {
+        $this->authorizeMotherAdmin();
+        $this->showRemoveApkModal = true;
+    }
+
+    public function removeApk(CallingAppRelease $releases): void
+    {
+        $this->authorizeMotherAdmin();
+        $this->showRemoveApkModal = false;
+
+        $releases->remove();
+        unset($this->release);
+
+        Flux::toast(variant: 'success', text: __('App download removed.'));
+    }
+
+    /**
+     * Called by the chunked uploader (calling-app-apk-upload.js) once the
+     * server has accepted the new APK, to show it here.
+     */
+    public function apkUploaded(): void
+    {
+        $this->authorizeMotherAdmin();
+        unset($this->release);
+
+        Flux::toast(variant: 'success', text: __('New app version is now available to download.'));
+    }
+
+    /**
+     * @return array{version: string, notes: string|null, size: int, sha256: string, path: string, uploaded_at: Carbon|null, uploaded_by: string|null}|null
+     */
+    #[Computed]
+    public function release(): ?array
+    {
+        return app(CallingAppRelease::class)->current();
     }
 
     /**

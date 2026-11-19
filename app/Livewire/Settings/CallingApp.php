@@ -6,7 +6,9 @@ use App\Actions\Tenant\IssueCallingAppPairingCode;
 use App\Actions\Tenant\UnpairCallingAppDevice;
 use App\Models\CallingAppDevice;
 use App\Models\TenantUser;
+use App\Services\CallingAppRelease;
 use Flux\Flux;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Title;
@@ -60,6 +62,18 @@ class CallingApp extends Component
         unset($this->device);
 
         Flux::toast(variant: 'success', text: __('Calling app unpaired.'));
+    }
+
+    /**
+     * The downloadable app, when one is uploaded AND this user's company has
+     * WhatsApp calling switched on (CallingAppRelease::tenantMayDownload).
+     *
+     * @return array{version: string, notes: string|null, size: int, sha256: string, path: string, uploaded_at: Carbon|null, uploaded_by: string|null}|null
+     */
+    #[Computed]
+    public function release(): ?array
+    {
+        return CallingAppRelease::tenantMayDownload($this->user()) ? app(CallingAppRelease::class)->current() : null;
     }
 
     #[Computed]

@@ -84,6 +84,7 @@ Route::prefix('calling-app')->name('api.calling-app.')->group(function () {
         Route::post('heartbeat', [CallingAppController::class, 'heartbeat'])->name('heartbeat');
         Route::post('unpair', [CallingAppController::class, 'unpair'])->name('unpair');
         Route::post('push-token', [CallingAppController::class, 'pushToken'])->name('push-token');
+        Route::get('latest-version', [CallingAppController::class, 'latestVersion'])->name('latest-version');
 
         Route::get('calls/active', ActiveLeadCallsController::class)
             ->middleware('throttle.fail-open:lead-call-actions')

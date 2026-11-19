@@ -7,6 +7,7 @@ use App\Actions\Tenant\UnpairCallingAppDevice;
 use App\Models\CallingAppDevice;
 use App\Models\Tenant;
 use App\Models\TenantUser;
+use App\Services\CallingAppRelease;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -103,6 +104,25 @@ class CallingAppController extends Controller
         ])->save();
 
         return response()->json(['data' => ['ok' => true]]);
+    }
+
+    /**
+     * The app's "Update available" check: the latest uploaded version, if
+     * this user may download it. The app compares it with its own version
+     * and sends the agent to the web download page (it never installs
+     * anything itself).
+     */
+    public function latestVersion(Request $request, CallingAppRelease $releases): JsonResponse
+    {
+        $user = $this->user($request);
+        $release = CallingAppRelease::tenantMayDownload($user) ? $releases->current() : null;
+
+        return response()->json(['data' => $release === null ? null : [
+            'version' => $release['version'],
+            'notes' => $release['notes'],
+            'size_bytes' => $release['size'],
+            'download_page_url' => route('calling-app.edit'),
+        ]]);
     }
 
     public function unpair(Request $request, UnpairCallingAppDevice $action): JsonResponse

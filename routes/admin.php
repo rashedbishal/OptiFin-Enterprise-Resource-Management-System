@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\MetaPermissionsController;
+use App\Http\Controllers\Platform\CallingAppApkUploadController;
 use App\Livewire\Actions\PlatformLogout;
 use App\Livewire\Platform\Admins\Index as AdminsIndex;
 use App\Livewire\Platform\Auth\Login;
@@ -36,5 +37,11 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::livewire('settings/password', SettingsPassword::class)->name('settings.password');
         // Calling app's Firebase key — Mother Admin only (enforced in the component).
         Route::livewire('settings/calling-app', SettingsCallingApp::class)->name('settings.calling-app');
+        // Chunked APK upload for the calling app (Mother Admin only, enforced in the controller).
+        Route::post('settings/calling-app/apk/uploads', [CallingAppApkUploadController::class, 'start'])->name('settings.calling-app.apk.start');
+        Route::put('settings/calling-app/apk/uploads/{upload}/chunks/{index}', [CallingAppApkUploadController::class, 'chunk'])
+            ->whereNumber('index')
+            ->name('settings.calling-app.apk.chunk');
+        Route::post('settings/calling-app/apk/uploads/{upload}/complete', [CallingAppApkUploadController::class, 'complete'])->name('settings.calling-app.apk.complete');
     });
 });

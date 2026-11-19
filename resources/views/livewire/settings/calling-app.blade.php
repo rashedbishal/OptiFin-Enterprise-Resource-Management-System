@@ -27,6 +27,28 @@
 
     <x-settings.layout :heading="__('Calling app')" :subheading="__('Take WhatsApp calls in the OptiFin Calling app on your phone, with earpiece and loudspeaker support')">
         <div class="my-6 w-full space-y-6">
+            @if ($this->release)
+                <div class="rounded-lg border border-zinc-200 p-4 dark:border-zinc-700" data-test="calling-app-download">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <flux:heading size="sm">{{ __('Get the OptiFin Calling app') }}</flux:heading>
+                            <flux:text class="text-sm">
+                                {{ __('Android · version :version · :size MB', ['version' => $this->release['version'], 'size' => number_format($this->release['size'] / 1048576, 1)]) }}
+                            </flux:text>
+                        </div>
+                        <flux:button variant="primary" icon="arrow-down-tray" :href="route('calling-app.download')">{{ __('Download app') }}</flux:button>
+                    </div>
+
+                    @if ($this->release['notes'])
+                        <flux:text class="mt-3 whitespace-pre-line text-sm">{{ __('What\'s new:') }} {{ $this->release['notes'] }}</flux:text>
+                    @endif
+
+                    <flux:text class="mt-3 text-sm">
+                        {{ __('Open this page on your Android phone and tap Download app, then open the downloaded file to install it. The first time, Android asks you to allow installing apps from your browser — allow it. Updating? Install over the old app; your connection is kept.') }}
+                    </flux:text>
+                </div>
+            @endif
+
             @if ($this->device)
                 <flux:callout variant="success" icon="device-phone-mobile" :heading="__('Phone connected')">
                     <flux:callout.text>
