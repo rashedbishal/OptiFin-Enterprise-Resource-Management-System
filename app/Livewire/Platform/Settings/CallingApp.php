@@ -121,7 +121,7 @@ class CallingApp extends Component
     }
 
     /**
-     * @return array{version: string, notes: string|null, size: int, sha256: string, path: string, uploaded_at: Carbon|null, uploaded_by: string|null}|null
+     * @return array{version: string, version_code: int|null, notes: string|null, size: int, sha256: string, path: string, uploaded_at: Carbon|null, uploaded_by: string|null}|null
      */
     #[Computed]
     public function release(): ?array

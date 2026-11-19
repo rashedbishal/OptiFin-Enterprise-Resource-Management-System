@@ -9,7 +9,6 @@ import { defaultCsrfHeaders } from './softphone/api.js';
  */
 export async function uploadApkInChunks({
     file,
-    version,
     notes,
     urls,
     onProgress = () => {},
@@ -43,7 +42,8 @@ export async function uploadApkInChunks({
         return payload?.data ?? {};
     };
 
-    const started = await request('POST', urls.start, JSON.stringify({ size: file.size, version, notes: notes || null }), 'application/json');
+    // No version is sent: the server reads it from the APK itself.
+    const started = await request('POST', urls.start, JSON.stringify({ size: file.size, notes: notes || null }), 'application/json');
     const uploadId = started.upload_id;
     const chunkBytes = started.chunk_bytes;
     const total = Math.ceil(file.size / chunkBytes);
@@ -72,7 +72,6 @@ export async function uploadApkInChunks({
 export function registerApkUploader(alpine) {
     alpine.data('callingAppApkUploader', (config) => ({
         file: null,
-        version: '',
         notes: '',
         progress: 0,
         busy: false,
@@ -81,13 +80,6 @@ export function registerApkUploader(alpine) {
         pick(event) {
             this.file = event.target.files?.[0] ?? null;
             this.error = null;
-
-            // "app-release-1.3.0.apk" / "OptiFin-Calling-1.3.0.apk" → 1.3.0
-            const guessed = this.file?.name.match(/(\d+\.\d+(?:\.\d+){0,2})/)?.[1];
-
-            if (guessed && !this.version) {
-                this.version = guessed;
-            }
         },
 
         async upload() {
@@ -95,8 +87,8 @@ export function registerApkUploader(alpine) {
                 return;
             }
 
-            if (!this.file || !this.version) {
-                this.error = config.texts?.missing ?? 'Choose the .apk file and enter its version.';
+            if (!this.file) {
+                this.error = config.texts?.missing ?? 'Choose the .apk file.';
 
                 return;
             }
@@ -108,14 +100,12 @@ export function registerApkUploader(alpine) {
             try {
                 await uploadApkInChunks({
                     file: this.file,
-                    version: this.version.trim(),
                     notes: this.notes.trim(),
                     urls: config.urls,
                     onProgress: (percent) => { this.progress = percent; },
                 });
 
                 this.file = null;
-                this.version = '';
                 this.notes = '';
                 this.$refs.apkFile.value = '';
                 await this.$wire.apkUploaded();

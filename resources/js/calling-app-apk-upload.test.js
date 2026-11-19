@@ -18,7 +18,7 @@ describe('uploadApkInChunks', () => {
         });
         const progress = [];
 
-        const result = await uploadApkInChunks({ file, version: '1.3.0', notes: '', urls, fetchImpl, csrfHeaders: () => ({}), onProgress: (p) => progress.push(p) });
+        const result = await uploadApkInChunks({ file, notes: '', urls, fetchImpl, csrfHeaders: () => ({}), onProgress: (p) => progress.push(p) });
 
         expect(fetchImpl.mock.calls.map(([url, init]) => `${init.method} ${url}`)).toEqual([
             'POST /start',
@@ -46,7 +46,7 @@ describe('uploadApkInChunks', () => {
             return ok({});
         });
 
-        await uploadApkInChunks({ file: new Blob([new Uint8Array(5)]), version: '1.3.0', urls, fetchImpl, csrfHeaders: () => ({}) });
+        await uploadApkInChunks({ file: new Blob([new Uint8Array(5)]), urls, fetchImpl, csrfHeaders: () => ({}) });
 
         expect(attempts).toBe(2);
     });
@@ -54,7 +54,7 @@ describe('uploadApkInChunks', () => {
     it('stops with the server\'s message when a chunk is refused', async () => {
         const fetchImpl = vi.fn(async (url) => (url === '/start' ? ok({ upload_id: 'up1', chunk_bytes: 10 }) : fail(422, 'Chunk 1 arrived damaged')));
 
-        await expect(uploadApkInChunks({ file: new Blob([new Uint8Array(5)]), version: '1.3.0', urls, fetchImpl, csrfHeaders: () => ({}) }))
+        await expect(uploadApkInChunks({ file: new Blob([new Uint8Array(5)]), urls, fetchImpl, csrfHeaders: () => ({}) }))
             .rejects.toThrow('Chunk 1 arrived damaged');
         expect(fetchImpl).toHaveBeenCalledTimes(2);
     });

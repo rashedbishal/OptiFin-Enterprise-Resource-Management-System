@@ -7,6 +7,7 @@ use App\Models\LeadSource;
 use App\Models\PlatformSetting;
 use App\Models\PlatformUser;
 use App\Models\TenantUser;
+use App\Support\ApkManifestReader;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -20,7 +21,13 @@ use ZipArchive;
  *
  * Uploads arrive in small chunks (see CHUNK_BYTES) so a ~90 MB APK never
  * trips a server's PHP/nginx request-size limit; complete() reassembles,
- * checks it really is an Android package, and swaps it in. The file lives on
+ * checks it really is THE OptiFin Calling app, and swaps it in.
+ *
+ * The version is always READ FROM THE APK (ApkManifestReader), never typed:
+ * a mislabelled upload once made every phone say "Update available" forever,
+ * because the app compares its own real version against this one. An upload
+ * with a lower build number (versionCode) than the current one is refused,
+ * so phones can never be told to "update" to an older app. The file lives on
  * the private `local` disk — never under public/ — and is only ever streamed
  * through an authenticated, eligibility-checked route.
  *
@@ -41,7 +48,7 @@ class CallingAppRelease
     private const UPLOADS_DIR = 'calling-app/uploads';
 
     /**
-     * @return array{version: string, notes: string|null, size: int, sha256: string, path: string, uploaded_at: Carbon|null, uploaded_by: string|null}|null
+     * @return array{version: string, version_code: int|null, notes: string|null, size: int, sha256: string, path: string, uploaded_at: Carbon|null, uploaded_by: string|null}|null
      */
     public function current(): ?array
     {
@@ -54,6 +61,7 @@ class CallingAppRelease
 
         return [
             'version' => (string) ($release['version'] ?? ''),
+            'version_code' => is_int($release['version_code'] ?? null) ? $release['version_code'] : null,
             'notes' => isset($release['notes']) && is_string($release['notes']) ? $release['notes'] : null,
             'size' => (int) ($release['size'] ?? 0),
             'sha256' => (string) ($release['sha256'] ?? ''),
@@ -72,7 +80,7 @@ class CallingAppRelease
      * Starts a chunked upload; returns its id. Abandoned uploads older than a
      * day are swept here, so nothing needs a scheduled job.
      */
-    public function startUpload(int $size, string $version, ?string $notes): string
+    public function startUpload(int $size, ?string $notes): string
     {
         if ($size <= 0 || $size > self::MAX_BYTES) {
             throw new RuntimeException(__('The file must be between 1 byte and :mb MB.', ['mb' => self::MAX_BYTES / 1024 / 1024]));
@@ -85,7 +93,6 @@ class CallingAppRelease
         $disk->makeDirectory($this->uploadDir($id));
         $disk->put($this->uploadDir($id).'/meta.json', (string) json_encode([
             'size' => $size,
-            'version' => $version,
             'notes' => $notes,
             'chunks' => (int) ceil($size / self::CHUNK_BYTES),
         ]));
@@ -115,10 +122,11 @@ class CallingAppRelease
     }
 
     /**
-     * Reassembles the chunks, verifies the result is an Android package, and
-     * makes it the current release (deleting the previous file).
+     * Reassembles the chunks, verifies the result is the OptiFin Calling app
+     * and not older than the current release, and makes it current (deleting
+     * the previous file).
      *
-     * @return array{version: string, size: int, sha256: string}
+     * @return array{version: string, version_code: int, size: int, sha256: string}
      */
     public function completeUpload(string $uploadId, PlatformUser $by): array
     {
@@ -157,20 +165,47 @@ class CallingAppRelease
             throw new RuntimeException(__('This is not an Android app (.apk) file.'));
         }
 
+        $identity = ApkManifestReader::fromApk($assembled);
+        $expectedPackage = (string) config('calling.calling_app.android_package');
+        $previous = $this->current();
+
+        if ($identity === null || ! self::isValidVersion($identity['version_name']) || $identity['version_code'] === null) {
+            $disk->deleteDirectory($dir);
+
+            throw new RuntimeException(__('Could not read the app version from this file.'));
+        }
+
+        if ($identity['package'] !== $expectedPackage) {
+            $disk->deleteDirectory($dir);
+
+            throw new RuntimeException(__('This is not the OptiFin Calling app (package ":package").', ['package' => (string) $identity['package']]));
+        }
+
+        if ($previous !== null && $previous['version_code'] !== null && $identity['version_code'] < $previous['version_code']) {
+            $disk->deleteDirectory($dir);
+
+            throw new RuntimeException(__('This file is version :new, older than the published version :current.', [
+                'new' => (string) $identity['version_name'],
+                'current' => $previous['version'],
+            ]));
+        }
+
+        $version = (string) $identity['version_name'];
+        $versionCode = (int) $identity['version_code'];
         $sha256 = (string) hash_file('sha256', $assembled);
-        $finalPath = self::DIR.'/optifin-calling-'.$meta['version'].'-'.substr($sha256, 0, 8).'.apk';
+        $finalPath = self::DIR.'/optifin-calling-'.$version.'-'.substr($sha256, 0, 8).'.apk';
 
         $disk->delete($finalPath);
         $disk->move($dir.'/assembled.apk', $finalPath);
         $disk->deleteDirectory($dir);
 
-        $previous = $this->current();
-
         PlatformSetting::query()->updateOrCreate(
             ['key' => self::SETTING_KEY],
             ['value' => [
                 'path' => $finalPath,
-                'version' => $meta['version'],
+                'version' => $version,
+                'version_code' => $versionCode,
+                'package' => $identity['package'],
                 'notes' => $meta['notes'],
                 'size' => $meta['size'],
                 'sha256' => $sha256,
@@ -181,7 +216,7 @@ class CallingAppRelease
             $disk->delete($previous['path']);
         }
 
-        return ['version' => $meta['version'], 'size' => $meta['size'], 'sha256' => $sha256];
+        return ['version' => $version, 'version_code' => $versionCode, 'size' => $meta['size'], 'sha256' => $sha256];
     }
 
     public function remove(): void
@@ -228,7 +263,7 @@ class CallingAppRelease
     }
 
     /**
-     * @return array{size: int, version: string, notes: string|null, chunks: int}
+     * @return array{size: int, notes: string|null, chunks: int}
      */
     private function meta(string $uploadId): array
     {
@@ -245,7 +280,6 @@ class CallingAppRelease
 
         return [
             'size' => (int) $meta['size'],
-            'version' => (string) $meta['version'],
             'notes' => isset($meta['notes']) && is_string($meta['notes']) ? $meta['notes'] : null,
             'chunks' => (int) $meta['chunks'],
         ];

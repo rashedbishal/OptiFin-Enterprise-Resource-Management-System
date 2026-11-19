@@ -119,6 +119,7 @@ class CallingAppController extends Controller
 
         return response()->json(['data' => $release === null ? null : [
             'version' => $release['version'],
+            'version_code' => $release['version_code'],
             'notes' => $release['notes'],
             'size_bytes' => $release['size'],
             'download_page_url' => route('calling-app.edit'),

@@ -23,16 +23,11 @@ class CallingAppApkUploadController extends Controller
 
         $validated = $request->validate([
             'size' => ['required', 'integer', 'min:1', 'max:'.CallingAppRelease::MAX_BYTES],
-            'version' => ['required', 'string', 'max:20', function (string $attribute, mixed $value, \Closure $fail): void {
-                if (! CallingAppRelease::isValidVersion($value)) {
-                    $fail(__('Use a version like 1.3.0.'));
-                }
-            }],
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
         try {
-            $id = $releases->startUpload((int) $validated['size'], $validated['version'], $validated['notes'] ?? null);
+            $id = $releases->startUpload((int) $validated['size'], $validated['notes'] ?? null);
         } catch (RuntimeException $exception) {
             return $this->error($exception->getMessage());
         }

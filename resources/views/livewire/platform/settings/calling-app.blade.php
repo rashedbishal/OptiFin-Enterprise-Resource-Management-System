@@ -79,7 +79,12 @@
         @if ($this->release)
             <div class="flex flex-wrap items-start justify-between gap-3 rounded-lg bg-zinc-50 p-3 dark:bg-zinc-800/60">
                 <div class="text-sm">
-                    <div class="font-medium">{{ __('Current version') }} {{ $this->release['version'] }}</div>
+                    <div class="font-medium">
+                        {{ __('Current version') }} {{ $this->release['version'] }}
+                        @if ($this->release['version_code'])
+                            <span class="font-normal text-zinc-500">({{ __('build :code', ['code' => $this->release['version_code']]) }})</span>
+                        @endif
+                    </div>
                     <div class="text-zinc-500">
                         {{ number_format($this->release['size'] / 1048576, 1) }} MB
                         · {{ __('uploaded') }} {{ $this->release['uploaded_at']?->diffForHumans() }}@if ($this->release['uploaded_by']) {{ __('by :name', ['name' => $this->release['uploaded_by']]) }}@endif
@@ -102,7 +107,7 @@
                     'chunk' => str_replace('/chunks/0', '/chunks/__INDEX__', route('admin.settings.calling-app.apk.chunk', ['upload' => '__UPLOAD__', 'index' => 0])),
                     'complete' => route('admin.settings.calling-app.apk.complete', ['upload' => '__UPLOAD__']),
                 ],
-                'texts' => ['missing' => __('Choose the .apk file and enter its version.')],
+                'texts' => ['missing' => __('Choose the .apk file.')],
             ]))"
             class="flex flex-col gap-3"
         >
@@ -117,10 +122,11 @@
                 class="block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-zinc-100 file:px-3 file:py-2 file:text-sm file:font-medium dark:file:bg-zinc-700"
             />
 
-            <div class="grid gap-3 sm:grid-cols-[10rem_1fr]">
-                <flux:input x-model="version" :label="__('Version')" placeholder="1.3.0" x-bind:disabled="busy" />
-                <flux:input x-model="notes" :label="__('What\'s new (optional)')" x-bind:disabled="busy" />
-            </div>
+            <flux:input x-model="notes" :label="__('What\'s new (optional)')" x-bind:disabled="busy" />
+
+            <flux:text class="text-xs">
+                {{ __('The version is read from the file itself. A build older than the current one is refused.') }}
+            </flux:text>
 
             <div x-show="busy" x-cloak class="flex items-center gap-3">
                 <div class="h-2 flex-1 overflow-hidden rounded-full bg-zinc-200 dark:bg-zinc-700">
