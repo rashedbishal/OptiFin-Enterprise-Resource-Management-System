@@ -36,7 +36,10 @@ class CallingApp extends Component
 
         $this->pairingLink = $issued['deep_link'];
 
-        $this->dispatch('calling-app-open', link: $issued['deep_link']);
+        // The view stores the marker in this browser's localStorage BEFORE
+        // opening the app — that's how this phone's browser later knows to
+        // hand calls to the app it just paired.
+        $this->dispatch('calling-app-open', link: $issued['deep_link'], marker: $issued['browser_marker']);
     }
 
     public function confirmUnpair(): void

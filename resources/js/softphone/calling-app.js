@@ -1,13 +1,24 @@
 /**
+ * localStorage key holding the marker this browser received when it paired
+ * the phone (Settings → Calling app writes it — keep the two in sync).
+ */
+export const BROWSER_MARKER_STORAGE_KEY = 'optifin.callingApp.browserMarker';
+
+/**
  * WhatsApp calling companion app — hands an outbound call to the native
  * OptiFin Calling app (earpiece/loudspeaker support a browser can't offer)
  * when, and only when, BOTH:
  *
  *   1. the server says this user has a paired phone (`config.paired`), and
- *   2. Chrome reports the app is installed on THIS device
- *      (navigator.getInstalledRelatedApps(), Android Chrome/Edge only —
- *      backed by the site's /.well-known/assetlinks.json and the web
- *      manifest's related_applications entry).
+ *   2. this browser is on that phone, known by EITHER
+ *      a. the marker it saved when it paired the phone (Settings → Calling
+ *         app) matching the paired device's `browserMarkerHash` — the
+ *         primary signal, since Chrome's own detection proved unreliable
+ *         on real phones; or
+ *      b. Chrome reporting the app installed on this device
+ *         (navigator.getInstalledRelatedApps(), backed by the web
+ *         manifest's related_applications entry and the app's own
+ *         asset_statements).
  *
  * Anything else — a desktop browser, another browser, the app not installed,
  * not paired, the API missing or throwing, or detection simply not finished
@@ -23,25 +34,60 @@ export function createCallingAppHandoff({
         window.location.href = url;
     },
     now = () => Date.now(),
+    readMarker = () => {
+        try {
+            return window.localStorage.getItem(BROWSER_MARKER_STORAGE_KEY);
+        } catch {
+            return null;
+        }
+    },
+    sha256Hex = async (text) => {
+        const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+
+        return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    },
 } = {}) {
     const packageId = typeof config.packageId === 'string' ? config.packageId : null;
     const scheme = typeof config.scheme === 'string' ? config.scheme : null;
     const userId = typeof config.userId === 'string' ? config.userId : null;
+    const markerHash = typeof config.browserMarkerHash === 'string' && config.browserMarkerHash !== '' ? config.browserMarkerHash : null;
 
     let installed = false;
 
-    const ready = (async () => {
-        if (config.paired !== true || !packageId || !scheme || !userId || typeof navigatorImpl?.getInstalledRelatedApps !== 'function') {
+    const markerMatches = async () => {
+        if (!markerHash) {
+            return false;
+        }
+
+        try {
+            const marker = readMarker();
+
+            return typeof marker === 'string' && marker !== '' && (await sha256Hex(marker)) === markerHash;
+        } catch {
+            return false;
+        }
+    };
+
+    const chromeDetects = async () => {
+        if (!packageId || typeof navigatorImpl?.getInstalledRelatedApps !== 'function') {
             return false;
         }
 
         try {
             const apps = await navigatorImpl.getInstalledRelatedApps();
 
-            installed = Array.isArray(apps) && apps.some((app) => app?.id === packageId);
+            return Array.isArray(apps) && apps.some((app) => app?.id === packageId);
         } catch {
-            installed = false;
+            return false;
         }
+    };
+
+    const ready = (async () => {
+        if (config.paired !== true || !scheme || !userId) {
+            return false;
+        }
+
+        installed = (await markerMatches()) || (await chromeDetects());
 
         return installed;
     })();

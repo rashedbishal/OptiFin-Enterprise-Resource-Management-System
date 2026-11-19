@@ -32,7 +32,10 @@ class PairCallingAppDevice
     {
         $cacheKey = IssueCallingAppPairingCode::cacheKey($code);
 
-        $userId = Cache::lock($cacheKey.':lock', 5)->block(3, fn (): mixed => Cache::pull($cacheKey));
+        $pending = Cache::lock($cacheKey.':lock', 5)->block(3, fn (): mixed => Cache::pull($cacheKey));
+
+        $userId = is_array($pending) ? ($pending['user_id'] ?? null) : null;
+        $browserMarkerHash = is_array($pending) ? ($pending['browser_marker_hash'] ?? null) : null;
 
         if (! is_string($userId)) {
             return null;
@@ -44,7 +47,7 @@ class PairCallingAppDevice
             return null;
         }
 
-        return DB::transaction(function () use ($user, $deviceName): array {
+        return DB::transaction(function () use ($user, $deviceName, $browserMarkerHash): array {
             $existing = CallingAppDevice::query()->where('tenant_user_id', $user->id)->first();
 
             if ($existing !== null) {
@@ -58,6 +61,7 @@ class PairCallingAppDevice
                 'tenant_user_id' => $user->id,
                 'personal_access_token_id' => $newToken->accessToken->getKey(),
                 'device_name' => $deviceName !== null ? mb_substr($deviceName, 0, 100) : null,
+                'browser_marker_hash' => is_string($browserMarkerHash) ? $browserMarkerHash : null,
                 'last_seen_at' => now(),
             ]);
 

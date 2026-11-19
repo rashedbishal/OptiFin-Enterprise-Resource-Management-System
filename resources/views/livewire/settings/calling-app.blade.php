@@ -1,7 +1,13 @@
 <section
     class="w-full p-4 sm:p-6 lg:p-8 overflow-y-auto min-h-0"
     x-data
-    x-on:calling-app-open.window="window.location.href = $event.detail.link"
+    x-on:calling-app-open.window="
+        {{-- Remember that THIS browser paired the phone (key must match
+        BROWSER_MARKER_STORAGE_KEY in resources/js/softphone/calling-app.js),
+        then open the app. --}}
+        try { localStorage.setItem('optifin.callingApp.browserMarker', $event.detail.marker) } catch (e) {}
+        window.location.href = $event.detail.link
+    "
 >
     @include('partials.settings-heading')
 
@@ -36,17 +42,35 @@
                 <flux:button variant="primary" wire:click="connect" icon="device-phone-mobile">{{ __('Connect calling app') }}</flux:button>
             @endif
 
-            {{-- Diagnostic: what THIS browser can see — the same check the
+            {{-- Diagnostic: what THIS browser can see — the same two checks the
             softphone's Call button uses (resources/js/softphone/calling-app.js)
-            to decide whether to hand a call to the app. Display only. --}}
+            to decide whether to hand a call to the app. Display only; reload
+            the page after connecting to see the new state. --}}
             <div
                 wire:ignore
                 x-data="{
-                    status: 'checking',
+                    marker: 'checking',
+                    chrome: 'checking',
                     found: [],
                     async init() {
+                        const markerHash = @js($this->device?->browser_marker_hash);
+
+                        try {
+                            const stored = localStorage.getItem('optifin.callingApp.browserMarker');
+
+                            if (! markerHash || ! stored) {
+                                this.marker = 'no';
+                            } else {
+                                const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(stored));
+                                const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+                                this.marker = hex === markerHash ? 'yes' : 'no';
+                            }
+                        } catch (error) {
+                            this.marker = 'no';
+                        }
+
                         if (typeof navigator.getInstalledRelatedApps !== 'function') {
-                            this.status = 'unsupported';
+                            this.chrome = 'unsupported';
 
                             return;
                         }
@@ -54,11 +78,14 @@
                         try {
                             const apps = await navigator.getInstalledRelatedApps();
                             this.found = (apps || []).map((app) => `${app.platform}:${app.id}`);
-                            this.status = (apps || []).some((app) => app.id === @js(config('calling.calling_app.android_package'))) ? 'yes' : 'no';
+                            this.chrome = (apps || []).some((app) => app.id === @js(config('calling.calling_app.android_package'))) ? 'yes' : 'no';
                         } catch (error) {
-                            this.status = 'error';
+                            this.chrome = 'error';
                             this.found = [String(error)];
                         }
+                    },
+                    get willHandOff() {
+                        return @js((bool) $this->device) && (this.marker === 'yes' || this.chrome === 'yes');
                     },
                 }"
                 class="rounded-lg border border-zinc-200 p-4 text-sm dark:border-zinc-700"
@@ -71,17 +98,31 @@
                         <strong>{{ $this->device ? __('Yes') : __('No') }}</strong>
                     </li>
                     <li>
-                        {{ __('Calling app detected on this device:') }}
-                        <strong x-show="status === 'checking'">{{ __('Checking…') }}</strong>
-                        <strong x-show="status === 'yes'" class="text-green-600 dark:text-green-400">{{ __('Yes — Call buttons will open the app') }}</strong>
-                        <strong x-show="status === 'no'" class="text-red-600 dark:text-red-400">{{ __('No') }}</strong>
-                        <strong x-show="status === 'unsupported'">{{ __('Not supported in this browser (use Chrome on Android)') }}</strong>
-                        <strong x-show="status === 'error'" class="text-red-600 dark:text-red-400">{{ __('Check failed') }}</strong>
+                        {{ __('This browser connected that phone:') }}
+                        <strong x-show="marker === 'checking'">{{ __('Checking…') }}</strong>
+                        <strong x-show="marker === 'yes'" class="text-green-600 dark:text-green-400">{{ __('Yes') }}</strong>
+                        <strong x-show="marker === 'no'">{{ __('No') }}</strong>
+                    </li>
+                    <li>
+                        {{ __('Chrome detects the app:') }}
+                        <strong x-show="chrome === 'checking'">{{ __('Checking…') }}</strong>
+                        <strong x-show="chrome === 'yes'" class="text-green-600 dark:text-green-400">{{ __('Yes') }}</strong>
+                        <strong x-show="chrome === 'no'">{{ __('No') }}</strong>
+                        <strong x-show="chrome === 'unsupported'">{{ __('Not supported in this browser') }}</strong>
+                        <strong x-show="chrome === 'error'">{{ __('Check failed') }}</strong>
                     </li>
                     <li x-show="found.length > 0" class="text-zinc-500">
                         {{ __('Browser reported:') }} <span x-text="found.join(', ')"></span>
                     </li>
+                    <li class="pt-2">
+                        {{ __('Call buttons in this browser open the app:') }}
+                        <strong x-show="willHandOff" class="text-green-600 dark:text-green-400">{{ __('Yes') }}</strong>
+                        <strong x-show="!willHandOff" class="text-red-600 dark:text-red-400">{{ __('No — calls stay in the browser') }}</strong>
+                    </li>
                 </ul>
+                <flux:text class="mt-3 text-xs">
+                    {{ __('If you uninstall the app from this phone, tap Unpair too — otherwise Call buttons here keep trying to open it.') }}
+                </flux:text>
             </div>
 
             @if ($pairingLink)

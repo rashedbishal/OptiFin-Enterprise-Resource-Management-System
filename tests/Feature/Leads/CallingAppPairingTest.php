@@ -260,10 +260,21 @@ test('connecting from settings issues a code and opens the app\'s deep link', fu
 
     $link = $component->get('pairingLink');
     expect($link)->toStartWith('optifin-calling://pair?code=');
-    $component->assertDispatched('calling-app-open', link: $link);
+
+    $marker = null;
+    $component->assertDispatched('calling-app-open', function (string $event, array $params) use ($link, &$marker): bool {
+        $marker = $params['marker'] ?? null;
+
+        return $params['link'] === $link && is_string($marker) && strlen($marker) >= 32;
+    });
 
     parse_str((string) parse_url($link, PHP_URL_QUERY), $query);
     $this->postJson(route('api.calling-app.pair'), ['code' => $query['code']])->assertOk();
+
+    // The marker itself never reaches the app or the database — only its
+    // hash, attached to the device the pairing created.
+    expect(CallingAppDevice::query()->sole()->browser_marker_hash)->toBe(hash('sha256', $marker))
+        ->and($link)->not->toContain($marker);
 });
 
 test('a user unpairs their own phone from settings', function () {
@@ -345,7 +356,11 @@ test('the softphone is told whether this user has a paired phone', function () {
     $paired = $this->actingAs($x->agent)->get(route('dashboard'))->getContent();
     $unpaired = $this->actingAs($x->other)->get(route('dashboard'))->getContent();
 
-    expect($paired)->toMatch('~paired\\\\u0022:true~')
+    $hash = CallingAppDevice::query()->where('tenant_user_id', $x->agent->id)->value('browser_marker_hash');
+
+    expect($hash)->toBeString()
+        ->and($paired)->toContain($hash)
+        ->and($paired)->toMatch('~paired\\\\u0022:true~')
         ->and($unpaired)->toMatch('~paired\\\\u0022:false~');
 });
 
@@ -356,6 +371,6 @@ test('the calling app settings page shows what this browser detects', function (
     $this->actingAs($x->agent)->get(route('calling-app.edit'))
         ->assertOk()
         ->assertSee('data-test="calling-app-detection"', false)
-        ->assertSeeInOrder(['Paired phone on your account:', 'Yes', 'Calling app detected on this device:'])
+        ->assertSeeInOrder(['Paired phone on your account:', 'Yes', 'This browser connected that phone:', 'Chrome detects the app:', 'Call buttons in this browser open the app:'])
         ->assertSee('com.optifin.calling');
 });

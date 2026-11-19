@@ -17,21 +17,32 @@ use Illuminate\Support\Str;
  * config('calling.calling_app.pairing_code_ttl_seconds') and is consumed on
  * first redemption. Issuing a new code doesn't revoke an earlier one — both
  * are short-lived and each can pair only this same user.
+ *
+ * Also mints the browser marker: a random value the issuing browser keeps in
+ * its own localStorage, whose hash rides along with the code and ends up on
+ * the paired device row. It never passes through the app. The softphone
+ * later compares the two to recognise that it is running on the paired
+ * phone itself (see resources/js/softphone/calling-app.js).
  */
 class IssueCallingAppPairingCode
 {
     /**
-     * @return array{code: string, deep_link: string, expires_in: int}
+     * @return array{code: string, deep_link: string, expires_in: int, browser_marker: string}
      */
     public function handle(TenantUser $user): array
     {
         $code = Str::random(48);
+        $browserMarker = Str::random(48);
         $ttl = (int) config('calling.calling_app.pairing_code_ttl_seconds');
 
-        Cache::put(self::cacheKey($code), $user->id, $ttl);
+        Cache::put(self::cacheKey($code), [
+            'user_id' => $user->id,
+            'browser_marker_hash' => hash('sha256', $browserMarker),
+        ], $ttl);
 
         return [
             'code' => $code,
+            'browser_marker' => $browserMarker,
             'deep_link' => config('calling.calling_app.deep_link_scheme').'://pair?code='.$code,
             'expires_in' => $ttl,
         ];

@@ -30,7 +30,10 @@
         // only whether THIS user has a paired phone — whether the app is on
         // the current device is detected in the browser itself.
         'callingApp' => [
-            'paired' => auth()->user()->callingAppDevice()->exists(),
+            'paired' => ($callingAppDevice = auth()->user()->callingAppDevice()->first(['id', 'browser_marker_hash'])) !== null,
+            // Hash of the marker the PAIRING browser keeps in localStorage —
+            // a browser holding the matching marker is on the paired phone.
+            'browserMarkerHash' => $callingAppDevice?->browser_marker_hash,
             'packageId' => config('calling.calling_app.android_package'),
             'scheme' => config('calling.calling_app.deep_link_scheme'),
         ],

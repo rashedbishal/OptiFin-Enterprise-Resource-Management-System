@@ -28,13 +28,14 @@ use Laravel\Sanctum\PersonalAccessToken;
  * @property string $tenant_user_id
  * @property int $personal_access_token_id
  * @property string|null $device_name
+ * @property string|null $browser_marker_hash
  * @property Carbon|null $last_seen_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read TenantUser $tenantUser
  * @property-read PersonalAccessToken $token
  */
-#[Fillable(['tenant_id', 'tenant_user_id', 'personal_access_token_id', 'device_name', 'last_seen_at'])]
+#[Fillable(['tenant_id', 'tenant_user_id', 'personal_access_token_id', 'device_name', 'browser_marker_hash', 'last_seen_at'])]
 class CallingAppDevice extends Model
 {
     /** @use HasFactory<CallingAppDeviceFactory> */
