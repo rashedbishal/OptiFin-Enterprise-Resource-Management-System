@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Enums\CallStatus;
+use App\Jobs\SendCallingAppCallPush;
 use App\Jobs\SendIncomingCallPushNotification;
 use App\Models\LeadCall;
 use Illuminate\Support\Facades\Log;
@@ -23,6 +24,18 @@ final class LeadCallPushNotifier
     {
         if ($call->status !== CallStatus::Ringing) {
             return false;
+        }
+
+        // Calling companion app: wake the routed users' paired phones too.
+        // Independent of the Web Push below — neither can block the other.
+        try {
+            SendCallingAppCallPush::dispatch($call->tenant_id, $call->id, SendCallingAppCallPush::RING);
+        } catch (Throwable $exception) {
+            Log::channel('whatsapp')->warning('WA CALL APP PUSH DISPATCH FAILED', [
+                'tenant_id' => $call->tenant_id,
+                'lead_call_id' => $call->id,
+                'exception' => $exception::class,
+            ]);
         }
 
         try {

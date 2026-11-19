@@ -16,6 +16,7 @@ use App\Observers\LeadObserver;
 use App\Observers\PlatformUserObserver;
 use App\Observers\RoleObserver;
 use App\Observers\TenantUserObserver;
+use App\Services\CallingAppFirebase;
 use App\Services\PusherReverbChannelUsersGateway;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -26,6 +27,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use Kreait\Firebase\Contract\Messaging;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -38,6 +40,12 @@ class AppServiceProvider extends ServiceProvider
         // App\Services\ReverbPresenceQuery resolves through; tests rebind
         // this to a fake so nothing here ever makes a real network call.
         $this->app->bind(ReverbChannelUsersGateway::class, PusherReverbChannelUsersGateway::class);
+
+        // Calling companion app — the FCM notification channel resolves its
+        // Firebase client through this binding. Overrides kreait's singleton
+        // (which reads a key file from .env) so the key comes from the admin
+        // panel instead (CallingAppFirebase), freshly on every push.
+        $this->app->bind(Messaging::class, fn (): Messaging => app(CallingAppFirebase::class)->messaging());
     }
 
     /**

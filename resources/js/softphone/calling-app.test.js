@@ -139,4 +139,19 @@ describe('createCallingAppHandoff', () => {
             expect(await handoff.ready).toBe(true);
         });
     });
+
+    it('gives up after the detection cap and falls back to the browser softphone', async () => {
+        let fire;
+        const handoff = createCallingAppHandoff({
+            config: pairedConfig,
+            navigatorImpl: { getInstalledRelatedApps: () => new Promise(() => {}) },
+            navigate: vi.fn(),
+            setTimer: (fn) => { fire = fn; },
+        });
+
+        fire();
+
+        expect(await handoff.ready).toBe(false);
+        expect(handoff.tryCall('lead-9')).toBe(false);
+    });
 });

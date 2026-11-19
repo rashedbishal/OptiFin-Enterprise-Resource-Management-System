@@ -11,6 +11,7 @@ use App\Livewire\Platform\Dashboard;
 use App\Livewire\Platform\LeadManagement\Settings as LeadManagementSettings;
 use App\Livewire\Platform\Modules\Index as ModulesIndex;
 use App\Livewire\Platform\Roles\Index as RolesIndex;
+use App\Livewire\Platform\Settings\CallingApp as SettingsCallingApp;
 use App\Livewire\Platform\Settings\Password as SettingsPassword;
 use Illuminate\Support\Facades\Route;
 
@@ -33,5 +34,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::livewire('modules', ModulesIndex::class)->name('modules.index');
         Route::livewire('lead-management', LeadManagementSettings::class)->name('lead-management.index');
         Route::livewire('settings/password', SettingsPassword::class)->name('settings.password');
+        // Calling app's Firebase key — Mother Admin only (enforced in the component).
+        Route::livewire('settings/calling-app', SettingsCallingApp::class)->name('settings.calling-app');
     });
 });

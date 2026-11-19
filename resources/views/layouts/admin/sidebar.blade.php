@@ -27,6 +27,11 @@
                     <flux:sidebar.item icon="squares-2x2" :href="route('admin.modules.index')" :current="request()->routeIs('admin.modules.*')" wire:navigate>
                         {{ __('Modules') }}
                     </flux:sidebar.item>
+                    @if (auth('platform')->user()?->isMotherAdmin())
+                        <flux:sidebar.item icon="device-phone-mobile" :href="route('admin.settings.calling-app')" :current="request()->routeIs('admin.settings.calling-app')" wire:navigate>
+                            {{ __('Calling app') }}
+                        </flux:sidebar.item>
+                    @endif
                 </flux:sidebar.group>
             </flux:sidebar.nav>
 

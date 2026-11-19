@@ -2,8 +2,10 @@
 
 namespace App\Support;
 
+use App\Enums\CallDirection;
 use App\Enums\CallStatus;
 use App\Events\LeadCallUpdated;
+use App\Jobs\SendCallingAppCallPush;
 use App\Models\LeadCall;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -35,6 +37,33 @@ final class LeadCallBroadcaster
             event(new LeadCallUpdated($call->id, $status->value, $recipients));
         } catch (Throwable $exception) {
             Log::channel('whatsapp')->warning('WA CALL BROADCAST FAILED', [
+                'tenant_id' => $call->tenant_id,
+                'lead_call_id' => $call->id,
+                'status' => $status->value,
+                'exception' => $exception::class,
+            ]);
+        }
+
+        self::stopAppRinging($call, $status);
+    }
+
+    /**
+     * Calling companion app: an inbound call that just left Ringing (claimed,
+     * declined, missed, failed, ended) must stop ringing on every routed
+     * phone — the browser hears this broadcast, a closed app needs a push.
+     * Connected is skipped (it always follows Answering, which already sent
+     * it); a dispatch failure is logged and never affects the caller.
+     */
+    private static function stopAppRinging(LeadCall $call, CallStatus $status): void
+    {
+        if ($call->direction !== CallDirection::Inbound || in_array($status, [CallStatus::Ringing, CallStatus::Connected, CallStatus::Initiated], true)) {
+            return;
+        }
+
+        try {
+            SendCallingAppCallPush::dispatch($call->tenant_id, $call->id, SendCallingAppCallPush::ENDED);
+        } catch (Throwable $exception) {
+            Log::channel('whatsapp')->warning('WA CALL APP STOP PUSH DISPATCH FAILED', [
                 'tenant_id' => $call->tenant_id,
                 'lead_call_id' => $call->id,
                 'status' => $status->value,

@@ -83,6 +83,28 @@ class CallingAppController extends Controller
         return response()->json(['data' => ['ok' => true]]);
     }
 
+    /**
+     * The app reports its Firebase Cloud Messaging token after pairing and
+     * whenever Firebase rotates it — what lets an incoming call wake it.
+     */
+    public function pushToken(Request $request): JsonResponse
+    {
+        $device = $request->attributes->get('callingAppDevice');
+
+        abort_unless($device instanceof CallingAppDevice, 401);
+
+        $validated = $request->validate([
+            'token' => ['required', 'string', 'max:512'],
+        ]);
+
+        $device->forceFill([
+            'fcm_token' => $validated['token'],
+            'fcm_token_updated_at' => now(),
+        ])->save();
+
+        return response()->json(['data' => ['ok' => true]]);
+    }
+
     public function unpair(Request $request, UnpairCallingAppDevice $action): JsonResponse
     {
         $device = $request->attributes->get('callingAppDevice');

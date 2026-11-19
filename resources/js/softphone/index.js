@@ -109,7 +109,26 @@ export function registerSoftphone(alpine) {
                     },
                 });
 
-                controller.start();
+                // Calling companion app: on the phone the app is paired to,
+                // the app rings for incoming calls instead (woken by its own
+                // push), so this browser stays silent there — no softphone,
+                // and no browser call notifications (approved: app only on
+                // that phone). Everywhere else — desktops, other phones, a
+                // browser that isn't the pairing one — exactly as before.
+                callingApp.ready.then((onPairedPhone) => {
+                    if (this.stopped) {
+                        return;
+                    }
+
+                    if (onPairedPhone) {
+                        this.notificationsDismissed = true;
+                        pushSubscriber?.disable().catch(() => {});
+
+                        return;
+                    }
+
+                    controller.start();
+                });
                 // Once a second so countdowns and call timers stay current.
                 clock = setInterval(() => controller.notify(), 1000);
 
@@ -143,6 +162,7 @@ export function registerSoftphone(alpine) {
             },
 
             destroy() {
+                this.stopped = true;
                 clearInterval(clock);
                 window.removeEventListener('softphone:call', this.onSoftphoneCall);
                 document.removeEventListener('pointerdown', this.onFirstInteraction);

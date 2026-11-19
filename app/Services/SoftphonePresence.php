@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\ReverbPresenceResult;
+use App\Models\CallingAppDevice;
 use App\Models\TenantUser;
 use Illuminate\Support\Carbon;
 
@@ -44,6 +45,20 @@ class SoftphonePresence
 
     public function isAvailable(TenantUser $user): bool
     {
+        // Calling companion app (approved product decision): a paired phone
+        // that has registered a push token can be woken by the incoming-call
+        // push even with every tab and the app closed, so it counts as
+        // available regardless of the browser signals below. Trade-off
+        // accepted: a phone that is actually off/offline can't be detected,
+        // so such a call rings nowhere and ends Missed rather than
+        // overflowing to backup receivers / Client Admins. Only while the
+        // platform's Firebase key is configured — without it nothing can
+        // wake the app, so the browser rules below apply unchanged.
+        if (app(CallingAppFirebase::class)->isConfigured()
+            && CallingAppDevice::query()->where('tenant_user_id', $user->id)->whereNotNull('fcm_token')->exists()) {
+            return true;
+        }
+
         return match ($this->reverb->check($user)) {
             ReverbPresenceResult::Present => true,
             ReverbPresenceResult::Absent => false,

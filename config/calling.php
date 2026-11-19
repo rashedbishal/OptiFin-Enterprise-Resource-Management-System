@@ -366,6 +366,11 @@ return [
         'pairing_code_ttl_seconds' => (int) env('CALLING_APP_PAIRING_CODE_TTL_SECONDS', 120),
         'deep_link_scheme' => env('CALLING_APP_DEEP_LINK_SCHEME', 'optifin-calling'),
         'android_package' => env('CALLING_APP_ANDROID_PACKAGE', 'com.optifin.calling'),
+        // The Firebase project built into the OptiFin Calling app
+        // (google-services.json). The service-account key uploaded in Admin →
+        // Calling app must belong to it — a key for any other project can't
+        // wake the app, so it's rejected at upload.
+        'firebase_project_id' => env('CALLING_APP_FIREBASE_PROJECT_ID', 'optifin-calling'),
         'android_sha256_fingerprints' => array_values(array_filter(array_map('trim', explode(',', (string) env(
             'CALLING_APP_ANDROID_SHA256_FINGERPRINTS',
             'DE:D3:49:DE:81:76:11:DE:56:34:DF:7A:53:0F:CA:A0:B8:AE:B7:9F:4E:D6:2F:7D:7E:2A:26:54:8E:5B:39:25',

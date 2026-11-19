@@ -20,6 +20,9 @@ export const BROWSER_MARKER_STORAGE_KEY = 'optifin.callingApp.browserMarker';
  *         manifest's related_applications entry and the app's own
  *         asset_statements).
  *
+ * On that same paired phone the browser softphone also stays out of the way
+ * for INCOMING calls (index.js waits on `ready`): the app rings there instead.
+ *
  * Anything else — a desktop browser, another browser, the app not installed,
  * not paired, the API missing or throwing, or detection simply not finished
  * yet when the agent clicks — leaves the existing browser softphone flow
@@ -46,6 +49,8 @@ export function createCallingAppHandoff({
 
         return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
     },
+    detectTimeoutMs = 3000,
+    setTimer = (fn, ms) => setTimeout(fn, ms),
 } = {}) {
     const packageId = typeof config.packageId === 'string' ? config.packageId : null;
     const scheme = typeof config.scheme === 'string' ? config.scheme : null;
@@ -82,15 +87,25 @@ export function createCallingAppHandoff({
         }
     };
 
-    const ready = (async () => {
+    const detect = (async () => {
         if (config.paired !== true || !scheme || !userId) {
             return false;
         }
 
-        installed = (await markerMatches()) || (await chromeDetects());
+        return (await markerMatches()) || (await chromeDetects());
+    })();
+
+    // Capped: the softphone waits on this before starting (see index.js), so
+    // a detection that never settles must fall back to "not the paired
+    // phone" — the browser softphone, exactly as before — not hang it.
+    const ready = Promise.race([
+        detect,
+        new Promise((resolve) => setTimer(() => resolve(false), detectTimeoutMs)),
+    ]).then((result) => {
+        installed = result === true;
 
         return installed;
-    })();
+    });
 
     return {
         ready,

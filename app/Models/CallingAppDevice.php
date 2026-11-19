@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
 use Laravel\Sanctum\PersonalAccessToken;
 
@@ -29,17 +30,19 @@ use Laravel\Sanctum\PersonalAccessToken;
  * @property int $personal_access_token_id
  * @property string|null $device_name
  * @property string|null $browser_marker_hash
+ * @property string|null $fcm_token
+ * @property Carbon|null $fcm_token_updated_at
  * @property Carbon|null $last_seen_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read TenantUser $tenantUser
  * @property-read PersonalAccessToken $token
  */
-#[Fillable(['tenant_id', 'tenant_user_id', 'personal_access_token_id', 'device_name', 'browser_marker_hash', 'last_seen_at'])]
+#[Fillable(['tenant_id', 'tenant_user_id', 'personal_access_token_id', 'device_name', 'browser_marker_hash', 'fcm_token', 'fcm_token_updated_at', 'last_seen_at'])]
 class CallingAppDevice extends Model
 {
     /** @use HasFactory<CallingAppDeviceFactory> */
-    use HasFactory, HasUlids;
+    use HasFactory, HasUlids, Notifiable;
 
     /**
      * The Sanctum token ability every calling-app token carries — the
@@ -55,7 +58,18 @@ class CallingAppDevice extends Model
     {
         return [
             'last_seen_at' => 'datetime',
+            'fcm_token_updated_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Push target for laravel-notification-channels/fcm. The DEVICE is the
+     * notifiable for calling-app pushes (not the TenantUser), so they never
+     * touch the user's database notifications / bell broadcast.
+     */
+    public function routeNotificationForFcm(): ?string
+    {
+        return $this->fcm_token;
     }
 
     /**
