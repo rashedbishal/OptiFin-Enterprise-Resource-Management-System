@@ -348,3 +348,14 @@ test('the softphone is told whether this user has a paired phone', function () {
     expect($paired)->toMatch('~paired\\\\u0022:true~')
         ->and($unpaired)->toMatch('~paired\\\\u0022:false~');
 });
+
+test('the calling app settings page shows what this browser detects', function () {
+    $x = Lc::make();
+    capPair($x->agent);
+
+    $this->actingAs($x->agent)->get(route('calling-app.edit'))
+        ->assertOk()
+        ->assertSee('data-test="calling-app-detection"', false)
+        ->assertSeeInOrder(['Paired phone on your account:', 'Yes', 'Calling app detected on this device:'])
+        ->assertSee('com.optifin.calling');
+});

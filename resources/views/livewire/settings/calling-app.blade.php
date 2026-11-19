@@ -36,6 +36,54 @@
                 <flux:button variant="primary" wire:click="connect" icon="device-phone-mobile">{{ __('Connect calling app') }}</flux:button>
             @endif
 
+            {{-- Diagnostic: what THIS browser can see — the same check the
+            softphone's Call button uses (resources/js/softphone/calling-app.js)
+            to decide whether to hand a call to the app. Display only. --}}
+            <div
+                wire:ignore
+                x-data="{
+                    status: 'checking',
+                    found: [],
+                    async init() {
+                        if (typeof navigator.getInstalledRelatedApps !== 'function') {
+                            this.status = 'unsupported';
+
+                            return;
+                        }
+
+                        try {
+                            const apps = await navigator.getInstalledRelatedApps();
+                            this.found = (apps || []).map((app) => `${app.platform}:${app.id}`);
+                            this.status = (apps || []).some((app) => app.id === @js(config('calling.calling_app.android_package'))) ? 'yes' : 'no';
+                        } catch (error) {
+                            this.status = 'error';
+                            this.found = [String(error)];
+                        }
+                    },
+                }"
+                class="rounded-lg border border-zinc-200 p-4 text-sm dark:border-zinc-700"
+                data-test="calling-app-detection"
+            >
+                <flux:heading size="sm">{{ __('This browser') }}</flux:heading>
+                <ul class="mt-2 space-y-1">
+                    <li>
+                        {{ __('Paired phone on your account:') }}
+                        <strong>{{ $this->device ? __('Yes') : __('No') }}</strong>
+                    </li>
+                    <li>
+                        {{ __('Calling app detected on this device:') }}
+                        <strong x-show="status === 'checking'">{{ __('Checking…') }}</strong>
+                        <strong x-show="status === 'yes'" class="text-green-600 dark:text-green-400">{{ __('Yes — Call buttons will open the app') }}</strong>
+                        <strong x-show="status === 'no'" class="text-red-600 dark:text-red-400">{{ __('No') }}</strong>
+                        <strong x-show="status === 'unsupported'">{{ __('Not supported in this browser (use Chrome on Android)') }}</strong>
+                        <strong x-show="status === 'error'" class="text-red-600 dark:text-red-400">{{ __('Check failed') }}</strong>
+                    </li>
+                    <li x-show="found.length > 0" class="text-zinc-500">
+                        {{ __('Browser reported:') }} <span x-text="found.join(', ')"></span>
+                    </li>
+                </ul>
+            </div>
+
             @if ($pairingLink)
                 <flux:callout variant="subtle" icon="information-circle">
                     <flux:callout.text>
