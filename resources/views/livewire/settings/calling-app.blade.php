@@ -1,13 +1,25 @@
 <section
     class="w-full p-4 sm:p-6 lg:p-8 overflow-y-auto min-h-0"
-    x-data
-    x-on:calling-app-open.window="
-        {{-- Remember that THIS browser paired the phone (key must match
-        BROWSER_MARKER_STORAGE_KEY in resources/js/softphone/calling-app.js),
-        then open the app. --}}
-        try { localStorage.setItem('optifin.callingApp.browserMarker', $event.detail.marker) } catch (e) {}
-        window.location.href = $event.detail.link
-    "
+    {{-- On "Connect": remember that THIS browser paired the phone (the key
+    must match BROWSER_MARKER_STORAGE_KEY in resources/js/softphone/
+    calling-app.js), then open the app. A method, not inline statements —
+    an x-on attribute is evaluated as a single expression, so a bare
+    try/catch there is a syntax error that silently does nothing. --}}
+    x-data="{
+        rememberPairingBrowser(marker) {
+            try {
+                localStorage.setItem('optifin.callingApp.browserMarker', marker);
+            } catch (error) {
+                // Private mode / storage blocked: the hand-off just won't
+                // recognise this browser; pairing itself still works.
+            }
+        },
+        openApp(detail) {
+            this.rememberPairingBrowser(detail.marker);
+            window.location.href = detail.link;
+        },
+    }"
+    x-on:calling-app-open.window="openApp($event.detail)"
 >
     @include('partials.settings-heading')
 
