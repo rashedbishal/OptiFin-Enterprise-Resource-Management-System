@@ -245,3 +245,15 @@ test('backup failure emails go to the alert recipients through the alerts accoun
     expect((new BackupHasFailedNotification(new BackupHasFailed(new RuntimeException('B2 down'), 'backups', 'optifin-erp')))->toMail()->mailer)
         ->toBe(MailSettings::ALERTS_MAILER);
 });
+
+test('the cached backup status survives the production database cache, which never rebuilds objects', function () {
+    config(['cache.default' => 'database']);
+    saveB2Settings(PlatformUser::factory()->motherAdmin()->create());
+    fakeBackupsDisk();
+    putBackup('-1 hour');
+
+    expect((new BackupsCheck)->run()->status)->toBe(Status::ok()); // fills the cache
+    expect((new BackupsCheck)->run()->status)->toBe(Status::ok()); // reads it back
+
+    expect(app(BackupSettings::class)->status()['newestAt']->isToday())->toBeTrue();
+});

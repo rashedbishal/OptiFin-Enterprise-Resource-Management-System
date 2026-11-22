@@ -29,6 +29,8 @@ class BackupsCheck extends Check
         try {
             $status = $settings->status();
         } catch (Throwable $exception) {
+            // Throwable, not Exception: the Health package only isolates
+            // Exceptions, so an Error here would stop every other check.
             return Result::make()->failed(__('Backblaze B2 could not be reached: :error', ['error' => $exception->getMessage()]))->shortSummary(__('Unreachable'));
         }
 

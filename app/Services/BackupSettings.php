@@ -42,7 +42,8 @@ class BackupSettings
      */
     private const STATUS_CACHE_MINUTES = 30;
 
-    private const STATUS_CACHE_KEY = 'backups:status';
+    // v2: v1 cached Carbon objects, which the cache can't rebuild.
+    private const STATUS_CACHE_KEY = 'backups:status:v2';
 
     /**
      * @var BackupStorage|false|null false = looked up, nothing saved
@@ -283,17 +284,27 @@ class BackupSettings
             $this->forgetStatus();
         }
 
-        /** @var BackupStatus */
-        return Cache::remember(self::STATUS_CACHE_KEY, now()->addMinutes(self::STATUS_CACHE_MINUTES), function (): array {
+        // Plain scalars only: the cache refuses to rebuild objects such as
+        // Carbon dates (cache.serializable_classes = false), so dates are
+        // cached as timestamps and turned back into dates here.
+        $cached = Cache::remember(self::STATUS_CACHE_KEY, now()->addMinutes(self::STATUS_CACHE_MINUTES), function (): array {
             $backups = $this->backups();
+            $newest = $backups->first();
 
             return [
                 'count' => $backups->count(),
-                'newestAt' => $backups->first()['date'] ?? null,
+                'newestAt' => $newest === null ? null : $newest['date']->getTimestamp(),
                 'totalBytes' => (int) $backups->sum('size'),
-                'checkedAt' => now(),
+                'checkedAt' => now()->getTimestamp(),
             ];
         });
+
+        return [
+            'count' => $cached['count'],
+            'newestAt' => $cached['newestAt'] === null ? null : Carbon::createFromTimestamp($cached['newestAt']),
+            'totalBytes' => $cached['totalBytes'],
+            'checkedAt' => Carbon::createFromTimestamp($cached['checkedAt']),
+        ];
     }
 
     public function forgetStatus(): void
