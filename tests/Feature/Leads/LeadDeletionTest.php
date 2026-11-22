@@ -18,7 +18,7 @@ test('a client admin can delete a website form lead', function () {
 
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)->call('completeInitialLoad')
-        ->call('delete', $lead->id)
+        ->set('deletePassword', 'password')->call('delete', $lead->id)
         ->assertDispatched('toast-show');
 
     expect(Lead::find($lead->id))->toBeNull();
@@ -31,7 +31,7 @@ test('a client admin can delete an email lead', function () {
 
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)->call('completeInitialLoad')
-        ->call('delete', $lead->id);
+        ->set('deletePassword', 'password')->call('delete', $lead->id);
 
     expect(Lead::find($lead->id))->toBeNull();
 });
@@ -54,7 +54,7 @@ test('deleting a lead also removes all of its attachments from disk', function (
 
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)->call('completeInitialLoad')
-        ->call('delete', $lead->id);
+        ->set('deletePassword', 'password')->call('delete', $lead->id);
 
     foreach ($paths as $path) {
         Storage::disk('local')->assertMissing($path);
@@ -68,7 +68,7 @@ test('deleting a lead with no attachment does not error', function () {
 
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)->call('completeInitialLoad')
-        ->call('delete', $lead->id)
+        ->set('deletePassword', 'password')->call('delete', $lead->id)
         ->assertDispatched('toast-show');
 
     expect(Lead::find($lead->id))->toBeNull();
@@ -88,7 +88,7 @@ test('deleting a lead with a failed (pathless) attachment does not error', funct
 
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)->call('completeInitialLoad')
-        ->call('delete', $lead->id)
+        ->set('deletePassword', 'password')->call('delete', $lead->id)
         ->assertDispatched('toast-show');
 
     expect(Lead::find($lead->id))->toBeNull();
@@ -102,7 +102,7 @@ test('a client user without delete permission cannot delete a lead', function ()
 
     Livewire::actingAs($rep)
         ->test(Index::class)->call('completeInitialLoad')
-        ->call('delete', $lead->id)
+        ->set('deletePassword', 'password')->call('delete', $lead->id)
         ->assertDispatched('toast-show');
 
     expect(Lead::find($lead->id))->not->toBeNull();
@@ -114,7 +114,7 @@ test('a client admin cannot delete another tenant\'s lead', function () {
     $sourceB = LeadSource::factory()->create(['tenant_id' => $tenantB->id, 'type' => LeadSourceType::WebsiteForm]);
     $leadB = Lead::factory()->create(['tenant_id' => $tenantB->id, 'source_id' => $sourceB->id]);
 
-    expect(fn () => Livewire::actingAs($clientAdminA)->test(Index::class)->call('completeInitialLoad')->call('delete', $leadB->id))
+    expect(fn () => Livewire::actingAs($clientAdminA)->test(Index::class)->call('completeInitialLoad')->set('deletePassword', 'password')->call('delete', $leadB->id))
         ->toThrow(ModelNotFoundException::class);
 
     expect(Lead::find($leadB->id))->not->toBeNull();
@@ -215,7 +215,7 @@ test('a client admin cannot delete a protected-source lead from the index', func
 
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)->call('completeInitialLoad')
-        ->call('delete', $lead->id)
+        ->set('deletePassword', 'password')->call('delete', $lead->id)
         ->assertDispatched('toast-show');
 
     expect(Lead::find($lead->id))->not->toBeNull();
@@ -228,7 +228,7 @@ test('a client admin cannot delete a non-Unqualified protected-source lead from 
 
     Livewire::actingAs($clientAdmin)
         ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
-        ->call('delete')
+        ->set('deletePassword', 'password')->call('delete')
         ->assertDispatched('toast-show');
 
     expect(Lead::find($lead->id))->not->toBeNull();
@@ -254,7 +254,7 @@ test('a client admin CAN delete a protected-source (WhatsApp) lead from the deta
 
     Livewire::actingAs($clientAdmin)
         ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
-        ->call('delete')
+        ->set('deletePassword', 'password')->call('delete')
         ->assertRedirect(route('tenant-leads.index'));
 
     expect(Lead::find($lead->id))->toBeNull();
@@ -267,7 +267,7 @@ test('a client admin can still delete a manual lead', function () {
 
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)->call('completeInitialLoad')
-        ->call('delete', $lead->id)
+        ->set('deletePassword', 'password')->call('delete', $lead->id)
         ->assertDispatched('toast-show');
 
     expect(Lead::find($lead->id))->toBeNull();

@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Enums\MessageStatus;
 use App\Enums\MessageType;
 use App\Events\LeadUpdated;
+use App\Models\Lead;
 use App\Models\Message;
 use App\Services\MessageSenderFactory;
 use App\Services\OutboundEligibilityService;
@@ -101,6 +102,8 @@ class SendOutboundMessage implements ShouldQueue
         ]);
 
         $conversation->update(['last_outbound_at' => now()]);
+
+        Lead::recordFirstContact($this->message->lead_id);
 
         event(new LeadUpdated($this->message->lead));
     }

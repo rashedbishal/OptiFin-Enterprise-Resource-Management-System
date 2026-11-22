@@ -194,10 +194,28 @@ class NurtureInactiveLeads extends Command
      * concurrently (e.g. queued per-tenant) or the check/act pair were split
      * across separate requests, neither of which is the case for this
      * scheduled, single-process sweep.
+     *
+     * Beyond same-day idempotency, a new task is only created while the lead
+     * has no still-Pending system-created task (created_by NULL — this
+     * command is the only writer that leaves it null). Without that, a lead
+     * staying inactive created a fresh "Follow up" task every single day,
+     * piling up dozens of duplicates. Once the rep completes or cancels the
+     * open task, the next sweep may create a new one if the lead is still
+     * inactive.
      */
     private function createFollowUpTask(Tenant $tenant, Lead $lead, int $daysInactive): void
     {
         if ($lead->nurturing_task_created_at !== null && $lead->nurturing_task_created_at->greaterThanOrEqualTo(today())) {
+            return;
+        }
+
+        $hasOpenSystemTask = Task::query()
+            ->where('lead_id', $lead->id)
+            ->where('status', TaskStatus::Pending)
+            ->whereNull('created_by')
+            ->exists();
+
+        if ($hasOpenSystemTask) {
             return;
         }
 

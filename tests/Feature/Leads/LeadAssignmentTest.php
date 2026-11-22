@@ -190,9 +190,9 @@ test('auto-assign round-robin picks the eligible user assigned longest ago', fun
     ['tenant' => $tenant] = tenantWithLeadManagement();
     $tenant->update(['lead_distribution_mode' => LeadDistributionMode::Automatic, 'auto_distribution_method' => AutoDistributionMethod::RoundRobin]);
 
-    $repA = clientUserWithLeadPermission($tenant);
+    $repA = clientUserWithLeadPermission($tenant, ['view', 'update']);
     $repA->update(['last_assigned_at' => now()->subDay()]);
-    $repB = clientUserWithLeadPermission($tenant);
+    $repB = clientUserWithLeadPermission($tenant, ['view', 'update']);
     $repB->update(['last_assigned_at' => now()->subMinutes(5)]);
 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
@@ -206,10 +206,10 @@ test('auto-assign least-loaded picks the eligible user with fewest open leads', 
     ['tenant' => $tenant] = tenantWithLeadManagement();
     $tenant->update(['lead_distribution_mode' => LeadDistributionMode::Automatic, 'auto_distribution_method' => AutoDistributionMethod::LeastLoaded]);
 
-    $busyRep = clientUserWithLeadPermission($tenant);
+    $busyRep = clientUserWithLeadPermission($tenant, ['view', 'update']);
     Lead::factory()->count(3)->create(['tenant_id' => $tenant->id, 'assigned_to' => $busyRep->id]);
 
-    $freeRep = clientUserWithLeadPermission($tenant);
+    $freeRep = clientUserWithLeadPermission($tenant, ['view', 'update']);
 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
 
@@ -222,7 +222,7 @@ test('auto-assign does not consider inactive or unqualified users', function () 
     ['tenant' => $tenant] = tenantWithLeadManagement();
     $tenant->update(['lead_distribution_mode' => LeadDistributionMode::Automatic, 'auto_distribution_method' => AutoDistributionMethod::RoundRobin]);
 
-    clientUserWithLeadPermission($tenant)->update(['is_active' => false]);
+    clientUserWithLeadPermission($tenant, ['view', 'update'])->update(['is_active' => false]);
 
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
 
@@ -246,7 +246,7 @@ test('auto-assign does not consider inactive or unqualified users', function () 
 test('auto-assign round-robin runs its candidate query twice, matching the lock-and-reselect pattern', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
     $tenant->update(['lead_distribution_mode' => LeadDistributionMode::Automatic, 'auto_distribution_method' => AutoDistributionMethod::RoundRobin]);
-    $rep = clientUserWithLeadPermission($tenant);
+    $rep = clientUserWithLeadPermission($tenant, ['view', 'update']);
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
 
     DB::flushQueryLog();
@@ -273,7 +273,7 @@ test('auto-assign round-robin runs its candidate query twice, matching the lock-
 test('auto-assign least-loaded runs its candidate query twice, matching the lock-and-reselect pattern', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
     $tenant->update(['lead_distribution_mode' => LeadDistributionMode::Automatic, 'auto_distribution_method' => AutoDistributionMethod::LeastLoaded]);
-    $rep = clientUserWithLeadPermission($tenant);
+    $rep = clientUserWithLeadPermission($tenant, ['view', 'update']);
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
 
     DB::flushQueryLog();
@@ -301,7 +301,7 @@ test('auto-assign least-loaded runs its candidate query twice, matching the lock
 test('auto-assign random distribution still runs its candidate query only once and is unaffected by the fairness fix', function () {
     ['tenant' => $tenant] = tenantWithLeadManagement();
     $tenant->update(['lead_distribution_mode' => LeadDistributionMode::Automatic, 'auto_distribution_method' => AutoDistributionMethod::Random]);
-    $rep = clientUserWithLeadPermission($tenant);
+    $rep = clientUserWithLeadPermission($tenant, ['view', 'update']);
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id]);
 
     DB::flushQueryLog();

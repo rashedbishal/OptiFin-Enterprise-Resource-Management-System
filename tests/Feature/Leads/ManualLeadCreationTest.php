@@ -323,7 +323,7 @@ test('a meeting date in the past is rejected', function () {
 test('a client admin leaving the assignee blank auto-distributes the lead when the tenant uses automatic distribution', function () {
     ['tenant' => $tenant, 'clientAdmin' => $clientAdmin] = tenantWithLeadManagement();
     $tenant->update(['lead_distribution_mode' => LeadDistributionMode::Automatic, 'auto_distribution_method' => AutoDistributionMethod::RoundRobin]);
-    $rep = clientUserWithLeadPermission($tenant);
+    $rep = clientUserWithLeadPermission($tenant, ['view', 'update']);
 
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)->call('completeInitialLoad')

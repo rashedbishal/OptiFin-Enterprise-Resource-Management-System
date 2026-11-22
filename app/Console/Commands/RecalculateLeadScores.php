@@ -46,10 +46,11 @@ class RecalculateLeadScores extends Command
 
         Lead::query()
             ->whereNull('merged_into_lead_id')
+            ->with(['source', 'status'])
             ->chunkById(200, function ($leads) use ($scoringService, &$recalculated, &$failed): void {
                 foreach ($leads as $lead) {
                     try {
-                        $scoringService->computeFor($lead, 'scheduled_sweep');
+                        $scoringService->computeFor($lead, LeadScoringService::SWEEP_TRIGGER);
                         $recalculated++;
                     } catch (Throwable $e) {
                         $failed++;

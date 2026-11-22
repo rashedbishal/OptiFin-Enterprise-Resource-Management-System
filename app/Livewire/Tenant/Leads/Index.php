@@ -37,6 +37,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Attributes\Url;
 use Livewire\Component;
@@ -122,6 +123,16 @@ class Index extends Component
      * even if a single status has more open leads than this cap.
      */
     private const BOARD_LEAD_LIMIT = 500;
+
+    /**
+     * Ids of the leads on the board as last rendered, so a realtime event
+     * about a lead that just left this user's scope (e.g. reassigned away)
+     * still refreshes the board — see leadEventConcernsThisView().
+     *
+     * @var array<int, string>
+     */
+    #[Locked]
+    public array $boardLeadIds = [];
 
     /**
      * Table view's page size — 15 on the sm+ desktop/tablet table, 10 on
@@ -530,6 +541,12 @@ class Index extends Component
         // synchronous manual-entry path at createLead()/saveLead() ever set
         // it). The board still refreshed either way, which is why this went
         // unnoticed — only the highlight was missing, not the data itself.
+        if (! $this->leadEventConcernsThisView($payload)) {
+            $this->skipRender();
+
+            return;
+        }
+
         if (is_array($payload) && isset($payload['id'])) {
             $this->recentlyCreatedLeadId = $payload['id'];
         }
@@ -542,9 +559,48 @@ class Index extends Component
      * so nothing needs to be stashed here for it to show up once the board
      * re-queries.
      */
-    public function onLeadUpdated(): void
+    public function onLeadUpdated(mixed $payload = null): void
     {
+        if (! $this->leadEventConcernsThisView($payload)) {
+            $this->skipRender();
+
+            return;
+        }
+
         $this->refreshBoard();
+    }
+
+    /**
+     * Every lead.received/lead.updated on the tenant channel reaches every
+     * open leads page in the tenant. A Client Admin's table can show any
+     * tenant lead (and re-sorts by updated_at), so it always refreshes. A
+     * Client User's board only shows their own scope, so an event about a
+     * lead that is neither on their board now nor in their scope after the
+     * change skips the re-render — previously each event (100 per bulk
+     * action, one per inbound chat message) re-ran the full board and count
+     * queries for every connected agent.
+     */
+    private function leadEventConcernsThisView(mixed $payload): bool
+    {
+        if ($this->isClientAdmin()) {
+            return true;
+        }
+
+        $leadId = is_array($payload) ? ($payload['id'] ?? null) : null;
+
+        if (! is_string($leadId)) {
+            return true;
+        }
+
+        if (in_array($leadId, $this->boardLeadIds, true)) {
+            return true;
+        }
+
+        // Cloned: filteredQuery() is a memoized #[Computed] builder that the
+        // board's own queries build on later in this same request.
+        return $this->applyDropdownFilters($this->applyAssignmentScope(clone $this->filteredQuery()))
+            ->whereKey($leadId)
+            ->exists();
     }
 
     public function onPanelLeadUpdated(?string $leadId = null): void
@@ -627,6 +683,8 @@ class Index extends Component
             ->latest()
             ->limit(self::BOARD_LEAD_LIMIT)
             ->get();
+
+        $this->boardLeadIds = $leads->modelKeys();
 
         // Plain Support Collection, not Eloquent Collection: once grouped,
         // the values are per-status collections of leads rather than leads
@@ -768,12 +826,9 @@ class Index extends Component
      * DB::transaction() boundary already shipped for this exact same
      * status-change side-effect chain in Show::updateStatus() and, in this
      * same file, applyBulkStatusChange(). LeadStatusChanged/LeadUpdated are
-     * fired from inside the transaction (not deferred): both queue their
-     * consumers via the database queue driver, and a job row inserted on
-     * the same connection while a transaction is open is invisible to any
-     * other connection until that transaction actually commits, so a
-     * queued worker can never observe pre-commit data here — the same
-     * reasoning already relied on by Show::updateStatus()'s own fix.
+     * fired from inside the transaction; LeadUpdated implements
+     * ShouldDispatchAfterCommit, so its (synchronous) broadcast is held
+     * until this transaction commits and never exposes pre-commit state.
      *
      * TOCTOU fix: $newStatus is now resolved *inside* this transaction,
      * immediately after taking a shared (FOR SHARE) coordination lock on
@@ -791,6 +846,16 @@ class Index extends Component
 
         if (! $lead || Gate::denies('update', $lead)) {
             Flux::toast(variant: 'danger', text: __("You don't have permission to move this lead."));
+            $this->refreshBoard();
+
+            return;
+        }
+
+        // Same merged-lead guard every mutation on Show applies via
+        // leadIsMutable(): the board never renders a merged lead, but this is
+        // a public action that takes any id.
+        if ($lead->merged_into_lead_id !== null) {
+            Flux::toast(variant: 'danger', text: __('This lead has been merged and can no longer be changed.'));
             $this->refreshBoard();
 
             return;
@@ -824,13 +889,16 @@ class Index extends Component
                 $updates['first_contacted_at'] = $lead->first_contacted_at ?? now();
             }
 
-            if ($newStatus->is_closed) {
-                $updates['closed_at'] = now();
-            }
+            $updates['closed_at'] = $newStatus->is_closed ? now() : null;
 
             $lead->update($updates);
 
             event(new LeadStatusChanged($lead, $oldStatus, $newStatus, Auth::user()));
+            // Same recompute Show::updateStatus() and applyBulkStatusChange()
+            // run — dragging a card is the main way Client Users change
+            // status, so skipping it left status-based scores stale until
+            // the daily sweep.
+            app(LeadScoringService::class)->computeFor($lead, 'status_priority_changed');
             event(new LeadUpdated($lead));
 
             return $newStatus;
@@ -941,6 +1009,7 @@ class Index extends Component
         if ($this->bulkDeleteMode) {
             $this->performBulkDelete();
         } elseif ($this->confirmingDeleteLeadId) {
+            $this->markDeletePasswordConfirmed();
             $this->delete($this->confirmingDeleteLeadId);
         }
 
@@ -969,6 +1038,10 @@ class Index extends Component
         if (! $lead->source->type->isIndividuallyDeletable()) {
             Flux::toast(variant: 'danger', text: __('This lead\'s source type cannot be deleted individually.'));
 
+            return;
+        }
+
+        if (! $this->ensureDeletePasswordConfirmed()) {
             return;
         }
 
@@ -1634,9 +1707,7 @@ class Index extends Component
                                 $updates['first_contacted_at'] = $lead->first_contacted_at ?? now();
                             }
 
-                            if ($newStatus->is_closed) {
-                                $updates['closed_at'] = now();
-                            }
+                            $updates['closed_at'] = $newStatus->is_closed ? now() : null;
 
                             $lead->update($updates);
 
@@ -1751,7 +1822,7 @@ class Index extends Component
     {
         $validated = $this->validate(['bulkAssigneeId' => ['required', 'string']]);
 
-        $assignee = TenantUser::where('tenant_id', Auth::user()->tenant_id)->find((string) $validated['bulkAssigneeId']);
+        $assignee = TenantUser::where('tenant_id', Auth::user()->tenant_id)->where('is_active', true)->find((string) $validated['bulkAssigneeId']);
 
         if (! $assignee) {
             $this->addError('bulkAssigneeId', __('Please select a valid user.'));

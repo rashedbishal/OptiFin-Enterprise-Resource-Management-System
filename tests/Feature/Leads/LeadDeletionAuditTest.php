@@ -40,7 +40,7 @@ test('a single delete creates exactly one LeadDeletionAudit with the correct sna
 
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)->call('completeInitialLoad')
-        ->call('delete', $lead->id);
+        ->set('deletePassword', 'password')->call('delete', $lead->id);
 
     expect(LeadDeletionAudit::count())->toBe(1);
 
@@ -118,7 +118,7 @@ test('an audit-write failure prevents the lead delete and rolls back the whole p
         }
     });
 
-    expect(fn () => Livewire::actingAs($clientAdmin)->test(Index::class)->call('completeInitialLoad')->call('delete', $lead->id))
+    expect(fn () => Livewire::actingAs($clientAdmin)->test(Index::class)->call('completeInitialLoad')->set('deletePassword', 'password')->call('delete', $lead->id))
         ->toThrow(RuntimeException::class, 'simulated audit write failure');
 
     expect(Lead::find($lead->id))->not->toBeNull();
@@ -141,7 +141,7 @@ test('a consent-snapshot failure prevents the lead delete and rolls back the tra
         }
     });
 
-    expect(fn () => Livewire::actingAs($clientAdmin)->test(Index::class)->call('completeInitialLoad')->call('delete', $lead->id))
+    expect(fn () => Livewire::actingAs($clientAdmin)->test(Index::class)->call('completeInitialLoad')->set('deletePassword', 'password')->call('delete', $lead->id))
         ->toThrow(RuntimeException::class, 'simulated consent snapshot failure');
 
     expect(Lead::find($lead->id))->not->toBeNull();
@@ -166,8 +166,8 @@ test('two separately deleted leads can both have detached lead_consents rows wit
     app(RecordLeadConsent::class)->handle($leadTwo, ConsentType::Privacy, ConsentStatus::Granted, ConsentSource::Manual, $clientAdmin->id);
 
     $component = Livewire::actingAs($clientAdmin)->test(Index::class)->call('completeInitialLoad');
-    $component->call('delete', $leadOne->id);
-    $component->call('delete', $leadTwo->id);
+    $component->set('deletePassword', 'password')->call('delete', $leadOne->id);
+    $component->set('deletePassword', 'password')->call('delete', $leadTwo->id);
 
     expect(LeadConsent::where('lead_id', null)->where('consent_type', ConsentType::Privacy)->count())->toBe(2);
 });
@@ -182,7 +182,7 @@ test('a detached consent row remains directly queryable and identifiable by its 
 
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)->call('completeInitialLoad')
-        ->call('delete', $lead->id);
+        ->set('deletePassword', 'password')->call('delete', $lead->id);
 
     $consent = LeadConsent::where('lead_identifier', $identifier)->first();
     $event = LeadConsentEvent::where('lead_identifier', $identifier)->first();
@@ -210,7 +210,7 @@ test('deleting a lead still cascade-deletes lead_duplicate_links exactly as befo
 
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)->call('completeInitialLoad')
-        ->call('delete', $lead->id);
+        ->set('deletePassword', 'password')->call('delete', $lead->id);
 
     expect(LeadDuplicateLink::find($link->id))->toBeNull();
 });
@@ -225,7 +225,7 @@ test('deleting a lead still cascade-deletes notes and deals exactly as before', 
 
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)->call('completeInitialLoad')
-        ->call('delete', $lead->id);
+        ->set('deletePassword', 'password')->call('delete', $lead->id);
 
     expect(LeadNote::find($note->id))->toBeNull();
     expect(Deal::find($deal->id))->toBeNull();
@@ -241,7 +241,7 @@ test('the audit cascade_summary records accurate counts of what was cascade-dest
 
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)->call('completeInitialLoad')
-        ->call('delete', $lead->id);
+        ->set('deletePassword', 'password')->call('delete', $lead->id);
 
     $summary = LeadDeletionAudit::first()->cascade_summary;
 
@@ -322,7 +322,7 @@ test('when the audit action reports the Lead already gone, Index::delete() does 
 
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)->call('completeInitialLoad')
-        ->call('delete', $lead->id);
+        ->set('deletePassword', 'password')->call('delete', $lead->id);
 
     expect(Lead::find($lead->id))->not->toBeNull();
     expect(LeadDeletionAudit::count())->toBe(0);

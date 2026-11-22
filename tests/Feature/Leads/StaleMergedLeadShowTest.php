@@ -215,16 +215,16 @@ test('a stale delete of a merged lead is refused before any destructive work', f
     expect(LeadDuplicateLink::query()->orderBy('id')->pluck('id')->all())->toBe($mergeLinkIds);
     expect(staleMergedFingerprint($scenario))->toBe($before);
 })->with([
-    'page: delete' => [false, fn ($c) => $c->call('delete')],
+    'page: delete' => [false, fn ($c) => $c->set('deletePassword', 'password')->call('delete')],
     'page: deleteConfirmed with the right password' => [false, fn ($c) => $c->set('deletePassword', 'password')->call('deleteConfirmed')],
-    'panel: delete' => [true, fn ($c) => $c->call('delete')],
+    'panel: delete' => [true, fn ($c) => $c->set('deletePassword', 'password')->call('delete')],
     'panel: deleteConfirmed with the right password' => [true, fn ($c) => $c->set('deletePassword', 'password')->call('deleteConfirmed')],
 ]);
 
 test('deleting a normal, non-merged lead through the same Show still works', function () {
     $scenario = staleMergedScenario(merged: false);
 
-    $component = $scenario['component']->call('delete');
+    $component = $scenario['component']->set('deletePassword', 'password')->call('delete');
 
     expect($component->effects['redirect'] ?? null)->not->toBeNull();
     expect(Lead::whereKey($scenario['lead']->id)->exists())->toBeFalse();

@@ -42,10 +42,17 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 use Throwable;
 
 class LeadWebhookController extends Controller
 {
+    /**
+     * Upper bound for the free-form extra fields the legacy website-form
+     * endpoint stores in source_data.
+     */
+    private const int LEGACY_WEBSITE_FORM_EXTRA_MAX_BYTES = 16384;
+
     /**
      * F2 remediation (forensic audit Batch C) — set whenever a
      * LockTimeoutException is caught anywhere while processing THIS
@@ -568,11 +575,35 @@ class LeadWebhookController extends Controller
 
         $this->assertAllowedWebsiteFormDomain($request, $source);
 
-        $name = $request->input('name', 'Website Visitor');
+        // The API key usually ships in the tenant's public page source and
+        // the Origin/Referer allowlist is spoofable outside a browser, so the
+        // payload must be treated as untrusted. Before this, an array value
+        // (name[]=x) reached Lead::create() and any amount of extra data was
+        // stored in source_data. Bounds are deliberately looser than the form
+        // builder's (no name/phone format regex) so existing legacy
+        // integrations keep working — only type, length and email shape are
+        // enforced.
+        $validator = Validator::make($request->all(), [
+            'name' => ['nullable', 'string', 'max:255'],
+            'email' => ['nullable', 'string', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:50'],
+            'message' => ['nullable', 'string', 'max:5000'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['message' => __('The submission is invalid.'), 'errors' => $validator->errors()], 422);
+        }
+
+        $extra = $request->except(['name', 'email', 'phone', 'message']);
+
+        if (strlen((string) json_encode($extra)) > self::LEGACY_WEBSITE_FORM_EXTRA_MAX_BYTES) {
+            return response()->json(['message' => __('The submission is too large.')], 422);
+        }
+
+        $name = $request->filled('name') ? (string) $request->input('name') : 'Website Visitor';
         $email = $request->input('email');
         $phone = $request->input('phone');
         $message = $request->input('message');
-        $extra = $request->except(['name', 'email', 'phone', 'message']);
 
         // REL-2 fix: see withWebsiteFormIdempotency()'s own docblock — a
         // double-click or client-side retry submitting this exact same

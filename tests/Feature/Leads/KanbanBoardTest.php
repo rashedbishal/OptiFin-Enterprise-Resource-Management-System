@@ -327,7 +327,7 @@ test('deleting the open lead from the panel also clears the ?lead= query param',
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)->call('completeInitialLoad')
         ->call('viewLead', $lead->id)
-        ->call('delete', $lead->id)
+        ->set('deletePassword', 'password')->call('delete', $lead->id)
         ->assertSet('openLeadId', null);
 });
 

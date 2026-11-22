@@ -244,6 +244,10 @@ class LeadMergeService
             throw new LeadMergeException('A lead cannot be merged with itself.');
         }
 
+        if ($link !== null && ! ($link->involves($survivor) && $link->involves($loser))) {
+            throw new LeadMergeException('This duplicate link does not belong to these two leads.');
+        }
+
         $conflicts = $this->conflictingFields($survivor, $loser);
         $customFieldConflicts = $this->conflictingCustomFieldValues($survivor, $loser);
 

@@ -60,7 +60,7 @@ test('deleting a lead also deletes its finished calls and leaves other leads\' c
     LeadCall::factory()->missed()->create(['tenant_id' => $x['tenant']->id, 'lead_id' => $x['lead']->id, 'lead_source_id' => $x['whatsapp']->id]);
     $otherCall = LeadCall::factory()->connected()->create(['tenant_id' => $x['tenant']->id, 'lead_id' => $other->id, 'lead_source_id' => $x['whatsapp']->id]);
 
-    $component = Livewire::actingAs($x['admin'])->test(Index::class)->call('completeInitialLoad')->call('delete', $x['lead']->id);
+    $component = Livewire::actingAs($x['admin'])->test(Index::class)->call('completeInitialLoad')->set('deletePassword', 'password')->call('delete', $x['lead']->id);
 
     expect(leadCallDeletionToasts($component))->toBe([['success', 'Lead deleted.']]);
     expect(Lead::find($x['lead']->id))->toBeNull();
@@ -72,7 +72,7 @@ test('the deletion audit\'s cascade_summary counts the calls destroyed with the 
     $x = leadCallDeletionScenario();
     LeadCall::factory()->count(2)->completed()->create(['tenant_id' => $x['tenant']->id, 'lead_id' => $x['lead']->id, 'lead_source_id' => $x['whatsapp']->id]);
 
-    Livewire::actingAs($x['admin'])->test(Index::class)->call('completeInitialLoad')->call('delete', $x['lead']->id);
+    Livewire::actingAs($x['admin'])->test(Index::class)->call('completeInitialLoad')->set('deletePassword', 'password')->call('delete', $x['lead']->id);
 
     expect(LeadDeletionAudit::first()->cascade_summary['calls'])->toBe(2);
 });
@@ -80,7 +80,7 @@ test('the deletion audit\'s cascade_summary counts the calls destroyed with the 
 test('a lead with no calls still deletes and records zero calls in the audit', function () {
     $x = leadCallDeletionScenario();
 
-    Livewire::actingAs($x['admin'])->test(Index::class)->call('completeInitialLoad')->call('delete', $x['lead']->id);
+    Livewire::actingAs($x['admin'])->test(Index::class)->call('completeInitialLoad')->set('deletePassword', 'password')->call('delete', $x['lead']->id);
 
     expect(Lead::find($x['lead']->id))->toBeNull();
     expect(LeadDeletionAudit::first()->cascade_summary['calls'])->toBe(0);
@@ -92,7 +92,7 @@ test('Index::delete refuses a lead with an active call and changes nothing', fun
     $x = leadCallDeletionScenario();
     $call = LeadCall::factory()->create(['tenant_id' => $x['tenant']->id, 'lead_id' => $x['lead']->id, 'lead_source_id' => $x['whatsapp']->id]);
 
-    $component = Livewire::actingAs($x['admin'])->test(Index::class)->call('completeInitialLoad')->call('delete', $x['lead']->id);
+    $component = Livewire::actingAs($x['admin'])->test(Index::class)->call('completeInitialLoad')->set('deletePassword', 'password')->call('delete', $x['lead']->id);
 
     expect(leadCallDeletionToasts($component))->toBe([['danger', LeadDeletionEligibilityService::activeCallReason()]]);
     expect(Lead::find($x['lead']->id))->not->toBeNull();
@@ -124,7 +124,7 @@ test('Show::delete refuses a lead with an active call: no delete, no redirect, n
     $x = leadCallDeletionScenario();
     $call = LeadCall::factory()->connected()->create(['tenant_id' => $x['tenant']->id, 'lead_id' => $x['lead']->id, 'lead_source_id' => $x['whatsapp']->id]);
 
-    $component = Livewire::actingAs($x['admin'])->test(Show::class, ['lead' => $x['lead']])->call('completeInitialLoad')->call('delete');
+    $component = Livewire::actingAs($x['admin'])->test(Show::class, ['lead' => $x['lead']])->call('completeInitialLoad')->set('deletePassword', 'password')->call('delete');
 
     expect(leadCallDeletionToasts($component))->toBe([['danger', LeadDeletionEligibilityService::activeCallReason()]]);
     expect($component->effects['redirect'] ?? null)->toBeNull();
@@ -160,7 +160,7 @@ test('a lead becomes deletable as soon as its call reaches a terminal status', f
 
     expect($service->evaluate($x['lead'])->eligible)->toBeTrue();
 
-    Livewire::actingAs($x['admin'])->test(Index::class)->call('completeInitialLoad')->call('delete', $x['lead']->id);
+    Livewire::actingAs($x['admin'])->test(Index::class)->call('completeInitialLoad')->set('deletePassword', 'password')->call('delete', $x['lead']->id);
 
     expect(Lead::find($x['lead']->id))->toBeNull();
 });

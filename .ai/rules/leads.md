@@ -4,6 +4,7 @@ paths:
   - app/Livewire/Tenant/Leads/Index.php
   - app/Livewire/Tenant/Leads/Show.php
   - app/Livewire/Tenant/Leads/SourceLeads.php
+  - 'app/Livewire/Tenant/Leads/{Index,Show}.php'
 ---
 
 # Leads
@@ -28,3 +29,6 @@ Fixed a real bug: assign() used to unconditionally call LeadAssignmentService::a
 
 ## SourceLeads eager-loads status too, not just assignedUser
 Both leads() and downloadXlsx() now include 'status' in their eager loads — the Blade table and FacebookLeadAdsExport::map() both call $lead->status->color()/label() per row, and the original code only eager-loaded assignedUser, causing an N+1 (one query per row) on every page view and every export. If this file gains another per-row relation access, add it to both call sites' eager loads, not just leads() — the export uses a separate, unpaginated query.
+
+## Lead delete() actions enforce the password themselves
+Index::delete(), Show::delete() and Show::deleteConversation() are public Livewire actions, so they call ensureDeletePasswordConfirmed() (ConfirmsLeadDeletionPassword) after their authorization checks — the *Confirmed() entry point only marks the password verified for that request (private, non-dehydrated flag). This supersedes the "real action keeps its signature so tests can call it directly" convention for lead deletes: tests calling delete()/deleteConversation() directly must ->set('deletePassword', 'password') first.

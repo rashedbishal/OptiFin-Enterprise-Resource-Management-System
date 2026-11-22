@@ -106,6 +106,17 @@ class LeadAssignmentService
         }
 
         DB::transaction(function () use ($lead, $tenant): void {
+            // AutoAssignLead is queued, so a Client Admin may assign the lead
+            // by hand (or the lead may be merged away) before the worker
+            // runs, and a retried job would run this twice. Re-read the row
+            // under a lock and only fill an assignment that is still empty —
+            // never overwrite a human's choice or a merged lead.
+            $current = Lead::query()->whereKey($lead->id)->lockForUpdate()->first(['id', 'assigned_to', 'merged_into_lead_id']);
+
+            if ($current === null || $current->assigned_to !== null || $current->merged_into_lead_id !== null) {
+                return;
+            }
+
             $assignee = match ($tenant->auto_distribution_method) {
                 AutoDistributionMethod::LeastLoaded => $this->pickLeastLoadedUser($tenant),
                 AutoDistributionMethod::Random => $this->pickRandomUser($tenant),
@@ -190,6 +201,10 @@ class LeadAssignmentService
     }
 
     /**
+     * Requires lead-management `update`, not just `view`: LeadPolicy::update()
+     * (and CallRouter) gate working a lead on `update`, so a view-only user
+     * auto-assigned a lead could see it but never act on it.
+     *
      * @return Builder<TenantUser>
      */
     private function eligibleUsers(Tenant $tenant): Builder
@@ -202,7 +217,7 @@ class LeadAssignmentService
                 $query->whereHas('modules', fn (Builder $q) => $q->where('slug', 'lead-management'))
                     ->whereHas('modulePermissions', function (Builder $q): void {
                         $q->whereHas('module', fn (Builder $q) => $q->where('slug', 'lead-management'))
-                            ->whereHas('permission', fn (Builder $q) => $q->where('slug', 'view'));
+                            ->whereHas('permission', fn (Builder $q) => $q->where('slug', 'update'));
                     });
             });
     }

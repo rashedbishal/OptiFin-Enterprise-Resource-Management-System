@@ -80,8 +80,10 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Computed;
+use Livewire\Attributes\Locked;
 use Livewire\Attributes\Title;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
@@ -371,6 +373,7 @@ class Show extends Component
      * model itself, same reasoning as $status/$assigneeId: keeps public
      * Livewire state serializable between requests.
      */
+    #[Locked]
     public ?string $mergeLinkId = null;
 
     /**
@@ -1383,7 +1386,7 @@ class Show extends Component
     public function mergeConflicts(): array
     {
         $link = $this->mergeLinkId !== null
-            ? LeadDuplicateLink::query()->where('tenant_id', $this->lead->tenant_id)->find($this->mergeLinkId)
+            ? LeadDuplicateLink::query()->where('tenant_id', $this->lead->tenant_id)->involving($this->lead)->find($this->mergeLinkId)
             : null;
 
         if ($link === null) {
@@ -1478,6 +1481,26 @@ class Show extends Component
      * and no panel close — so the current lead and any unsaved draft stay
      * exactly where they are.
      */
+    /**
+     * A tenant user in this tenant who is still active — the same set the
+     * owner/assignee dropdowns offer. $currentValue (the record's existing
+     * owner/assignee when editing) stays valid even if that user has since
+     * been deactivated, so editing an old deal/task's other fields isn't
+     * blocked; only newly picking an inactive user is.
+     */
+    private function activeTenantUserRule(string $tenantId, ?string $currentValue): Exists
+    {
+        return Rule::exists('tenant_users', 'id')
+            ->where('tenant_id', $tenantId)
+            ->where(function ($query) use ($currentValue): void {
+                $query->where('is_active', true);
+
+                if ($currentValue !== null) {
+                    $query->orWhere('id', $currentValue);
+                }
+            });
+    }
+
     private function leadIsMutable(): bool
     {
         if ($this->lead->merged_into_lead_id === null) {
@@ -1696,9 +1719,10 @@ class Show extends Component
                     $updates['first_contacted_at'] = $this->lead->first_contacted_at ?? now();
                 }
 
-                if ($newStatus->is_closed) {
-                    $updates['closed_at'] = now();
-                }
+                // Reopening clears the close date, so a reopened lead never
+                // reports a stale closed_at and a later close records its
+                // own date.
+                $updates['closed_at'] = $newStatus->is_closed ? now() : null;
             }
 
             $this->lead->fill($updates);
@@ -2111,7 +2135,16 @@ class Show extends Component
             return;
         }
 
-        $assignee = TenantUser::query()->where('tenant_id', $this->lead->tenant_id)->findOrFail($newAssigneeId);
+        // Active users only — the same set the assignee dropdown offers. A
+        // deactivated user can't log in, so a lead assigned to them would sit
+        // unworked (and their notifications unread).
+        $assignee = TenantUser::query()->where('tenant_id', $this->lead->tenant_id)->where('is_active', true)->find($newAssigneeId);
+
+        if ($assignee === null) {
+            Flux::toast(variant: 'danger', text: __('Please select a valid user.'));
+
+            return;
+        }
 
         $assignmentService->assign($this->lead, $assignee, Auth::user());
 
@@ -3122,7 +3155,7 @@ class Show extends Component
             'dealCurrencyId' => ['nullable', 'string', Rule::exists('tenant_currencies', 'currency_id')->where('tenant_id', $tenant->id)],
             'dealProbability' => ['nullable', 'integer', 'min:0', 'max:100'],
             'dealExpectedCloseDate' => ['nullable', 'date'],
-            'dealOwnerId' => ['nullable', 'string', Rule::exists('tenant_users', 'id')->where('tenant_id', $tenant->id)],
+            'dealOwnerId' => ['nullable', 'string', $this->activeTenantUserRule($tenant->id, $this->editingDealId ? $this->lead->deals()->whereKey($this->editingDealId)->value('owner_id') : null)],
             'dealNotes' => ['nullable', 'string', 'max:2000'],
         ], [
             'dealValue.regex' => __('Enter a plain amount with up to 2 decimal places.'),
@@ -3345,7 +3378,7 @@ class Show extends Component
             'taskDueDate' => ['nullable', 'date'],
             'taskDueTime' => ['nullable', 'date_format:H:i'],
             'taskPriority' => ['required', Rule::enum(LeadPriority::class)],
-            'taskAssignedTo' => ['nullable', 'string', Rule::exists('tenant_users', 'id')->where('tenant_id', $tenant->id)],
+            'taskAssignedTo' => ['nullable', 'string', $this->activeTenantUserRule($tenant->id, $this->editingTaskId ? $this->lead->tasks()->whereKey($this->editingTaskId)->value('assigned_to') : null)],
         ]);
 
         $attributes = [
@@ -3606,6 +3639,7 @@ class Show extends Component
             return;
         }
 
+        $this->markDeletePasswordConfirmed();
         $this->showDeleteConversationModal = false;
         $this->deleteConversation();
     }
@@ -3634,6 +3668,10 @@ class Show extends Component
             return;
         }
 
+        if (! $this->ensureDeletePasswordConfirmed()) {
+            return;
+        }
+
         $user = Auth::user();
 
         app(DeleteLeadConversation::class)->handle($this->lead, $user instanceof TenantUser ? $user : null);
@@ -3650,6 +3688,7 @@ class Show extends Component
             return;
         }
 
+        $this->markDeletePasswordConfirmed();
         $this->showDeleteModal = false;
         $this->delete();
     }
@@ -3675,6 +3714,10 @@ class Show extends Component
         if ($this->lead->status->slug !== 'unqualified') {
             Flux::toast(variant: 'danger', text: __('This lead can only be deleted once its status is Unqualified.'));
 
+            return;
+        }
+
+        if (! $this->ensureDeletePasswordConfirmed()) {
             return;
         }
 
@@ -3736,6 +3779,7 @@ class Show extends Component
         $link = LeadDuplicateLink::query()
             ->where('tenant_id', $this->lead->tenant_id)
             ->where('status', LeadDuplicateLinkStatus::Pending)
+            ->involving($this->lead)
             ->find($linkId);
 
         if ($link === null) {
@@ -3783,6 +3827,7 @@ class Show extends Component
         $link = LeadDuplicateLink::query()
             ->where('tenant_id', $this->lead->tenant_id)
             ->where('status', LeadDuplicateLinkStatus::Pending)
+            ->involving($this->lead)
             ->find($linkId);
 
         if ($link === null) {
@@ -3824,6 +3869,7 @@ class Show extends Component
             ? LeadDuplicateLink::query()
                 ->where('tenant_id', $this->lead->tenant_id)
                 ->where('status', LeadDuplicateLinkStatus::Pending)
+                ->involving($this->lead)
                 ->find($this->mergeLinkId)
             : null;
 

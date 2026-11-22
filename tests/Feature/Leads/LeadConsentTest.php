@@ -101,7 +101,7 @@ test('deleting a lead detaches, rather than deletes, its consent current-state a
     // path is what actually snapshots identity before the delete happens.
     Livewire::actingAs($clientAdmin)
         ->test(Index::class)->call('completeInitialLoad')
-        ->call('delete', $leadId);
+        ->set('deletePassword', 'password')->call('delete', $leadId);
 
     expect(Lead::find($leadId))->toBeNull();
 

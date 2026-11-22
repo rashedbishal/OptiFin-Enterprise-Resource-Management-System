@@ -40,7 +40,14 @@ class VerifyMetaWebhookSignature
             ->where('status', TenantStatus::Active)
             ->first();
 
-        $source = $tenant !== null ? $this->findSourceWithAppSecret($tenant->id, array_values($platforms)) : null;
+        $source = null;
+
+        if ($tenant !== null) {
+            $webhookToken = $request->route('webhook_token');
+
+            $source = (is_string($webhookToken) && $webhookToken !== '' ? $this->findTokenSourceWithAppSecret($tenant->id, $webhookToken, array_values($platforms)) : null)
+                ?? $this->findSourceWithAppSecret($tenant->id, array_values($platforms));
+        }
 
         if ($source === null) {
             return $next($request);
@@ -62,15 +69,46 @@ class VerifyMetaWebhookSignature
             // Recorded here instead and surfaced by
             // LeadSources::flashSignatureRejections() the next time an
             // admin opens this source's Lead Sources page.
-            $source->update([
-                'last_signature_rejection_at' => now(),
-                'last_signature_rejection_reason' => $reason,
-            ]);
+            // Throttled to one write per minute: every rejected request is
+            // unauthenticated, so an unthrottled write per request would let
+            // anyone turn forged POSTs into database write load.
+            if ($source->last_signature_rejection_at === null || $source->last_signature_rejection_at->lt(now()->subMinute())) {
+                $source->update([
+                    'last_signature_rejection_at' => now(),
+                    'last_signature_rejection_reason' => $reason,
+                ]);
+            }
 
             abort(403);
         }
 
         return $next($request);
+    }
+
+    /**
+     * On the token-bearing route, the token names the exact source the
+     * request is for. Use that source's own App Secret when it has one, so a
+     * tenant with more than one source of the same type is verified against
+     * the right Meta App instead of whichever source happens to come first.
+     * Returns null (falling back to findSourceWithAppSecret()) when the token
+     * matches nothing or that source has no secret set.
+     *
+     * @param  array<int, string>  $platforms
+     */
+    private function findTokenSourceWithAppSecret(string $tenantId, string $webhookToken, array $platforms): ?LeadSource
+    {
+        $types = array_map(fn (string $platform): LeadSourceType => LeadSourceType::from($platform), $platforms);
+
+        $source = LeadSource::query()
+            ->where('tenant_id', $tenantId)
+            ->where('webhook_token_hash', hash('sha256', $webhookToken))
+            ->whereIn('type', $types)
+            ->where('is_active', true)
+            ->first();
+
+        $appSecret = $source?->config['app_secret'] ?? null;
+
+        return is_string($appSecret) && $appSecret !== '' ? $source : null;
     }
 
     /**

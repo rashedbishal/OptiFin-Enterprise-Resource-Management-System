@@ -75,6 +75,16 @@ class LeadDuplicateLink extends Model
      * knows "the lead I'm looking at", not which side of the canonical pair
      * it happens to be stored as.
      */
+    /**
+     * Whether $lead is one of this link's two parties. otherLead() assumes
+     * it is — callers that take a link id from the client must check this
+     * first, or an unrelated pair's link would resolve to an unrelated lead.
+     */
+    public function involves(Lead $lead): bool
+    {
+        return $this->lead_id === $lead->id || $this->duplicate_lead_id === $lead->id;
+    }
+
     public function otherLead(Lead $lead): Lead
     {
         return $this->lead_id === $lead->id ? $this->duplicateLead : $this->lead;
@@ -111,5 +121,16 @@ class LeadDuplicateLink extends Model
     protected function merged(Builder $query): void
     {
         $query->where('status', LeadDuplicateLinkStatus::Merged);
+    }
+
+    /**
+     * Links where $lead is either party.
+     *
+     * @param  Builder<LeadDuplicateLink>  $query
+     */
+    #[Scope]
+    protected function involving(Builder $query, Lead $lead): void
+    {
+        $query->where(fn (Builder $q) => $q->where('lead_id', $lead->id)->orWhere('duplicate_lead_id', $lead->id));
     }
 }

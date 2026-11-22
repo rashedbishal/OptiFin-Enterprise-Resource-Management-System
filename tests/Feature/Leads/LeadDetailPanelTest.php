@@ -53,7 +53,7 @@ test('deleting from the panel dispatches an event instead of redirecting', funct
 
     Livewire::actingAs($clientAdmin)
         ->test(Show::class, ['lead' => $lead, 'panel' => true])->call('completeInitialLoad')
-        ->call('delete')
+        ->set('deletePassword', 'password')->call('delete')
         ->assertDispatched('lead-panel-deleted', leadId: $lead->id);
 
     expect(Lead::find($lead->id))->toBeNull();
@@ -65,6 +65,6 @@ test('the full page still redirects to the index on delete', function () {
 
     Livewire::actingAs($clientAdmin)
         ->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')
-        ->call('delete')
+        ->set('deletePassword', 'password')->call('delete')
         ->assertRedirect(route('tenant-leads.index'));
 });

@@ -7,6 +7,8 @@ use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
+use Illuminate\Contracts\Broadcasting\ShouldRescue;
+use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
@@ -20,8 +22,19 @@ use Illuminate\Queue\SerializesModels;
  * listeners (AutoAssignLead, SendNewLeadNotification,
  * RecomputeLeadScoreOnReceipt) all implement ShouldQueue independently and
  * stay queued exactly as before.
+ *
+ * ShouldRescue: a synchronous broadcast that throws (Reverb down or
+ * unreachable) is reported and swallowed instead of propagating. Laravel
+ * broadcasts BEFORE invoking listeners, so without this a Reverb outage
+ * would abort the dispatch before any of the queued listeners above were
+ * ever queued — the lead would exist but never be auto-assigned, notified
+ * or scored, and the webhook would answer Meta with a 500.
+ *
+ * ShouldDispatchAfterCommit: when fired inside a transaction, the
+ * broadcast and listeners wait for the commit, so no client ever re-queries
+ * pre-commit (or later rolled-back) state.
  */
-class LeadReceived implements ShouldBroadcastNow
+class LeadReceived implements ShouldBroadcastNow, ShouldDispatchAfterCommit, ShouldRescue
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 

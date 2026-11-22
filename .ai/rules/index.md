@@ -17,6 +17,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Http/Controllers/Api/LeadWebhookController.php | .ai/rules/controllers-api.md |
 | app/Livewire/Tenant/NotificationBell.php,resources/views/livewire/tenant/notification-bell.blade.php,resources/css/app.css | .ai/rules/css.md |
 | app/Events/{LeadReceived,LeadUpdated}.php,app/Livewire/Tenant/Leads/Index.php | .ai/rules/events-livewire-tenant-leads.md |
+| app/Events/{LeadReceived,LeadUpdated}.php | .ai/rules/events.md |
 | app/Models/{Lead,Tenant}.php,app/Actions/Platform/CreateClient.php,database/factories/TenantFactory.php | .ai/rules/factories.md |
 | app/Jobs/ProcessEmailLeadSource.php | .ai/rules/jobs.md |
 | resources/{js,css}/** | .ai/rules/jscss.md |
@@ -28,7 +29,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | resources/views/livewire/tenant/leads/{show,show-panel}.blade.php,resources/views/livewire/tenant/leads/partials/{lead-hero,contact-info-card,pipeline-attributes-card,detail-card,note-form,status-assignment-form}.blade.php,resources/views/livewire/tenant/lead-sources.blade.php | .ai/rules/leads-partials-views-livewire-tenant.md |
 | resources/views/livewire/tenant/leads/partials/pipeline-stepper.blade.php, resources/views/livewire/tenant/leads/partials/lead-hero.blade.php, resources/views/livewire/tenant/leads/partials/{deals-card,tasks-card,notes-card}.blade.php, resources/views/livewire/tenant/leads/partials/notes-card.blade.php, resources/views/livewire/tenant/leads/partials/calls-card.blade.php, resources/views/livewire/tenant/leads/partials/{messenger-chat-card,detail-card}.blade.php | .ai/rules/leads-partials.md |
 | app/{Livewire/Tenant/Leads,Policies,Exports}/** | .ai/rules/leads-policies-exports.md |
-| app/Livewire/Tenant/Leads/**, app/Livewire/Tenant/Leads/Index.php, app/Livewire/Tenant/Leads/Show.php, app/Livewire/Tenant/Leads/SourceLeads.php | .ai/rules/leads.md |
+| app/Livewire/Tenant/Leads/**, app/Livewire/Tenant/Leads/Index.php, app/Livewire/Tenant/Leads/Show.php, app/Livewire/Tenant/Leads/SourceLeads.php, app/Livewire/Tenant/Leads/{Index,Show}.php | .ai/rules/leads.md |
 | app/Livewire/Tenant/Leads/{Index,SourceLeads}.php,resources/views/livewire/tenant/{leads,leads-kanban,leads/source-leads}.blade.php | .ai/rules/leadsleads-kanbanleads.md |
 | resources/views/livewire/**,app/Livewire/** | .ai/rules/livewire-livewire.md |
 | app/Livewire/Platform/Clients/LeadSources.php | .ai/rules/livewire-platform-clients.md |

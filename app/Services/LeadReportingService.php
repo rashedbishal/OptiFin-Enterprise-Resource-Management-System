@@ -231,12 +231,15 @@ class LeadReportingService
             );
         }
 
-        $rows = $this->baseQuery($tenant, $from, $to)
+        // toBase(): plain rows, not hydrated Lead models (each with casts,
+        // relations and Carbon instances) — a 92-day range can be thousands
+        // of leads, and only two timestamps per row are needed. Both columns
+        // come back in the same stored timezone, so their difference is exact.
+        $hours = $this->baseQuery($tenant, $from, $to)
             ->whereNotNull('first_contacted_at')
-            ->get(['created_at', 'first_contacted_at']);
-
-        $hours = $rows
-            ->map(fn (Lead $lead): float => $lead->created_at->diffInSeconds($lead->first_contacted_at) / 3600)
+            ->toBase()
+            ->get(['created_at', 'first_contacted_at'])
+            ->map(fn (object $row): float => (strtotime((string) $row->first_contacted_at) - strtotime((string) $row->created_at)) / 3600)
             ->sort()
             ->values();
 

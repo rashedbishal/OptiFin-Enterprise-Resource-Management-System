@@ -8,6 +8,7 @@ use App\Models\Lead;
 use App\Models\LeadScoreLog;
 use App\Models\LeadScoringRule;
 use App\Models\TenantUser;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -38,6 +39,16 @@ class LeadScoringService
      *
      * @var array<int, string>
      */
+    /**
+     * The trigger leads:recalculate-scores passes.
+     */
+    public const string SWEEP_TRIGGER = 'scheduled_sweep';
+
+    /**
+     * @var array<string, Collection<int, LeadScoringRule>>
+     */
+    private array $sweepRulesByTenant = [];
+
     public const array SCORING_RELEVANT_DETAIL_FIELDS = [
         'estimated_budget', 'deal_value', 'win_probability', 'email', 'phone',
     ];
@@ -63,6 +74,12 @@ class LeadScoringService
      */
     public function computeFor(Lead $lead, string $trigger, ?TenantUser $triggeredBy = null, bool $trustLoadedRelations = false): ?int
     {
+        $isSweep = $trigger === self::SWEEP_TRIGGER;
+
+        // The sweep's own chunk query eager-loads source/status fresh for
+        // exactly this run, so the stale-relation concern below can't apply.
+        $trustLoadedRelations = $trustLoadedRelations || $isSweep;
+
         // load(), not loadMissing(), BY DEFAULT: $lead often arrives already
         // carrying a STALE cached source/status relation from earlier in
         // the same request (e.g. Show::updateStatus() just changed
@@ -78,14 +95,16 @@ class LeadScoringService
             $lead->load(['source', 'status']);
         }
 
-        $rules = LeadScoringRule::query()
-            ->where('tenant_id', $lead->tenant_id)
-            ->active()
-            ->orderBy('sort_order')
-            ->orderBy('created_at')
-            ->get();
+        $rules = $isSweep ? $this->sweepRulesFor($lead->tenant_id) : $this->activeRulesFor($lead->tenant_id);
 
         if ($rules->isEmpty()) {
+            // Sweep only: a lead that is already unscored needs no write.
+            // Without this, every lead of every tenant without scoring rules
+            // got a pointless UPDATE every day.
+            if ($isSweep && $lead->lead_score === null && $lead->lead_score_computed_at !== null) {
+                return null;
+            }
+
             DB::table('leads')->where('id', $lead->id)->update([
                 'lead_score' => null,
                 'lead_score_computed_at' => now(),
@@ -145,6 +164,31 @@ class LeadScoringService
         });
 
         return $score;
+    }
+
+    /**
+     * @return Collection<int, LeadScoringRule>
+     */
+    private function activeRulesFor(string $tenantId): Collection
+    {
+        return LeadScoringRule::query()
+            ->where('tenant_id', $tenantId)
+            ->active()
+            ->orderBy('sort_order')
+            ->orderBy('created_at')
+            ->get();
+    }
+
+    /**
+     * The daily sweep scores every lead of a tenant in one run, so it reads
+     * that tenant's rules once instead of once per lead. Scoped to the sweep
+     * trigger only, so every other caller still sees rule edits immediately.
+     *
+     * @return Collection<int, LeadScoringRule>
+     */
+    private function sweepRulesFor(string $tenantId): Collection
+    {
+        return $this->sweepRulesByTenant[$tenantId] ??= $this->activeRulesFor($tenantId);
     }
 
     /**

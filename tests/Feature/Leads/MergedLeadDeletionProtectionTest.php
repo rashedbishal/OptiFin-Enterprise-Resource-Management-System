@@ -131,7 +131,7 @@ test('Index::delete refuses a merged loser and changes nothing', function () {
     $x = mergedDeletionScenario();
     $before = mergedDeletionFingerprint([$x['loser']->id, $x['survivor']->id]);
 
-    $component = mergedDeletionIndex($x)->call('delete', $x['loser']->id);
+    $component = mergedDeletionIndex($x)->set('deletePassword', 'password')->call('delete', $x['loser']->id);
 
     expect(mergedDeletionToasts($component))->toBe([['danger', MERGED_DELETION_LOSER_MESSAGE]]);
     expect(mergedDeletionFingerprint([$x['loser']->id, $x['survivor']->id]))->toBe($before);
@@ -183,7 +183,7 @@ test('Index::delete refuses a merged survivor and changes nothing — the loser 
     $x = mergedDeletionScenario();
     $before = mergedDeletionFingerprint([$x['loser']->id, $x['survivor']->id]);
 
-    $component = mergedDeletionIndex($x)->call('delete', $x['survivor']->id);
+    $component = mergedDeletionIndex($x)->set('deletePassword', 'password')->call('delete', $x['survivor']->id);
 
     expect(mergedDeletionToasts($component))->toBe([['danger', MERGED_DELETION_SURVIVOR_MESSAGE]]);
     expect(mergedDeletionFingerprint([$x['loser']->id, $x['survivor']->id]))->toBe($before);
@@ -229,9 +229,9 @@ test('Show refuses a merged survivor: no delete, no redirect, no lead-panel-dele
     expect(collect($component->effects['dispatches'] ?? [])->pluck('name')->all())->not->toContain('lead-panel-deleted');
     expect(mergedDeletionFingerprint([$x['loser']->id, $x['survivor']->id]))->toBe($before);
 })->with([
-    'page: delete' => [false, fn ($c) => $c->call('delete')],
+    'page: delete' => [false, fn ($c) => $c->set('deletePassword', 'password')->call('delete')],
     'page: deleteConfirmed with the right password' => [false, fn ($c) => $c->set('deletePassword', 'password')->call('deleteConfirmed')],
-    'panel: delete' => [true, fn ($c) => $c->call('delete')],
+    'panel: delete' => [true, fn ($c) => $c->set('deletePassword', 'password')->call('delete')],
     'panel: deleteConfirmed with the right password' => [true, fn ($c) => $c->set('deletePassword', 'password')->call('deleteConfirmed')],
 ]);
 
@@ -317,9 +317,9 @@ test('every node of a merge chain is protected: A and B as losers, C as a surviv
     $before = mergedDeletionFingerprint($ids);
     $index = mergedDeletionIndex($x);
 
-    expect(mergedDeletionToasts($index->call('delete', $x['a']->id)))->toBe([['danger', MERGED_DELETION_LOSER_MESSAGE]]);
-    expect(mergedDeletionToasts($index->call('delete', $x['b']->id)))->toBe([['danger', MERGED_DELETION_LOSER_MESSAGE]]);
-    expect(mergedDeletionToasts($index->call('delete', $x['c']->id)))->toBe([['danger', MERGED_DELETION_SURVIVOR_MESSAGE]]);
+    expect(mergedDeletionToasts($index->set('deletePassword', 'password')->call('delete', $x['a']->id)))->toBe([['danger', MERGED_DELETION_LOSER_MESSAGE]]);
+    expect(mergedDeletionToasts($index->set('deletePassword', 'password')->call('delete', $x['b']->id)))->toBe([['danger', MERGED_DELETION_LOSER_MESSAGE]]);
+    expect(mergedDeletionToasts($index->set('deletePassword', 'password')->call('delete', $x['c']->id)))->toBe([['danger', MERGED_DELETION_SURVIVOR_MESSAGE]]);
 
     expect(mergedDeletionFingerprint($ids))->toBe($before);
     expect(LeadDeletionAudit::count())->toBe(0);
@@ -350,7 +350,7 @@ test('a normal lead still deletes through Show', function () {
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::Manual]);
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'status_id' => leadStatus('unqualified')->id]);
 
-    $component = Livewire::actingAs($admin)->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')->call('delete');
+    $component = Livewire::actingAs($admin)->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')->set('deletePassword', 'password')->call('delete');
 
     expect($component->effects['redirect'] ?? null)->not->toBeNull();
     expect(Lead::find($lead->id))->toBeNull();
@@ -367,7 +367,7 @@ test('a normal lead still deletes through Index, and its confirm opener still op
     expect($opened->get('showDeleteLeadModal'))->toBeTrue();
     expect(mergedDeletionToasts($opened))->toBe([]);
 
-    $deleted = mergedDeletionIndex($scenario)->call('delete', $lead->id);
+    $deleted = mergedDeletionIndex($scenario)->set('deletePassword', 'password')->call('delete', $lead->id);
     expect(mergedDeletionToasts($deleted))->toBe([['success', 'Lead deleted.']]);
     expect(Lead::find($lead->id))->toBeNull();
     expect(LeadDeletionAudit::count())->toBe(1);
@@ -410,7 +410,7 @@ test('a lead that only has a Pending or Dismissed duplicate link — no merged l
         ...array_combine(['lead_id', 'duplicate_lead_id'], LeadDuplicateLink::pairKeys($lead, $other)),
     ]);
 
-    $component = mergedDeletionIndex(['admin' => $admin])->call('delete', $lead->id);
+    $component = mergedDeletionIndex(['admin' => $admin])->set('deletePassword', 'password')->call('delete', $lead->id);
 
     expect(mergedDeletionToasts($component))->toBe([['success', 'Lead deleted.']]);
     expect(Lead::find($lead->id))->toBeNull();
@@ -426,7 +426,7 @@ test('an actor without delete permission still gets the permission denial, not a
     $rep = clientUserWithLeadPermission($x['tenant'], ['view', 'update']);
     $before = mergedDeletionFingerprint([$x['loser']->id, $x['survivor']->id]);
 
-    $component = Livewire::actingAs($rep)->test(Index::class)->call('completeInitialLoad')->call('delete', $x[$which]->id);
+    $component = Livewire::actingAs($rep)->test(Index::class)->call('completeInitialLoad')->set('deletePassword', 'password')->call('delete', $x[$which]->id);
 
     expect(mergedDeletionToasts($component))->toBe([['danger', "You don't have permission to delete this lead."]]);
     expect(mergedDeletionFingerprint([$x['loser']->id, $x['survivor']->id]))->toBe($before);
@@ -435,7 +435,7 @@ test('an actor without delete permission still gets the permission denial, not a
 test('the individual-deletion source-type restriction still wins over the merged-lead rule', function () {
     $x = mergedDeletionScenario(LeadSourceType::Whatsapp);
 
-    $component = mergedDeletionIndex($x)->call('delete', $x['survivor']->id);
+    $component = mergedDeletionIndex($x)->set('deletePassword', 'password')->call('delete', $x['survivor']->id);
 
     expect(mergedDeletionToasts($component))->toBe([['danger', "This lead's source type cannot be deleted individually."]]);
 });
@@ -444,7 +444,7 @@ test('tenant scope is still enforced: another tenant\'s admin cannot reach a mer
     $x = mergedDeletionScenario();
     ['clientAdmin' => $otherAdmin] = tenantWithLeadManagement();
 
-    expect(fn () => Livewire::actingAs($otherAdmin)->test(Index::class)->call('completeInitialLoad')->call('delete', $x['survivor']->id))
+    expect(fn () => Livewire::actingAs($otherAdmin)->test(Index::class)->call('completeInitialLoad')->set('deletePassword', 'password')->call('delete', $x['survivor']->id))
         ->toThrow(ModelNotFoundException::class);
 
     expect(Lead::find($x['survivor']->id))->not->toBeNull();

@@ -135,7 +135,7 @@ test('a client user without delete permission cannot open or run the deletion', 
 
     $component = Livewire::actingAs($rep)->test(Show::class, ['lead' => $lead])->call('completeInitialLoad');
     $component->call('confirmDeleteConversation')->assertSet('showDeleteConversationModal', false);
-    $component->call('deleteConversation');
+    $component->set('deletePassword', 'password')->call('deleteConversation');
     $component->assertDontSee('Delete conversation');
 
     expect(Message::where('lead_id', $lead->id)->count())->toBe(5)->and(LeadConversationDeletion::count())->toBe(0);
@@ -147,7 +147,7 @@ test('a lead whose source has no conversation is refused and left untouched', fu
     $source = LeadSource::factory()->create(['tenant_id' => $tenant->id, 'type' => LeadSourceType::WebsiteForm]);
     $lead = Lead::factory()->create(['tenant_id' => $tenant->id, 'source_id' => $source->id, 'message' => 'Form message', 'source_data' => ['messages' => [['x' => 1]]]]);
 
-    Livewire::actingAs($admin)->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')->call('deleteConversation')->assertDispatched('toast-show');
+    Livewire::actingAs($admin)->test(Show::class, ['lead' => $lead])->call('completeInitialLoad')->set('deletePassword', 'password')->call('deleteConversation')->assertDispatched('toast-show');
 
     expect($lead->fresh()->message)->toBe('Form message')->and($lead->fresh()->source_data)->toHaveKey('messages')->and(LeadConversationDeletion::count())->toBe(0);
 });
@@ -159,7 +159,7 @@ test('a lead merged away while its page is open cannot have its conversation del
     $component = Livewire::actingAs($admin)->test(Show::class, ['lead' => $lead])->call('completeInitialLoad');
     DB::table('leads')->where('id', $lead->id)->update(['merged_into_lead_id' => $survivor->id]);
 
-    $component->call('deleteConversation')->assertDispatched('toast-show');
+    $component->set('deletePassword', 'password')->call('deleteConversation')->assertDispatched('toast-show');
 
     expect(Message::where('lead_id', $lead->id)->count())->toBe(5)->and(LeadConversationDeletion::count())->toBe(0);
 });

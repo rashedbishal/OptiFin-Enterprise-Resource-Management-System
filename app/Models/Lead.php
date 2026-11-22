@@ -559,6 +559,25 @@ class Lead extends Model
         $this->update_seen_at = now();
     }
 
+    /**
+     * Stamps first_contacted_at the first time an agent actually reaches the
+     * lead — an outbound message Meta accepted, or a call that connected —
+     * not only when the lead is moved out of the initial status. Without
+     * this, the first-response report measured time to the first status
+     * change, so a lead answered on WhatsApp but left in "New" never counted
+     * as responded. Never overwrites an earlier stamp, and (like
+     * markUpdateSeen()) a plain query builder write: it must not bump
+     * updated_at or fire model events.
+     */
+    public static function recordFirstContact(?string $leadId): void
+    {
+        if ($leadId === null) {
+            return;
+        }
+
+        DB::table('leads')->where('id', $leadId)->whereNull('first_contacted_at')->update(['first_contacted_at' => now()]);
+    }
+
     public function assignedUser(): BelongsTo
     {
         return $this->belongsTo(TenantUser::class, 'assigned_to');
