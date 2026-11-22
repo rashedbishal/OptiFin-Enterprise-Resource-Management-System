@@ -63,6 +63,9 @@ return [
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
             'replace_placeholders' => true,
+            // Lock while writing, so deleting entries / emptying the file on
+            // Admin → Monitoring → Logs never loses a line written at that moment.
+            'locking' => true,
         ],
 
         'whatsapp' => [
@@ -71,6 +74,9 @@ return [
             'level' => env('LOG_LEVEL', 'debug'),
             'max_files' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
+            // Lock while writing, so deleting entries / emptying the file on
+            // Admin → Monitoring → Logs never loses a line written at that moment.
+            'locking' => true,
         ],
 
         'daily' => [
@@ -79,6 +85,9 @@ return [
             'level' => env('LOG_LEVEL', 'debug'),
             'max_files' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
+            // Lock while writing, so deleting entries / emptying the file on
+            // Admin → Monitoring → Logs never loses a line written at that moment.
+            'locking' => true,
         ],
 
         'monthly' => [

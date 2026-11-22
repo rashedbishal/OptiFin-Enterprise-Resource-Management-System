@@ -3,6 +3,7 @@
 use App\Enums\LogLevel;
 use App\Livewire\Platform\Monitoring\Logs;
 use App\Models\PlatformUser;
+use App\Services\Logs\LogEditor;
 use App\Services\Logs\LogIndex;
 use App\Services\Logs\LogReader;
 use App\Services\Logs\MailPreviewParser;
@@ -197,48 +198,121 @@ test('the page filters by level, and a shared link opens that entry', function (
         ->assertSee('RuntimeException(code: 0)');
 });
 
-test('deleting needs Update, removes only the chosen files, and is recorded in the Activity log', function () {
+// ── Emptying files ─────────────────────────────────────────────────────
+
+test('emptying needs Update and the password, keeps the file, and is recorded in the Activity log', function () {
     $root = sampleLogs();
     $viewer = platformAdminWithMonitoring(['logs' => ['view']]);
     $operator = platformAdminWithMonitoring(['logs' => ['view', 'update']]);
+    $operator->update(['password' => 'operator-password']);
 
-    Livewire::actingAs($viewer, 'platform')->test(Logs::class)->call('confirmDelete', 'folder:'.base64_encode('archive'))->assertForbidden();
+    Livewire::actingAs($viewer, 'platform')->test(Logs::class)->call('confirmEmpty', 'folder:'.base64_encode('archive'))->assertForbidden();
 
     Livewire::actingAs($operator, 'platform')->test(Logs::class)
-        ->call('confirmDelete', 'folder:'.base64_encode('archive'))
-        ->call('deleteConfirmed');
+        ->call('confirmEmpty', 'folder:'.base64_encode('archive'))
+        ->set('password', 'wrong')
+        ->call('emptyConfirmed')
+        ->assertHasErrors('password');
+    expect(File::size($root.'/archive/old.log'))->toBeGreaterThan(0);
 
-    expect(File::exists($root.'/archive/old.log'))->toBeFalse()
-        ->and(File::exists($root.'/laravel.log'))->toBeTrue();
+    Livewire::actingAs($operator, 'platform')->test(Logs::class)
+        ->call('confirmEmpty', 'folder:'.base64_encode('archive'))
+        ->set('password', 'operator-password')
+        ->call('emptyConfirmed')
+        ->assertHasNoErrors();
+
+    expect(File::exists($root.'/archive/old.log'))->toBeTrue()
+        ->and(File::size($root.'/archive/old.log'))->toBe(0)
+        ->and(File::size($root.'/laravel.log'))->toBeGreaterThan(0);
 
     $record = Activity::query()->where('log_name', SettingsAudit::LOG_NAME)->latest('id')->firstOrFail();
-    expect($record->properties->get('area'))->toBe('Logs')
+    expect($record->event)->toBe('log file emptied')
         ->and($record->properties->get('details')['files'])->toBe('archive/old.log')
         ->and($record->causer->is($operator))->toBeTrue();
 });
 
-test('the top level is never deleted as a "folder"', function () {
+test('"Empty all files" clears every file but keeps them all', function () {
     $root = sampleLogs();
+    $motherAdmin = PlatformUser::factory()->motherAdmin()->create(['password' => 'mother-password']);
 
-    Livewire::actingAs(PlatformUser::factory()->motherAdmin()->create(), 'platform')->test(Logs::class)
-        ->call('confirmDelete', 'folder:')
-        ->call('deleteConfirmed');
+    Livewire::actingAs($motherAdmin, 'platform')->test(Logs::class)
+        ->call('confirmEmpty', 'all')
+        ->set('password', 'mother-password')
+        ->call('emptyConfirmed');
 
-    expect(File::exists($root.'/laravel.log'))->toBeTrue();
+    foreach (['laravel.log', 'horizon.log', 'archive/old.log'] as $name) {
+        expect(File::exists($root.'/'.$name))->toBeTrue()->and(File::size($root.'/'.$name))->toBe(0);
+    }
 });
 
-test('selected files can be deleted together', function () {
+test('an emptied file keeps receiving new lines', function () {
+    $root = sampleLogs();
+    app(LogEditor::class)->empty(sampleFile('laravel.log'));
+    File::append($root.'/laravel.log', "[2026-11-22 12:00:00] production.ERROR: After emptying [] []\n");
+
+    expect(app(LogReader::class)->levelCounts(sampleFile('laravel.log')))->toBe(['error' => 1]);
+});
+
+test('the top level is never emptied as a "folder"', function () {
     $root = sampleLogs();
 
-    Livewire::actingAs(PlatformUser::factory()->motherAdmin()->create(), 'platform')->test(Logs::class)
-        ->call('toggleSelected', sampleFile('laravel.log')->id)
-        ->call('toggleSelected', sampleFile('horizon.log')->id)
-        ->call('confirmDelete', 'selected')
-        ->call('deleteConfirmed');
+    Livewire::actingAs(PlatformUser::factory()->motherAdmin()->create(['password' => 'pw']), 'platform')->test(Logs::class)
+        ->call('confirmEmpty', 'folder:')
+        ->set('password', 'pw')
+        ->call('emptyConfirmed');
 
-    expect(File::exists($root.'/laravel.log'))->toBeFalse()
-        ->and(File::exists($root.'/horizon.log'))->toBeFalse()
-        ->and(File::exists($root.'/archive/old.log'))->toBeTrue();
+    expect(File::size($root.'/laravel.log'))->toBeGreaterThan(0);
+});
+
+// ── Deleting entries ───────────────────────────────────────────────────
+
+test('deleting entries removes exactly those entries and leaves the rest of the file intact', function () {
+    $root = sampleLogs();
+    $reader = app(LogReader::class);
+    $file = sampleFile('laravel.log');
+    $error = $reader->page([$file], [LogLevel::Error], '', false, true, 1, 1)['entries'][0];
+    $warning = $reader->page([$file], [LogLevel::Warning], '', false, true, 1, 1)['entries'][0];
+    $before = File::get($root.'/laravel.log');
+
+    $removed = app(LogEditor::class)->deleteEntries($file, [$error->offset, $warning->offset, 999999]);
+
+    $after = File::get($root.'/laravel.log');
+    $expected = substr($before, 0, $error->offset)
+        .substr($before, $error->offset + $error->length, $warning->offset - $error->offset - $error->length)
+        .substr($before, $warning->offset + $warning->length);
+
+    expect($removed)->toBe(2)
+        ->and($after)->toBe($expected)
+        ->and(app(LogReader::class)->levelCounts(sampleFile('laravel.log')))->toBe(['info' => 1, 'debug' => 1]);
+});
+
+test('entries can be deleted one at a time or in a batch from the page, with Update, and are recorded', function () {
+    sampleLogs();
+    $file = sampleFile('laravel.log');
+    $entries = app(LogReader::class)->page([$file], [], '', false, true, 1, 25)['entries'];
+    $viewer = platformAdminWithMonitoring(['logs' => ['view']]);
+    $operator = platformAdminWithMonitoring(['logs' => ['view', 'update']]);
+
+    Livewire::actingAs($viewer, 'platform')->test(Logs::class, ['file' => $file->id])
+        ->call('confirmDeleteEntries', $file->id.':'.$entries[0]->offset)
+        ->assertForbidden();
+
+    Livewire::actingAs($operator, 'platform')->test(Logs::class, ['file' => $file->id])
+        ->call('toggleEntry', $file->id.':'.$entries[0]->offset)
+        ->call('toggleEntry', $file->id.':'.$entries[1]->offset)
+        ->call('confirmDeleteEntries')
+        ->assertSet('showDeleteEntriesModal', true)
+        ->call('deleteEntriesConfirmed');
+
+    expect(array_sum(app(LogReader::class)->levelCounts(sampleFile('laravel.log'))))->toBe(2);
+    $record = Activity::query()->where('log_name', SettingsAudit::LOG_NAME)->latest('id')->firstOrFail();
+    expect($record->event)->toBe('log entries deleted')->and($record->properties->get('details')['entries'])->toBe(2);
+});
+
+test('the app\'s log channels lock while writing, so edits never lose a line', function () {
+    foreach (['single', 'daily', 'whatsapp'] as $channel) {
+        expect(config("logging.channels.{$channel}.locking"))->toBeTrue();
+    }
 });
 
 test('admin templates never put @js(...) inside a Flux component attribute', function () {

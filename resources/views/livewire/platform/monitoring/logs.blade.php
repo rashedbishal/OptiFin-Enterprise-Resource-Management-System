@@ -39,6 +39,9 @@
                 {{ $live ? __('Live · every 10s') : __('Live') }}
             </flux:button>
             <flux:button size="sm" variant="outline" icon="arrow-path" wire:click="rescan" wire:loading.attr="disabled" wire:target="rescan">{{ __('Rescan files') }}</flux:button>
+            @if ($this->canManage && count($this->files) > 0)
+                <flux:button size="sm" variant="danger" icon="no-symbol" wire:click="confirmEmpty('all')" data-test="empty-all">{{ __('Empty all files') }}</flux:button>
+            @endif
         </div>
     </div>
 
@@ -63,7 +66,7 @@
                                     <flux:button size="xs" variant="ghost" icon="ellipsis-horizontal" :aria-label="__('Folder actions')" />
                                     <flux:menu>
                                         <flux:menu.item icon="arrow-down-tray" :href="route('admin.monitoring.logs.download-folder', $folder)">{{ __('Download folder (.zip)') }}</flux:menu.item>
-                                        <flux:menu.item icon="trash" variant="danger" wire:click="confirmDelete('folder:{{ base64_encode($folder) }}')">{{ __('Delete folder') }}</flux:menu.item>
+                                        <flux:menu.item icon="no-symbol" variant="danger" wire:click="confirmEmpty('folder:{{ base64_encode($folder) }}')">{{ __('Empty folder') }}</flux:menu.item>
                                     </flux:menu>
                                 </flux:dropdown>
                             @endif
@@ -89,7 +92,7 @@
                                     <flux:button size="xs" variant="ghost" icon="ellipsis-vertical" :aria-label="__('File actions')" />
                                     <flux:menu>
                                         <flux:menu.item icon="arrow-down-tray" :href="route('admin.monitoring.logs.download-file', $logFile->id)">{{ __('Download') }}</flux:menu.item>
-                                        <flux:menu.item icon="trash" variant="danger" wire:click="confirmDelete('file:{{ $logFile->id }}')">{{ __('Delete') }}</flux:menu.item>
+                                        <flux:menu.item icon="no-symbol" variant="danger" wire:click="confirmEmpty('file:{{ $logFile->id }}')">{{ __('Empty file') }}</flux:menu.item>
                                     </flux:menu>
                                 </flux:dropdown>
                             @endif
@@ -101,7 +104,7 @@
             @endforelse
 
             @if ($this->canManage && $selected !== [])
-                <flux:button variant="danger" size="sm" icon="trash" wire:click="confirmDelete('selected')">{{ trans_choice('Delete :count selected file|Delete :count selected files', count($selected)) }}</flux:button>
+                <flux:button variant="danger" size="sm" icon="no-symbol" wire:click="confirmEmpty('selected')">{{ trans_choice('Empty :count selected file|Empty :count selected files', count($selected)) }}</flux:button>
             @endif
         </flux:card>
 
@@ -158,10 +161,23 @@
                 @endif
             </flux:card>
 
+            @if ($this->canManage && $selectedEntries !== [])
+                <div class="flex flex-wrap items-center gap-3 rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-2 dark:border-zinc-700 dark:bg-white/5">
+                    <flux:text class="text-sm">{{ trans_choice(':count entry selected|:count entries selected', count($selectedEntries)) }}</flux:text>
+                    <flux:button size="sm" variant="danger" icon="trash" wire:click="confirmDeleteEntries" data-test="delete-selected-entries">{{ __('Delete selected entries') }}</flux:button>
+                    <flux:button size="sm" variant="ghost" wire:click="$set('selectedEntries', [])">{{ __('Clear selection') }}</flux:button>
+                </div>
+            @endif
+
             <flux:card class="p-0">
                 <flux:table>
                     <flux:table.columns>
-                        <flux:table.column class="ps-4">{{ __('Level') }}</flux:table.column>
+                        @if ($this->canManage)
+                            <flux:table.column class="w-8 ps-4">
+                                <flux:checkbox wire:click="toggleEntriesOnPage" :checked="$paginator->count() > 0 && collect($paginator->items())->every(fn ($e) => in_array($e->fileId.':'.$e->offset, $selectedEntries, true))" :aria-label="__('Select all on this page')" />
+                            </flux:table.column>
+                        @endif
+                        <flux:table.column @class(['ps-4' => ! $this->canManage])>{{ __('Level') }}</flux:table.column>
                         <flux:table.column>{{ __('Time') }}</flux:table.column>
                         @if ($allFiles)
                             <flux:table.column>{{ __('File') }}</flux:table.column>
@@ -171,7 +187,12 @@
                     <flux:table.rows>
                         @forelse ($paginator as $logEntry)
                             <flux:table.row wire:key="entry-{{ $logEntry->fileId }}-{{ $logEntry->offset }}" class="cursor-pointer hover:bg-zinc-50 dark:hover:bg-white/5" wire:click="openEntry('{{ $logEntry->fileId }}', {{ $logEntry->offset }})" data-test="log-entry">
-                                <flux:table.cell class="ps-4 align-top"><flux:badge size="sm" :color="$logEntry->level->color()">{{ $logEntry->level->label() }}</flux:badge></flux:table.cell>
+                                @if ($this->canManage)
+                                    <flux:table.cell class="ps-4 align-top">
+                                        <flux:checkbox wire:click.stop="toggleEntry('{{ $logEntry->fileId }}:{{ $logEntry->offset }}')" :checked="in_array($logEntry->fileId.':'.$logEntry->offset, $selectedEntries, true)" :aria-label="__('Select entry')" />
+                                    </flux:table.cell>
+                                @endif
+                                <flux:table.cell @class(['align-top', 'ps-4' => ! $this->canManage])><flux:badge size="sm" :color="$logEntry->level->color()">{{ $logEntry->level->label() }}</flux:badge></flux:table.cell>
                                 <flux:table.cell class="whitespace-nowrap align-top text-sm">
                                     @if ($logEntry->time)
                                         <span title="{{ $logEntry->time->toDateTimeString() }} UTC">{{ $logEntry->time->timezone($tz)->format('d M Y, H:i:s') }}</span>
@@ -191,7 +212,7 @@
                             </flux:table.row>
                         @empty
                             <flux:table.row>
-                                <flux:table.cell :colspan="$allFiles ? 4 : 3" class="ps-4">
+                                <flux:table.cell :colspan="($allFiles ? 4 : 3) + ($this->canManage ? 1 : 0)" class="ps-4">
                                     {{ $search !== '' || $selectedLevels !== [] ? __('No entries match.') : __('This file has no entries.') }}
                                 </flux:table.cell>
                             </flux:table.row>
@@ -232,6 +253,9 @@
                         <flux:button size="sm" icon="clipboard-document" x-on:click="copy($refs.raw.innerText, 'entry')">
                             <span x-text="copied === 'entry' ? $el.dataset.done : $el.dataset.idle" data-idle="{{ __('Copy') }}" data-done="{{ __('Copied') }}">{{ __('Copy') }}</span>
                         </flux:button>
+                        @if ($this->canManage)
+                            <flux:button size="sm" variant="danger" icon="trash" wire:click="confirmDeleteEntries('{{ $openedEntry->fileId }}:{{ $openedEntry->offset }}')">{{ __('Delete entry') }}</flux:button>
+                        @endif
                         <flux:button size="sm" icon="link" data-link="{{ route('admin.monitoring.logs', ['file' => $openedEntry->fileId, 'entry' => $openedEntry->offset]) }}" x-on:click="copy($el.dataset.link, 'link')">
                             <span x-text="copied === 'link' ? $el.dataset.done : $el.dataset.idle" data-idle="{{ __('Copy link') }}" data-done="{{ __('Link copied') }}">{{ __('Copy link') }}</span>
                         </flux:button>
@@ -300,13 +324,38 @@
         @endif
     </flux:modal>
 
+    {{-- Emptying keeps the .log files; it clears their content. Needs the password. --}}
+    <flux:modal wire:model.self="showEmptyModal" class="md:w-[30rem]">
+        <form wire:submit="emptyConfirmed" class="flex flex-col gap-4">
+            <div>
+                <flux:heading size="lg">{{ trans_choice('Empty :count log file?|Empty :count log files?', count($this->pendingEmpty)) }}</flux:heading>
+                <flux:text class="mt-2">
+                    {{ __('Everything written in them is permanently removed. The files themselves stay and keep receiving new log lines. This is recorded in the Activity log.') }}
+                </flux:text>
+            </div>
+
+            @if ($this->pendingEmpty !== [])
+                <div class="max-h-40 overflow-auto rounded-lg bg-zinc-50 p-3 text-xs text-zinc-600 dark:bg-zinc-800/60 dark:text-zinc-300">
+                    @foreach ($this->pendingEmpty as $pending)
+                        <div>{{ $pending->relativePath }} <span class="text-zinc-400">· {{ $size($pending->size) }}</span></div>
+                    @endforeach
+                </div>
+            @endif
+
+            <flux:input type="password" wire:model="password" :label="__('Your password')" autocomplete="current-password" viewable />
+
+            <div class="flex justify-end gap-2">
+                <flux:button type="button" wire:click="$set('showEmptyModal', false)">{{ __('Cancel') }}</flux:button>
+                <flux:button type="submit" variant="danger" wire:loading.attr="disabled" wire:target="emptyConfirmed">{{ __('Empty') }}</flux:button>
+            </div>
+        </form>
+    </flux:modal>
+
     <x-confirm-modal
-        wire:model.self="showDeleteModal"
-        :title="trans_choice('Delete :count log file?|Delete :count log files?', count($this->pendingDelete))"
-        :description="count($this->pendingDelete) === 1
-            ? __(':file will be permanently deleted. This is recorded in the Activity log.', ['file' => $this->pendingDelete[0]->relativePath])
-            : __('These files will be permanently deleted: :files. This is recorded in the Activity log.', ['files' => implode(', ', array_map(fn ($f) => $f->relativePath, $this->pendingDelete))])"
-        confirm-action="deleteConfirmed"
+        wire:model.self="showDeleteEntriesModal"
+        :title="trans_choice('Delete :count log entry?|Delete :count log entries?', count($confirmingEntries))"
+        :description="__('They are permanently removed from the log file; everything else in the file stays. This is recorded in the Activity log.')"
+        confirm-action="deleteEntriesConfirmed"
         :confirm-label="__('Delete')"
     />
 </div>

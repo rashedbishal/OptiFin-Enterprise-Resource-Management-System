@@ -6,13 +6,17 @@ use App\Enums\LogLevel;
 use App\Enums\MonitoringTool;
 use App\Enums\PermissionSlug;
 use App\Livewire\Platform\Monitoring\Concerns\AuthorizesMonitoringTool;
+use App\Models\PlatformUser;
+use App\Services\Logs\LogEditor;
 use App\Services\Logs\LogReader;
 use App\Support\Logs\LogEntry;
 use App\Support\Logs\LogFile;
 use App\Support\SettingsAudit;
 use Flux\Flux;
 use Illuminate\Pagination\LengthAwarePaginator;
-use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
@@ -81,10 +85,33 @@ class Logs extends Component
      */
     public array $selected = [];
 
+    /**
+     * What the Empty confirmation is about: "file:<id>", "folder:<base64>",
+     * "selected" or "all".
+     */
     #[Locked]
-    public ?string $confirmingDelete = null;
+    public ?string $confirmingEmpty = null;
 
-    public bool $showDeleteModal = false;
+    public bool $showEmptyModal = false;
+
+    public string $password = '';
+
+    /**
+     * Entries ticked for "Delete selected entries", as "<fileId>:<offset>".
+     *
+     * @var list<string>
+     */
+    public array $selectedEntries = [];
+
+    /**
+     * Entries the open Delete confirmation is about (same "<fileId>:<offset>" form).
+     *
+     * @var list<string>
+     */
+    #[Locked]
+    public array $confirmingEntries = [];
+
+    public bool $showDeleteEntriesModal = false;
 
     public function mount(): void
     {
@@ -127,6 +154,7 @@ class Logs extends Component
             }
 
             $this->sort = $this->sort === 'asc' ? 'asc' : 'desc';
+            $this->selectedEntries = [];
             $this->resetPage();
         }
     }
@@ -231,6 +259,7 @@ class Logs extends Component
     public function selectFile(string $id): void
     {
         $this->file = $id;
+        $this->selectedEntries = [];
         $this->entry = null;
         $this->allFiles = false;
         $this->resetPage();
@@ -304,67 +333,169 @@ class Logs extends Component
             : [...$this->selected, $id];
     }
 
-    public function confirmDelete(string $target): void
+    public function toggleEntry(string $key): void
     {
-        $this->authorizeMonitoring(PermissionSlug::Update);
-
-        $this->confirmingDelete = $target;
-        $this->showDeleteModal = true;
+        $this->selectedEntries = in_array($key, $this->selectedEntries, true)
+            ? array_values(array_diff($this->selectedEntries, [$key]))
+            : [...$this->selectedEntries, $key];
     }
 
     /**
-     * Deletes the confirmed file, folder or selection — only files this page
-     * listed under storage/logs — and records it in the Activity log.
+     * Ticks every entry on the current page (or unticks them if all are ticked).
      */
-    public function deleteConfirmed(): void
+    public function toggleEntriesOnPage(): void
+    {
+        $keys = array_map(fn ($entry): string => $entry->fileId.':'.$entry->offset, $this->results()['paginator']->items());
+        $allTicked = $keys !== [] && array_diff($keys, $this->selectedEntries) === [];
+
+        $this->selectedEntries = $allTicked
+            ? array_values(array_diff($this->selectedEntries, $keys))
+            : array_values(array_unique([...$this->selectedEntries, ...$keys]));
+    }
+
+    /**
+     * Opens the delete confirmation for one entry ($key) or the ticked ones.
+     */
+    public function confirmDeleteEntries(?string $key = null): void
     {
         $this->authorizeMonitoring(PermissionSlug::Update);
 
-        $targets = $this->deleteTargets((string) $this->confirmingDelete);
-        $reader = app(LogReader::class);
+        $this->confirmingEntries = $key !== null ? [$key] : $this->selectedEntries;
+
+        if ($this->confirmingEntries !== []) {
+            $this->showDeleteEntriesModal = true;
+        }
+    }
+
+    /**
+     * Removes the confirmed entries from their files (in place — the files
+     * stay) and records it in the Activity log.
+     */
+    public function deleteEntriesConfirmed(): void
+    {
+        $this->authorizeMonitoring(PermissionSlug::Update);
+
+        $byFile = [];
+
+        foreach ($this->confirmingEntries as $key) {
+            [$fileId, $offset] = array_pad(explode(':', $key, 2), 2, '');
+
+            if (ctype_digit($offset)) {
+                $byFile[$fileId][] = (int) $offset;
+            }
+        }
+
+        $deleted = 0;
+        $touched = [];
+
+        foreach ($byFile as $fileId => $offsets) {
+            $file = app(LogReader::class)->find((string) $fileId);
+
+            if ($file === null) {
+                continue;
+            }
+
+            $removed = app(LogEditor::class)->deleteEntries($file, $offsets);
+
+            if ($removed > 0) {
+                $deleted += $removed;
+                $touched[] = $file->relativePath.' ('.$removed.')';
+            }
+        }
+
+        if ($deleted > 0) {
+            SettingsAudit::record('Logs', 'log entries deleted', ['files' => implode(', ', $touched), 'entries' => $deleted]);
+        }
+
+        $this->showDeleteEntriesModal = false;
+        $this->confirmingEntries = [];
+        $this->selectedEntries = [];
+        $this->entry = null;
+        $this->showEntryModal = false;
+        $this->refreshEntries();
+
+        Flux::toast(variant: $deleted > 0 ? 'success' : 'warning', text: $deleted > 0
+            ? trans_choice(':count log entry deleted.|:count log entries deleted.', $deleted)
+            : __('Those entries were already gone.'));
+    }
+
+    public function confirmEmpty(string $target): void
+    {
+        $this->authorizeMonitoring(PermissionSlug::Update);
+
+        $this->confirmingEmpty = $target;
+        $this->reset('password');
+        $this->resetErrorBag();
+        $this->showEmptyModal = true;
+    }
+
+    /**
+     * Empties the confirmed file(s) — the .log files stay, their content is
+     * cleared — after the admin re-enters their password, and records it.
+     */
+    public function emptyConfirmed(): void
+    {
+        $admin = $this->authorizedAdmin(PermissionSlug::Update);
+
+        $this->validate(['password' => ['required', 'string']], [], ['password' => __('password')]);
+
+        $throttleKey = 'logs-empty:'.$admin->id;
+
+        if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
+            $this->addError('password', __('Too many attempts. Try again in a minute.'));
+
+            return;
+        }
+
+        if (! Hash::check($this->password, $admin->password)) {
+            RateLimiter::hit($throttleKey, 60);
+            $this->addError('password', __('The password is incorrect.'));
+
+            return;
+        }
+
+        RateLimiter::clear($throttleKey);
+
+        $targets = $this->emptyTargets((string) $this->confirmingEmpty);
 
         foreach ($targets as $file) {
-            $reader->forgetIndex($file);
-            File::delete($file->path);
+            app(LogEditor::class)->empty($file);
         }
 
         if ($targets !== []) {
-            SettingsAudit::record('Logs', count($targets) === 1 ? 'log file deleted' : 'log files deleted', [
+            SettingsAudit::record('Logs', count($targets) === 1 ? 'log file emptied' : 'log files emptied', [
                 'files' => implode(', ', array_map(fn (LogFile $file): string => $file->relativePath, $targets)),
                 'count' => count($targets),
             ]);
         }
 
-        $this->showDeleteModal = false;
-        $this->confirmingDelete = null;
-        unset($this->pendingDelete);
+        $this->showEmptyModal = false;
+        $this->confirmingEmpty = null;
+        $this->reset('password');
+        unset($this->pendingEmpty);
         $this->selected = [];
+        $this->selectedEntries = [];
         $this->entry = null;
         $this->refreshEntries();
 
-        if ($this->currentFile() === null) {
-            $this->file = $this->files()[0]->id ?? '';
-            unset($this->currentFile);
-        }
-
-        Flux::toast(variant: 'success', text: trans_choice(':count log file deleted.|:count log files deleted.', count($targets)));
+        Flux::toast(variant: 'success', text: trans_choice(':count log file emptied.|:count log files emptied.', count($targets)));
     }
 
     /**
-     * The files the open delete confirmation is about (for its wording).
+     * The files the open Empty confirmation is about (for its wording).
      *
      * @return list<LogFile>
      */
     #[Computed]
-    public function pendingDelete(): array
+    public function pendingEmpty(): array
     {
-        return $this->confirmingDelete === null ? [] : $this->deleteTargets($this->confirmingDelete);
+        return $this->confirmingEmpty === null ? [] : $this->emptyTargets($this->confirmingEmpty);
     }
 
     /**
      * @return list<LogFile>
      */
-    private function deleteTargets(string $target): array
+    private function emptyTargets(string $target): array
     {
         [$kind, $value] = array_pad(explode(':', $target, 2), 2, '');
 
@@ -374,11 +505,22 @@ class Logs extends Component
         }
 
         return array_values(array_filter($this->files(), fn (LogFile $file): bool => match ($kind) {
+            'all' => true,
             'file' => $file->id === $value,
-            // Real sub-folders only; the top level is never deleted as a "folder".
+            // Real sub-folders only; the top level is emptied with "all".
             'folder' => $value !== '' && ($file->folder === $value || str_starts_with($file->folder, $value.DIRECTORY_SEPARATOR)),
             'selected' => in_array($file->id, $this->selected, true),
             default => false,
         }));
+    }
+
+    private function authorizedAdmin(PermissionSlug $permission): PlatformUser
+    {
+        $this->authorizeMonitoring($permission);
+
+        $admin = Auth::guard('platform')->user();
+        abort_unless($admin instanceof PlatformUser, 403);
+
+        return $admin;
     }
 }
