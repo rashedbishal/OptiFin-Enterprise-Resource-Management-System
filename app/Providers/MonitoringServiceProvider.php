@@ -3,7 +3,6 @@
 namespace App\Providers;
 
 use App\Enums\MonitoringTool;
-use App\Enums\PermissionSlug;
 use App\Health\BackupsCheck;
 use App\Health\DatabaseSizeCheck;
 use App\Health\EmailInboxesCheck;
@@ -15,7 +14,6 @@ use Illuminate\Foundation\DevCommands;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
-use Opcodes\LogViewer\Facades\LogViewer;
 use Spatie\Health\Checks\Checks\CacheCheck;
 use Spatie\Health\Checks\Checks\DatabaseCheck;
 use Spatie\Health\Checks\Checks\DatabaseConnectionCountCheck;
@@ -48,7 +46,6 @@ class MonitoringServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configurePulseGate();
-        $this->configureLogViewer();
         $this->configureHealthChecks();
         $this->configureDevCommands();
     }
@@ -65,27 +62,6 @@ class MonitoringServiceProvider extends ServiceProvider
 
             return $admin instanceof PlatformUser && $admin->canUseMonitoringTool(MonitoringTool::Pulse);
         });
-    }
-
-    /**
-     * The log viewer: `view` on the "Logs" platform module opens it, `update`
-     * also allows downloading and deleting log files. Always checked on the
-     * platform guard (the gates' own $user is the default-guard tenant user).
-     * These replace the package's allow-everything default gates.
-     */
-    protected function configureLogViewer(): void
-    {
-        $allowed = static function (PermissionSlug $permission): bool {
-            $admin = Auth::guard('platform')->user();
-
-            return $admin instanceof PlatformUser && $admin->canUseMonitoringTool(MonitoringTool::Logs, $permission);
-        };
-
-        LogViewer::auth(fn (): bool => $allowed(PermissionSlug::View));
-
-        foreach (['downloadLogFile', 'downloadLogFolder', 'deleteLogFile', 'deleteLogFolder'] as $ability) {
-            Gate::define($ability, fn (mixed $user = null, mixed $target = null): bool => $allowed(PermissionSlug::Update));
-        }
     }
 
     /**

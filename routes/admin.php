@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\MetaPermissionsController;
 use App\Http\Controllers\Platform\CallingAppApkUploadController;
+use App\Http\Controllers\Platform\LogDownloadController;
 use App\Livewire\Actions\PlatformLogout;
 use App\Livewire\Platform\Admins\Index as AdminsIndex;
 use App\Livewire\Platform\Auth\Login;
@@ -15,6 +16,7 @@ use App\Livewire\Platform\Monitoring\FailedJobs as MonitoringFailedJobs;
 use App\Livewire\Platform\Monitoring\Health as MonitoringHealth;
 use App\Livewire\Platform\Monitoring\Horizon as MonitoringHorizon;
 use App\Livewire\Platform\Monitoring\Integrations as MonitoringIntegrations;
+use App\Livewire\Platform\Monitoring\Logs as MonitoringLogs;
 use App\Livewire\Platform\Monitoring\Pulse as MonitoringPulse;
 use App\Livewire\Platform\Roles\Index as RolesIndex;
 use App\Livewire\Platform\Settings\ActivityLog as SettingsActivityLog;
@@ -67,6 +69,9 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::livewire('health', MonitoringHealth::class)->name('health');
             Route::livewire('pulse', MonitoringPulse::class)->name('pulse');
             Route::livewire('integrations', MonitoringIntegrations::class)->name('integrations');
+            Route::livewire('logs', MonitoringLogs::class)->name('logs');
+            Route::get('logs/download/file/{id}', [LogDownloadController::class, 'file'])->name('logs.download-file');
+            Route::get('logs/download/folder/{folder}', [LogDownloadController::class, 'folder'])->where('folder', '.*')->name('logs.download-folder');
         });
     });
 });

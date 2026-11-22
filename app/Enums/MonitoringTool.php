@@ -35,7 +35,7 @@ enum MonitoringTool: string
             self::Health => 'Application health checks: database, cache, Redis, queue, scheduler and disk (Spatie Laravel Health).',
             self::Pulse => 'Application performance: slow requests, queries and jobs, exceptions and server load (Laravel Pulse).',
             self::Integrations => 'Health of every client\'s lead sources: last activity, Meta tokens, webhook rejections and email inboxes.',
-            self::Logs => 'Read and search the application log files (opcodesio/log-viewer); Update also allows downloading and deleting them.',
+            self::Logs => 'Read and search the application log files; Update also allows downloading and deleting them.',
         };
     }
 
@@ -52,10 +52,6 @@ enum MonitoringTool: string
 
     public function routeName(): string
     {
-        return match ($this) {
-            // The log viewer package's own screen (config/log-viewer.php).
-            self::Logs => 'log-viewer.index',
-            default => 'admin.monitoring.'.$this->value,
-        };
+        return 'admin.monitoring.'.$this->value;
     }
 }
