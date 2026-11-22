@@ -127,7 +127,19 @@ return [
         AuthorizeLogViewer::class,
     ],
 
-    'api_stateful_domains' => env('LOG_VIEWER_API_STATEFUL_DOMAINS') ? explode(',', (string) env('LOG_VIEWER_API_STATEFUL_DOMAINS')) : null,
+    // The log viewer's screen loads its data with same-site API calls that
+    // must carry the admin's login session. The package only treats a call
+    // as "from our own site" when the referring host is listed here (it
+    // falls back to sanctum.stateful, which this app deliberately keeps
+    // empty for the calling app). So: this app's own host from APP_URL,
+    // with its port when it has one. LOG_VIEWER_API_STATEFUL_DOMAINS overrides.
+    'api_stateful_domains' => env('LOG_VIEWER_API_STATEFUL_DOMAINS')
+        ? explode(',', (string) env('LOG_VIEWER_API_STATEFUL_DOMAINS'))
+        : array_filter([(static function (): ?string {
+            $url = parse_url((string) env('APP_URL', ''));
+
+            return isset($url['host']) ? $url['host'].(isset($url['port']) ? ':'.$url['port'] : '') : null;
+        })()]),
 
     /*
     |--------------------------------------------------------------------------

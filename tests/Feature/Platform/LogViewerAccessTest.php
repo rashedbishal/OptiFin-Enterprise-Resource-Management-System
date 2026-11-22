@@ -1,7 +1,9 @@
 <?php
 
 use App\Models\PlatformUser;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Opcodes\LogViewer\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use Opcodes\LogViewer\LogFile;
 
 test('a guest is sent to the admin login', function () {
@@ -40,4 +42,16 @@ test('the Mother Admin may delete log files', function () {
     $this->actingAs(PlatformUser::factory()->motherAdmin()->create(), 'platform');
 
     expect(Gate::allows('deleteLogFile', new LogFile(storage_path('logs/laravel.log'))))->toBeTrue();
+});
+
+test('the log viewer screen\'s own data requests are treated as coming from this site', function () {
+    $fromOwnSite = Request::create('/admin/monitoring/logs/api/files', 'GET', server: [
+        'HTTP_REFERER' => rtrim((string) config('app.url'), '/').'/admin/monitoring/logs',
+    ]);
+    $fromElsewhere = Request::create('/admin/monitoring/logs/api/files', 'GET', server: [
+        'HTTP_REFERER' => 'https://evil.example/admin/monitoring/logs',
+    ]);
+
+    expect(EnsureFrontendRequestsAreStateful::fromFrontend($fromOwnSite))->toBeTrue()
+        ->and(EnsureFrontendRequestsAreStateful::fromFrontend($fromElsewhere))->toBeFalse();
 });
