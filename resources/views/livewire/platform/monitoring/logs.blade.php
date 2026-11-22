@@ -63,7 +63,7 @@
                                     <flux:button size="xs" variant="ghost" icon="ellipsis-horizontal" :aria-label="__('Folder actions')" />
                                     <flux:menu>
                                         <flux:menu.item icon="arrow-down-tray" :href="route('admin.monitoring.logs.download-folder', $folder)">{{ __('Download folder (.zip)') }}</flux:menu.item>
-                                        <flux:menu.item icon="trash" variant="danger" wire:click="confirmDelete(@js('folder:'.$folder))">{{ __('Delete folder') }}</flux:menu.item>
+                                        <flux:menu.item icon="trash" variant="danger" wire:click="confirmDelete('folder:{{ base64_encode($folder) }}')">{{ __('Delete folder') }}</flux:menu.item>
                                     </flux:menu>
                                 </flux:dropdown>
                             @endif
@@ -230,10 +230,10 @@
                     </div>
                     <div class="flex gap-2">
                         <flux:button size="sm" icon="clipboard-document" x-on:click="copy($refs.raw.innerText, 'entry')">
-                            <span x-text="copied === 'entry' ? @js(__('Copied')) : @js(__('Copy'))"></span>
+                            <span x-text="copied === 'entry' ? $el.dataset.done : $el.dataset.idle" data-idle="{{ __('Copy') }}" data-done="{{ __('Copied') }}">{{ __('Copy') }}</span>
                         </flux:button>
-                        <flux:button size="sm" icon="link" x-on:click="copy(@js(route('admin.monitoring.logs', ['file' => $openedEntry->fileId, 'entry' => $openedEntry->offset])), 'link')">
-                            <span x-text="copied === 'link' ? @js(__('Link copied')) : @js(__('Copy link'))"></span>
+                        <flux:button size="sm" icon="link" data-link="{{ route('admin.monitoring.logs', ['file' => $openedEntry->fileId, 'entry' => $openedEntry->offset]) }}" x-on:click="copy($el.dataset.link, 'link')">
+                            <span x-text="copied === 'link' ? $el.dataset.done : $el.dataset.idle" data-idle="{{ __('Copy link') }}" data-done="{{ __('Link copied') }}">{{ __('Copy link') }}</span>
                         </flux:button>
                     </div>
                 </div>

@@ -368,6 +368,11 @@ class Logs extends Component
     {
         [$kind, $value] = array_pad(explode(':', $target, 2), 2, '');
 
+        // Folder names arrive base64-encoded from the page.
+        if ($kind === 'folder') {
+            $value = (string) base64_decode($value, true);
+        }
+
         return array_values(array_filter($this->files(), fn (LogFile $file): bool => match ($kind) {
             'file' => $file->id === $value,
             // Real sub-folders only; the top level is never deleted as a "folder".

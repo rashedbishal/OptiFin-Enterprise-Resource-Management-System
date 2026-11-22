@@ -143,8 +143,8 @@
                             </flux:table.cell>
                             <flux:table.cell align="end" class="whitespace-nowrap">{{ $megabytes($backup['size']) }}</flux:table.cell>
                             <flux:table.cell align="end" class="whitespace-nowrap">
-                                <flux:button size="sm" variant="ghost" icon="arrow-down-tray" wire:click="download(@js($backup['path']))">{{ __('Download') }}</flux:button>
-                                <flux:button size="sm" variant="ghost" icon="trash" wire:click="confirmDelete(@js($backup['path']))" :aria-label="__('Delete')" />
+                                <flux:button size="sm" variant="ghost" icon="arrow-down-tray" wire:click="download('{{ $backup['path'] }}')">{{ __('Download') }}</flux:button>
+                                <flux:button size="sm" variant="ghost" icon="trash" wire:click="confirmDelete('{{ $backup['path'] }}')" :aria-label="__('Delete')" />
                             </flux:table.cell>
                         </flux:table.row>
                     @empty

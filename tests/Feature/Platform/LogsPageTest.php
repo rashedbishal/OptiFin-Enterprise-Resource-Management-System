@@ -202,10 +202,10 @@ test('deleting needs Update, removes only the chosen files, and is recorded in t
     $viewer = platformAdminWithMonitoring(['logs' => ['view']]);
     $operator = platformAdminWithMonitoring(['logs' => ['view', 'update']]);
 
-    Livewire::actingAs($viewer, 'platform')->test(Logs::class)->call('confirmDelete', 'folder:archive')->assertForbidden();
+    Livewire::actingAs($viewer, 'platform')->test(Logs::class)->call('confirmDelete', 'folder:'.base64_encode('archive'))->assertForbidden();
 
     Livewire::actingAs($operator, 'platform')->test(Logs::class)
-        ->call('confirmDelete', 'folder:archive')
+        ->call('confirmDelete', 'folder:'.base64_encode('archive'))
         ->call('deleteConfirmed');
 
     expect(File::exists($root.'/archive/old.log'))->toBeFalse()
@@ -239,4 +239,20 @@ test('selected files can be deleted together', function () {
     expect(File::exists($root.'/laravel.log'))->toBeFalse()
         ->and(File::exists($root.'/horizon.log'))->toBeFalse()
         ->and(File::exists($root.'/archive/old.log'))->toBeTrue();
+});
+
+test('admin templates never put @js(...) inside a Flux component attribute', function () {
+    // On production's PCRE, Livewire's morph-aware Blade compiler turns such a
+    // match into a huge regex ("regular expression is too large") and
+    // view:cache — and so the deploy — fails. Pass values via data-* or plain
+    // quoted strings instead.
+    $offenders = [];
+
+    foreach (File::allFiles(resource_path('views/livewire/platform')) as $file) {
+        if (preg_match('/<flux:[^>]*@js\(/s', $file->getContents()) === 1) {
+            $offenders[] = $file->getRelativePathname();
+        }
+    }
+
+    expect($offenders)->toBe([]);
 });
