@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Concerns\HasModulePermissions;
+use App\Enums\MonitoringTool;
+use App\Enums\PermissionSlug;
 use App\Enums\PlatformUserType;
 use Database\Factories\PlatformUserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -62,6 +64,16 @@ class PlatformUser extends Authenticatable
     public function bypassesAuthorization(): bool
     {
         return $this->isMotherAdmin();
+    }
+
+    /**
+     * Whether this admin may use a monitoring tool — `view` to open it,
+     * `update` for its actions. Granted through the tool's platform module
+     * on the admin's Role; the Mother Admin always passes.
+     */
+    public function canUseMonitoringTool(MonitoringTool $tool, PermissionSlug $permission = PermissionSlug::View): bool
+    {
+        return $this->is_active && $this->hasModulePermission($tool->value, $permission->value);
     }
 
     public function initials(): string

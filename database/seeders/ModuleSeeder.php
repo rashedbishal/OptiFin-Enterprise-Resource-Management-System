@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Enums\ModuleScope;
+use App\Enums\MonitoringTool;
 use App\Models\Module;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
@@ -45,6 +46,21 @@ class ModuleSeeder extends Seeder
     {
         foreach ($this->platformModules as $index => $name) {
             $this->seedModule($name, ModuleScope::Platform, isSystem: true, sortOrder: $index);
+        }
+
+        // Monitoring tools (Horizon / Health / Pulse) — also added on deploy
+        // by the add_monitoring_platform_modules migration.
+        foreach (MonitoringTool::cases() as $index => $tool) {
+            Module::updateOrCreate(
+                ['slug' => $tool->value],
+                [
+                    'name' => $tool->label(),
+                    'description' => $tool->description(),
+                    'scope' => ModuleScope::Platform,
+                    'is_system' => true,
+                    'sort_order' => count($this->platformModules) + $index,
+                ]
+            );
         }
 
         foreach ($this->tenantModules as $index => $name) {

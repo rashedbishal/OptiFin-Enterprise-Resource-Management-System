@@ -41,6 +41,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | database/migrations/2026_09_02_16*.php,app/Models/Currency.php,tests/** | .ai/rules/migrations-models.md |
 | app/{Models/Task.php,Models/TaskStatusLog.php,Enums/TaskStatus.php,Console/Commands/SendTaskAlertNotifications.php} | .ai/rules/models-commands.md |
 | app/Models/{PlatformUser,TenantUser}.php, app/Models/{LeadAssignment,LeadNote,LeadStatusLog,LeadDetailUpdateLog}.php, app/Models/Role.php | .ai/rules/models.md |
+| app/{Livewire/Platform/Monitoring/**,Providers/{HorizonServiceProvider,MonitoringServiceProvider}.php,Enums/MonitoringTool.php} | .ai/rules/monitoring.md |
 | app/Livewire/Tenant/Leads/Show.php,app/Notifications/MeetingCancelledNotification.php,app/Notifications/FollowUpCancelledNotification.php | .ai/rules/notifications.md |
 | resources/views/livewire/tenant/leads/partials/message-composer-card.blade.php,app/Livewire/Tenant/Leads/Show.php | .ai/rules/partials-livewire-tenant-leads.md |
 | resources/views/livewire/tenant/leads/partials/{lead-card,header}.blade.php,resources/views/livewire/tenant/leads-kanban.blade.php | .ai/rules/partials-views-livewire-tenant.md |

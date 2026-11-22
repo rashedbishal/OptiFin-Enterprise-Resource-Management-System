@@ -11,6 +11,9 @@ use App\Livewire\Platform\Clients\Show as ClientsShow;
 use App\Livewire\Platform\Dashboard;
 use App\Livewire\Platform\LeadManagement\Settings as LeadManagementSettings;
 use App\Livewire\Platform\Modules\Index as ModulesIndex;
+use App\Livewire\Platform\Monitoring\Health as MonitoringHealth;
+use App\Livewire\Platform\Monitoring\Horizon as MonitoringHorizon;
+use App\Livewire\Platform\Monitoring\Pulse as MonitoringPulse;
 use App\Livewire\Platform\Roles\Index as RolesIndex;
 use App\Livewire\Platform\Settings\CallingApp as SettingsCallingApp;
 use App\Livewire\Platform\Settings\Password as SettingsPassword;
@@ -43,5 +46,14 @@ Route::prefix('admin')->name('admin.')->group(function () {
             ->whereNumber('index')
             ->name('settings.calling-app.apk.chunk');
         Route::post('settings/calling-app/apk/uploads/{upload}/complete', [CallingAppApkUploadController::class, 'complete'])->name('settings.calling-app.apk.complete');
+
+        // Monitoring — each page checks its own platform module permission
+        // (App\Enums\MonitoringTool). The native Horizon/Pulse dashboards
+        // live at admin/horizon and admin/pulse (config/horizon.php, config/pulse.php).
+        Route::prefix('monitoring')->name('monitoring.')->group(function () {
+            Route::livewire('horizon', MonitoringHorizon::class)->name('horizon');
+            Route::livewire('health', MonitoringHealth::class)->name('health');
+            Route::livewire('pulse', MonitoringPulse::class)->name('pulse');
+        });
     });
 });

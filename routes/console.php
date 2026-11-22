@@ -50,3 +50,11 @@ $monitored('leads:nurture-inactive-leads')->dailyAt('08:00')->withoutOverlapping
 // killed mid-sweep must not stall reconciliation for a day. Correctness never
 // depends on it — every transition is a compare-and-set.
 $monitored('calls:reconcile-stale')->everyMinute()->withoutOverlapping(10);
+
+// Platform monitoring (see App\Providers\MonitoringServiceProvider):
+// Horizon's metrics graphs stay empty without regular snapshots, and the
+// two heartbeats feed Health's ScheduleCheck/QueueCheck.
+$monitored('horizon:snapshot')->everyFiveMinutes();
+$monitored('health:check')->everyMinute()->withoutOverlapping();
+$monitored('health:schedule-check-heartbeat')->everyMinute();
+$monitored('health:queue-check-heartbeat')->everyMinute();

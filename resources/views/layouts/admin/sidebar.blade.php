@@ -33,6 +33,23 @@
                         </flux:sidebar.item>
                     @endif
                 </flux:sidebar.group>
+
+                {{-- Monitoring: each tool shows only for admins whose Role grants its
+                platform module (the Mother Admin sees all). --}}
+                @php
+                    $monitoringAdmin = auth('platform')->user();
+                    $monitoringTools = collect(\App\Enums\MonitoringTool::cases())
+                        ->filter(fn ($tool) => $monitoringAdmin?->canUseMonitoringTool($tool));
+                @endphp
+                @if ($monitoringTools->isNotEmpty())
+                    <flux:sidebar.group :heading="__('Monitoring')" class="grid">
+                        @foreach ($monitoringTools as $tool)
+                            <flux:sidebar.item :icon="$tool->icon()" :href="route($tool->routeName())" :current="request()->routeIs($tool->routeName())" wire:navigate>
+                                {{ __($tool->label()) }}
+                            </flux:sidebar.item>
+                        @endforeach
+                    </flux:sidebar.group>
+                @endif
             </flux:sidebar.nav>
 
             <flux:spacer />

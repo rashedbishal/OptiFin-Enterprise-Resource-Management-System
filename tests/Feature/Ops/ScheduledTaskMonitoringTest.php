@@ -28,6 +28,10 @@ const OPS_SCHEDULED_COMMANDS = [
     'tasks:send-alert-notifications',
     'leads:nurture-inactive-leads',
     'calls:reconcile-stale',
+    'horizon:snapshot',
+    'health:check',
+    'health:schedule-check-heartbeat',
+    'health:queue-check-heartbeat',
 ];
 
 /**
@@ -56,7 +60,7 @@ beforeEach(function () {
     Notification::fake();
 });
 
-test('exactly the 9 approved commands are scheduled, and every one of them reports its own failure', function () {
+test('exactly the approved commands are scheduled, and every one of them reports its own failure', function () {
     $events = scheduledEventsByCommand();
 
     expect(array_keys($events))->toEqualCanonicalizing(OPS_SCHEDULED_COMMANDS);
@@ -72,7 +76,7 @@ test('exactly the 9 approved commands are scheduled, and every one of them repor
         );
     }
 
-    Notification::assertSentOnDemandTimes(OpsAlertNotification::class, 9);
+    Notification::assertSentOnDemandTimes(OpsAlertNotification::class, count(OPS_SCHEDULED_COMMANDS));
 });
 
 // F5 remediation (forensic audit Batch C) — leads:cleanup-attachments,
