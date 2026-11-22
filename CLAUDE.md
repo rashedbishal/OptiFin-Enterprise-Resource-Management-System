@@ -11,7 +11,7 @@ A multi-tenant SaaS ERP built on the Laravel Livewire starter kit (Laravel 13, P
 ## Commands
 
 ```bash
-composer run dev          # `php artisan dev`: serve + queue:listen + pail + vite + reverb:start (primary local dev loop; `php artisan dev:list` shows them)
+composer run dev          # `php artisan dev`: serve + horizon + pulse:check + pail + vite + reverb:start (primary local dev loop; `php artisan dev:list` shows them; needs local Redis)
 npm run dev                # vite only
 npm run build
 npm test                   # vitest run — browser-side tests (currently the WhatsApp softphone logic, jsdom + mocked browser APIs)
@@ -39,7 +39,7 @@ php artisan leads:fetch-test {leadgen_id} --source={leadSourceId}  # manually fe
 php artisan calls:reconcile-stale        # every-minute sweep: end WhatsApp calls whose terminate webhook never arrived (see WhatsApp Calling below)
 ```
 
-**Test vs. dev database differ:** `phpunit.xml` runs the suite on in-memory SQLite (`QUEUE_CONNECTION=sync`, `BROADCAST_CONNECTION=null`), while `.env.example` targets PostgreSQL + `database` queue + Reverb. CI (`.github/workflows/tests.yml`: `composer setup` → `composer ci:check`) is SQLite-only, so Postgres-specific behavior (partial unique indexes, enum `CHECK` constraints) is not exercised by tests — verify it by hand, e.g. with `schema:verify-enum-constraints` after changing an enum-backed column such as `LeadSourceType`. Queue workers must be running locally for IMAP polling, notifications and CSV imports (`composer run dev` starts one).
+**Test vs. dev database differ:** `phpunit.xml` runs the suite on in-memory SQLite (`QUEUE_CONNECTION=sync`, `BROADCAST_CONNECTION=null`), while `.env.example` targets PostgreSQL + Redis queue (run by Horizon, `REDIS_CLIENT=predis`) + Reverb. CI (`.github/workflows/tests.yml`: `composer setup` → `composer ci:check`) is SQLite-only, so Postgres-specific behavior (partial unique indexes, enum `CHECK` constraints) is not exercised by tests — verify it by hand, e.g. with `schema:verify-enum-constraints` after changing an enum-backed column such as `LeadSourceType`. Horizon must be running locally for IMAP polling, notifications and CSV imports (`composer run dev` starts it).
 
 `phpstan analyse` runs at `level: 7` against `phpstan-baseline.neon` (~436 pre-existing errors, e.g. `Auth::user()` being typed `PlatformUser|TenantUser|null` throughout) — `types:check` only fails on errors *not* already in that baseline, so don't chase baseline-covered noise in unrelated code, but never let a new diagnostic slip in uncaught. Regenerate the baseline deliberately, not to silence a real new error.
 
@@ -125,6 +125,9 @@ The notification bell (`App\Livewire\Tenant\NotificationBell`, embedded once in 
 
 ### Multi-currency
 `App\Models\Currency` is a Platform-Admin-managed catalog (same shape as `LeadStatus`): not tenant-scoped itself, shared across tenants that opt in via the `tenant_currencies` pivot (`Tenant::currencies()`). Tenants pick which currencies they support at `/admin/clients/{tenant}/lead-sources` (`LeadSources::toggleCurrency()`); those choices populate the per-field currency dropdowns on `estimated_budget`/`deal_value`. A currency in use (enabled by any tenant, or referenced by a Lead's `estimated_budget_currency_id`/`deal_value_currency_id`) can't be deleted — enforced in `App\Livewire\Platform\LeadManagement\Settings::deleteCurrency()`. The currencies-catalog migration unconditionally seeds a "USD" row, so it's a permanent baseline fixture in every test (same trap as `LeadStatus`'s legacy-seeded statuses) — see `.ai/rules/migrations-models.md`.
+
+### Platform monitoring (Horizon, Health, Pulse)
+Three Platform-side tools, each a platform-scoped system **Module** (`App\Enums\MonitoringTool`; added by the `add_monitoring_platform_modules` migration), so the Mother Admin grants them per admin through that admin's Role: `view` opens the page, `update` allows its actions. Custom Flux pages live at `/admin/monitoring/{horizon,health,pulse}` (`App\Livewire\Platform\Monitoring\*`) and link to the native dashboards at `/admin/horizon` and `/admin/pulse`, which are gated by the same module permission (`viewHorizon` in `HorizonServiceProvider`, `viewPulse` in `MonitoringServiceProvider`; both deliberately drop the packages' "allow everyone in local" default). Health = `spatie/laravel-health`, with checks registered in `MonitoringServiceProvider` and latest results in the cache store. Scheduled: `horizon:snapshot`, `health:check` and the two health heartbeats. Production needs Supervisor running `php artisan horizon` (replacing `queue:work`) and `php artisan pulse:check`. Access is always read from `Auth::guard('platform')`; see `.ai/rules/monitoring.md`.
 
 ### Scheduler & ops monitoring
 Every scheduled command in `routes/console.php` must be registered through the `$monitored(...)` helper (not bare `Schedule::command()`), so a non-zero exit is logged/emailed by `App\Services\ScheduledTaskMonitor`; `leads:fetch-emails` (every minute) doubles as the scheduler heartbeat. IMAP outage alerting lives in `ProcessEmailLeadSource`. Config is `config/ops.php` (`OPS_ALERT_EMAIL`, `OPS_SCHEDULER_HEARTBEAT_URL`, both optional); see `docs/lead-management/OPS-MONITORING.md` for what is and isn't detected (notably a dead queue worker is not).
