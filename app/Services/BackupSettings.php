@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\PlatformSetting;
 use App\Models\PlatformUser;
+use App\Support\SettingsAudit;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -84,23 +85,23 @@ class BackupSettings
     public function store(array $values, PlatformUser $by): void
     {
         $current = $this->storage();
+        $stored = [
+            'key_id' => $values['key_id'],
+            'application_key' => filled($values['application_key']) ? $values['application_key'] : ($current['application_key'] ?? ''),
+            'bucket' => $values['bucket'],
+            'endpoint' => $values['endpoint'],
+            'password' => filled($values['password']) ? $values['password'] : ($current['password'] ?? ''),
+        ];
 
         PlatformSetting::query()->updateOrCreate(
             ['key' => self::SETTING_KEY],
-            [
-                'value' => [
-                    'key_id' => $values['key_id'],
-                    'application_key' => filled($values['application_key']) ? $values['application_key'] : ($current['application_key'] ?? ''),
-                    'bucket' => $values['bucket'],
-                    'endpoint' => $values['endpoint'],
-                    'password' => filled($values['password']) ? $values['password'] : ($current['password'] ?? ''),
-                ],
-                'updated_by' => $by->id,
-            ],
+            ['value' => $stored, 'updated_by' => $by->id],
         );
 
         $this->storage = null;
         $this->forgetStatus();
+
+        SettingsAudit::record('Backups', 'saved', SettingsAudit::changes($current, $stored, ['application_key', 'password']), $by);
     }
 
     public function remove(): void
@@ -109,6 +110,8 @@ class BackupSettings
 
         $this->storage = null;
         $this->forgetStatus();
+
+        SettingsAudit::record('Backups', 'removed');
     }
 
     /**
@@ -239,6 +242,8 @@ class BackupSettings
 
         Storage::disk(self::DISK)->delete($backup['path']);
         $this->forgetStatus();
+
+        SettingsAudit::record('Backups', 'backup deleted', ['file' => basename($backup['path'])]);
 
         return true;
     }

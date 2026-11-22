@@ -50,7 +50,9 @@ return [
          * With this setting, notifications are throttled. By default, you'll
          * only get one notification per hour.
          */
-        'throttle_notifications_for_minutes' => 60,
+        // At most one alert email per 6 hours while problems last (decided with
+        // the Mother Admin; warnings included, e.g. a Meta token expiring soon).
+        'throttle_notifications_for_minutes' => 360,
         'throttle_notifications_key' => 'health:latestNotificationSentAt:',
 
         /*

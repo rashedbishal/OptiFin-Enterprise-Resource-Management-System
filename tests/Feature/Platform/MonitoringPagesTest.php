@@ -6,11 +6,7 @@ use App\Livewire\Platform\Monitoring\Health;
 use App\Livewire\Platform\Monitoring\Horizon;
 use App\Livewire\Platform\Monitoring\Pulse;
 use App\Models\Module;
-use App\Models\Permission;
 use App\Models\PlatformUser;
-use App\Models\Role;
-use App\Models\RoleModulePermission;
-use Database\Seeders\PermissionSeeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Horizon\Contracts\JobRepository;
@@ -27,32 +23,6 @@ use Spatie\Health\ResultStores\CacheHealthResultStore;
 use Spatie\Health\ResultStores\ResultStore;
 use Spatie\Health\ResultStores\StoredCheckResults\StoredCheckResult;
 use Spatie\Health\ResultStores\StoredCheckResults\StoredCheckResults;
-
-/**
- * A Platform Admin whose role grants the given permissions on each given
- * monitoring tool's platform module.
- *
- * @param  array<string, list<string>>  $grants  tool slug => permission slugs
- */
-function platformAdminWithMonitoring(array $grants): PlatformUser
-{
-    (new PermissionSeeder)->run();
-
-    $role = Role::create(['name' => 'Monitor '.Str::random(6), 'slug' => 'monitor-'.Str::random(6)]);
-
-    foreach ($grants as $slug => $permissions) {
-        $module = Module::where('slug', $slug)->firstOrFail();
-        $role->modules()->attach($module->id);
-
-        RoleModulePermission::query()->insert(
-            Permission::whereIn('slug', $permissions)->pluck('id')
-                ->map(fn (string $permissionId): array => ['role_id' => $role->id, 'module_id' => $module->id, 'permission_id' => $permissionId])
-                ->all()
-        );
-    }
-
-    return PlatformUser::factory()->create(['role_id' => $role->id]);
-}
 
 /**
  * Horizon repositories backed by fixed data, so no test touches Redis.

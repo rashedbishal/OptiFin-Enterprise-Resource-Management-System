@@ -68,3 +68,7 @@ $backupsConfigured = static fn (): bool => app(BackupSettings::class)->isConfigu
 $monitored('backup:clean')->dailyAt('01:30')->timezone('Asia/Dhaka')->withoutOverlapping()->when($backupsConfigured);
 $monitored('backup:run')->dailyAt('02:00')->timezone('Asia/Dhaka')->withoutOverlapping()->when($backupsConfigured);
 $monitored('backup:monitor')->dailyAt('04:30')->timezone('Asia/Dhaka')->when($backupsConfigured);
+
+// Integrations health (Admin → Monitoring → Integrations): read-only daily
+// check of each active Meta source's token, 03:00 Bangladesh time.
+$monitored('integrations:check-meta-tokens')->dailyAt('03:00')->timezone('Asia/Dhaka')->withoutOverlapping();

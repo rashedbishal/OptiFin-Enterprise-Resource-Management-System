@@ -3,8 +3,9 @@
 namespace App\Services;
 
 use App\Notifications\OpsAlertNotification;
+use Illuminate\Notifications\Notification;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Notification as NotificationFacade;
 use Throwable;
 
 /**
@@ -34,12 +35,37 @@ class OpsAlertNotifier
         }
 
         try {
-            Notification::route('mail', $recipient)->notifyNow(new OpsAlertNotification($subject, $context));
+            NotificationFacade::route('mail', $recipient)->notifyNow(new OpsAlertNotification($subject, $context));
 
             return true;
         } catch (Throwable $e) {
             // Class only: a mailer exception message can echo the recipient
             // address or SMTP connection details.
+            Log::warning('An ops alert email could not be delivered.', ['exception' => $e::class]);
+
+            return false;
+        }
+    }
+
+    /**
+     * Sends any alert notification to the same recipients as send(), with
+     * the same guarantee: it never throws.
+     *
+     * @return bool True only when an email was actually handed to the mailer.
+     */
+    public function sendNotification(Notification $notification): bool
+    {
+        $recipient = $this->recipient();
+
+        if ($recipient === null) {
+            return false;
+        }
+
+        try {
+            NotificationFacade::route('mail', $recipient)->notifyNow($notification);
+
+            return true;
+        } catch (Throwable $e) {
             Log::warning('An ops alert email could not be delivered.', ['exception' => $e::class]);
 
             return false;

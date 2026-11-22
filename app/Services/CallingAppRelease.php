@@ -8,6 +8,7 @@ use App\Models\PlatformSetting;
 use App\Models\PlatformUser;
 use App\Models\TenantUser;
 use App\Support\ApkManifestReader;
+use App\Support\SettingsAudit;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -216,6 +217,8 @@ class CallingAppRelease
             $disk->delete($previous['path']);
         }
 
+        SettingsAudit::record('Calling app — app download', 'published', ['version' => $version, 'build' => $versionCode], $by);
+
         return ['version' => $version, 'version_code' => $versionCode, 'size' => $meta['size'], 'sha256' => $sha256];
     }
 
@@ -228,6 +231,8 @@ class CallingAppRelease
         }
 
         PlatformSetting::query()->where('key', self::SETTING_KEY)->delete();
+
+        SettingsAudit::record('Calling app — app download', 'removed', ['version' => $current['version'] ?? null]);
     }
 
     /**

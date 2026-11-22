@@ -70,6 +70,19 @@ class ImapConnectionHealthMonitor
         }
     }
 
+    /**
+     * How many times in a row this source's inbox has failed to connect
+     * (read-only; for Admin → Monitoring → Integrations).
+     */
+    public function consecutiveFailures(LeadSource $source): int
+    {
+        try {
+            return (int) Cache::get($this->key($source), 0);
+        } catch (Throwable) {
+            return 0;
+        }
+    }
+
     private function key(LeadSource $source): string
     {
         return "ops:imap-connection-failures:{$source->id}";

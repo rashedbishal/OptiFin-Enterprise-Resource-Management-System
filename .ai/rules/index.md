@@ -42,6 +42,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | database/migrations/2026_09_02_16*.php,app/Models/Currency.php,tests/** | .ai/rules/migrations-models.md |
 | app/{Models/Task.php,Models/TaskStatusLog.php,Enums/TaskStatus.php,Console/Commands/SendTaskAlertNotifications.php} | .ai/rules/models-commands.md |
 | app/Models/{PlatformUser,TenantUser}.php, app/Models/{LeadAssignment,LeadNote,LeadStatusLog,LeadDetailUpdateLog}.php, app/Models/Role.php | .ai/rules/models.md |
+| app/{Services/IntegrationHealth.php,Services/MetaTokenChecker.php,Livewire/Platform/Monitoring/Integrations.php,Health/**,Console/Commands/CheckMetaTokens.php} | .ai/rules/monitoring-commands.md |
 | app/{Livewire/Platform/Monitoring/**,Providers/{HorizonServiceProvider,MonitoringServiceProvider}.php,Enums/MonitoringTool.php} | .ai/rules/monitoring.md |
 | app/Livewire/Tenant/Leads/Show.php,app/Notifications/MeetingCancelledNotification.php,app/Notifications/FollowUpCancelledNotification.php | .ai/rules/notifications.md |
 | resources/views/livewire/tenant/leads/partials/message-composer-card.blade.php,app/Livewire/Tenant/Leads/Show.php | .ai/rules/partials-livewire-tenant-leads.md |
@@ -50,6 +51,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Http/Controllers/Api/LeadWebhookController.php,app/Enums/LeadSourceType.php,app/Livewire/Platform/Clients/LeadSources.php,resources/views/livewire/platform/clients/lead-sources.blade.php | .ai/rules/platform-clients.md |
 | app/{Services/FailedJobService.php,Livewire/Platform/Monitoring/FailedJobs.php,Enums/FailedJobAdvice.php} | .ai/rules/platform-monitoring.md |
 | app/{Actions/Platform/DeleteTenant.php,Policies/TenantPolicy.php,Livewire/Platform/Clients/Show.php}, app/{Actions/Platform/CreateCallPermissionRequestTemplate.php,Livewire/Platform/Clients/LeadSources.php},config/calling.php, app/{Actions/Platform/{CreateCallPermissionRequestTemplate,DeleteCallPermissionRequestTemplate}.php,Livewire/Platform/Clients/LeadSources.php} | .ai/rules/platform-platform-clients.md |
+| app/{Livewire/Platform/Settings/ActivityLog.php,Support/SettingsAudit.php,Services/ErrorAlertNotifier.php,Providers/MonitoringServiceProvider.php},config/log-viewer.php,bootstrap/app.php | .ai/rules/platform-settings.md |
 | app/{Policies/TenantUserPolicy.php,Livewire/Settings/{Profile,DeleteUserForm}.php,Actions/Platform/ManageClientAdminActivation.php,Models/TenantUser.php,Observers/TenantUserObserver.php} | .ai/rules/platform.md |
 | resources/views/livewire/tenant/leads.blade.php, resources/views/livewire/tenant/leads-kanban.blade.php | .ai/rules/resources-views-livewire-tenant.md |
 | app/Livewire/Tenant/NotificationBell.php,app/Http/Controllers/NotificationRedirectController.php,app/Services/NotificationUrlResolver.php | .ai/rules/services.md |

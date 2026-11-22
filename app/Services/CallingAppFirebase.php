@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\PlatformSetting;
 use App\Models\PlatformUser;
+use App\Support\SettingsAudit;
 use Illuminate\Support\Carbon;
 use Kreait\Firebase\Contract\Messaging;
 use Kreait\Firebase\Factory;
@@ -99,12 +100,19 @@ class CallingAppFirebase
         );
 
         $this->loaded = false;
+
+        SettingsAudit::record('Calling app — Firebase key', 'saved', [
+            'project' => is_string($account['project_id'] ?? null) ? $account['project_id'] : null,
+            'service account' => is_string($account['client_email'] ?? null) ? $account['client_email'] : null,
+        ], $by);
     }
 
     public function remove(): void
     {
         PlatformSetting::query()->where('key', self::SETTING_KEY)->delete();
         $this->loaded = false;
+
+        SettingsAudit::record('Calling app — Firebase key', 'removed');
     }
 
     /**

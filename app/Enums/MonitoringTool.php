@@ -14,6 +14,8 @@ enum MonitoringTool: string
     case Horizon = 'horizon';
     case Health = 'health';
     case Pulse = 'pulse';
+    case Integrations = 'integrations';
+    case Logs = 'logs';
 
     public function label(): string
     {
@@ -21,6 +23,8 @@ enum MonitoringTool: string
             self::Horizon => 'Horizon',
             self::Health => 'Health',
             self::Pulse => 'Pulse',
+            self::Integrations => 'Integrations',
+            self::Logs => 'Logs',
         };
     }
 
@@ -30,6 +34,8 @@ enum MonitoringTool: string
             self::Horizon => 'Queue workers, job throughput and failed jobs (Laravel Horizon).',
             self::Health => 'Application health checks: database, cache, Redis, queue, scheduler and disk (Spatie Laravel Health).',
             self::Pulse => 'Application performance: slow requests, queries and jobs, exceptions and server load (Laravel Pulse).',
+            self::Integrations => 'Health of every client\'s lead sources: last activity, Meta tokens, webhook rejections and email inboxes.',
+            self::Logs => 'Read and search the application log files (opcodesio/log-viewer); Update also allows downloading and deleting them.',
         };
     }
 
@@ -39,11 +45,17 @@ enum MonitoringTool: string
             self::Horizon => 'queue-list',
             self::Health => 'heart',
             self::Pulse => 'chart-bar',
+            self::Integrations => 'puzzle-piece',
+            self::Logs => 'document-text',
         };
     }
 
     public function routeName(): string
     {
-        return 'admin.monitoring.'.$this->value;
+        return match ($this) {
+            // The log viewer package's own screen (config/log-viewer.php).
+            self::Logs => 'log-viewer.index',
+            default => 'admin.monitoring.'.$this->value,
+        };
     }
 }

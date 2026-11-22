@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Carbon;
 
 /**
@@ -34,6 +35,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Tenant $tenant
+ * @property-read LeadSourceTokenCheck|null $tokenCheck
  */
 #[Fillable([
     'tenant_id', 'type', 'name', 'config', 'is_active', 'last_synced_at',
@@ -173,6 +175,16 @@ class LeadSource extends Model
     public function costs(): HasMany
     {
         return $this->hasMany(LeadSourceCost::class);
+    }
+
+    /**
+     * Latest daily Meta token check (Admin → Monitoring → Integrations).
+     *
+     * @return HasOne<LeadSourceTokenCheck, $this>
+     */
+    public function tokenCheck(): HasOne
+    {
+        return $this->hasOne(LeadSourceTokenCheck::class);
     }
 
     /**

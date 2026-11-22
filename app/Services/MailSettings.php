@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Mail\EmailSettingsTest;
 use App\Models\PlatformSetting;
 use App\Models\PlatformUser;
+use App\Support\SettingsAudit;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
 
@@ -104,18 +105,23 @@ class MailSettings
      */
     public function store(string $purpose, array $values, PlatformUser $by): void
     {
+        $before = $this->account($purpose);
         $password = $values['password'];
 
         if ($password === null || $password === '') {
-            $password = $this->account($purpose)['password'] ?? '';
+            $password = $before['password'] ?? '';
         }
+
+        $stored = [...$values, 'password' => $password];
 
         PlatformSetting::query()->updateOrCreate(
             ['key' => self::settingKey($purpose)],
-            ['value' => [...$values, 'password' => $password], 'updated_by' => $by->id],
+            ['value' => $stored, 'updated_by' => $by->id],
         );
 
         $this->forget();
+
+        SettingsAudit::record(self::auditArea($purpose), 'saved', SettingsAudit::changes($before, $stored, ['password']), $by);
     }
 
     public function remove(string $purpose): void
@@ -123,6 +129,13 @@ class MailSettings
         PlatformSetting::query()->where('key', self::settingKey($purpose))->delete();
 
         $this->forget();
+
+        SettingsAudit::record(self::auditArea($purpose), 'removed');
+    }
+
+    private static function auditArea(string $purpose): string
+    {
+        return $purpose === self::USER_EMAILS ? 'Email settings — User emails' : 'Email settings — Monitoring alerts';
     }
 
     /**

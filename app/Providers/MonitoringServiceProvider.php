@@ -3,12 +3,19 @@
 namespace App\Providers;
 
 use App\Enums\MonitoringTool;
+use App\Enums\PermissionSlug;
 use App\Health\BackupsCheck;
+use App\Health\DatabaseSizeCheck;
+use App\Health\EmailInboxesCheck;
+use App\Health\FailedJobsCheck;
+use App\Health\MetaTokensCheck;
 use App\Models\PlatformUser;
+use App\Services\ErrorAlertNotifier;
 use Illuminate\Foundation\DevCommands;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use Opcodes\LogViewer\Facades\LogViewer;
 use Spatie\Health\Checks\Checks\CacheCheck;
 use Spatie\Health\Checks\Checks\DatabaseCheck;
 use Spatie\Health\Checks\Checks\DatabaseConnectionCountCheck;
@@ -18,6 +25,7 @@ use Spatie\Health\Checks\Checks\HorizonCheck;
 use Spatie\Health\Checks\Checks\OptimizedAppCheck;
 use Spatie\Health\Checks\Checks\QueueCheck;
 use Spatie\Health\Checks\Checks\RedisCheck;
+use Spatie\Health\Checks\Checks\RedisMemoryUsageCheck;
 use Spatie\Health\Checks\Checks\ReverbCheck;
 use Spatie\Health\Checks\Checks\ScheduleCheck;
 use Spatie\Health\Checks\Checks\UsedDiskSpaceCheck;
@@ -31,9 +39,16 @@ use Spatie\Health\Facades\Health;
  */
 class MonitoringServiceProvider extends ServiceProvider
 {
+    public function register(): void
+    {
+        // One instance per process, so its re-entry guard works.
+        $this->app->singleton(ErrorAlertNotifier::class);
+    }
+
     public function boot(): void
     {
         $this->configurePulseGate();
+        $this->configureLogViewer();
         $this->configureHealthChecks();
         $this->configureDevCommands();
     }
@@ -50,6 +65,27 @@ class MonitoringServiceProvider extends ServiceProvider
 
             return $admin instanceof PlatformUser && $admin->canUseMonitoringTool(MonitoringTool::Pulse);
         });
+    }
+
+    /**
+     * The log viewer: `view` on the "Logs" platform module opens it, `update`
+     * also allows downloading and deleting log files. Always checked on the
+     * platform guard (the gates' own $user is the default-guard tenant user).
+     * These replace the package's allow-everything default gates.
+     */
+    protected function configureLogViewer(): void
+    {
+        $allowed = static function (PermissionSlug $permission): bool {
+            $admin = Auth::guard('platform')->user();
+
+            return $admin instanceof PlatformUser && $admin->canUseMonitoringTool(MonitoringTool::Logs, $permission);
+        };
+
+        LogViewer::auth(fn (): bool => $allowed(PermissionSlug::View));
+
+        foreach (['downloadLogFile', 'downloadLogFolder', 'deleteLogFile', 'deleteLogFolder'] as $ability) {
+            Gate::define($ability, fn (mixed $user = null, mixed $target = null): bool => $allowed(PermissionSlug::Update));
+        }
     }
 
     /**
@@ -70,10 +106,15 @@ class MonitoringServiceProvider extends ServiceProvider
             ReverbCheck::new()->timeout(2),
             UsedDiskSpaceCheck::new()->warnWhenUsedSpaceIsAbovePercentage(75)->failWhenUsedSpaceIsAbovePercentage(90),
             BackupsCheck::new()->label('Backups'),
+            MetaTokensCheck::new()->label('Meta tokens'),
+            EmailInboxesCheck::new()->label('Email inboxes'),
+            FailedJobsCheck::new()->label('Failed jobs'),
+            RedisMemoryUsageCheck::new()->label('Redis memory')->warnWhenAboveMb(1024)->failWhenAboveMb(2048),
         ];
 
         if (config('database.default') === 'pgsql') {
             $checks[] = DatabaseConnectionCountCheck::new()->warnWhenMoreConnectionsThan(50)->failWhenMoreConnectionsThan(90);
+            $checks[] = DatabaseSizeCheck::new()->label('Database size');
         }
 
         if ($this->app->isProduction()) {

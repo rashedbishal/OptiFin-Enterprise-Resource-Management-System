@@ -14,8 +14,10 @@ use App\Livewire\Platform\Modules\Index as ModulesIndex;
 use App\Livewire\Platform\Monitoring\FailedJobs as MonitoringFailedJobs;
 use App\Livewire\Platform\Monitoring\Health as MonitoringHealth;
 use App\Livewire\Platform\Monitoring\Horizon as MonitoringHorizon;
+use App\Livewire\Platform\Monitoring\Integrations as MonitoringIntegrations;
 use App\Livewire\Platform\Monitoring\Pulse as MonitoringPulse;
 use App\Livewire\Platform\Roles\Index as RolesIndex;
+use App\Livewire\Platform\Settings\ActivityLog as SettingsActivityLog;
 use App\Livewire\Platform\Settings\Backups as SettingsBackups;
 use App\Livewire\Platform\Settings\CallingApp as SettingsCallingApp;
 use App\Livewire\Platform\Settings\Email as SettingsEmail;
@@ -47,6 +49,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::livewire('settings/email', SettingsEmail::class)->name('settings.email');
         // Backblaze B2 backups — Mother Admin only (enforced in the component).
         Route::livewire('settings/backups', SettingsBackups::class)->name('settings.backups');
+        // Activity log — Mother Admin only (enforced in the component).
+        Route::livewire('settings/activity-log', SettingsActivityLog::class)->name('settings.activity-log');
         // Chunked APK upload for the calling app (Mother Admin only, enforced in the controller).
         Route::post('settings/calling-app/apk/uploads', [CallingAppApkUploadController::class, 'start'])->name('settings.calling-app.apk.start');
         Route::put('settings/calling-app/apk/uploads/{upload}/chunks/{index}', [CallingAppApkUploadController::class, 'chunk'])
@@ -62,6 +66,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
             Route::livewire('horizon/failed-jobs', MonitoringFailedJobs::class)->name('horizon.failed-jobs');
             Route::livewire('health', MonitoringHealth::class)->name('health');
             Route::livewire('pulse', MonitoringPulse::class)->name('pulse');
+            Route::livewire('integrations', MonitoringIntegrations::class)->name('integrations');
         });
     });
 });

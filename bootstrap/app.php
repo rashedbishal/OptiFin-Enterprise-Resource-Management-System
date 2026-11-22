@@ -7,6 +7,7 @@ use App\Http\Middleware\EnsureTenantActive;
 use App\Http\Middleware\IdentifyTenant;
 use App\Http\Middleware\ThrottleRequestsFailOpen;
 use App\Http\Middleware\VerifyMetaWebhookSignature;
+use App\Services\ErrorAlertNotifier;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -39,6 +40,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectUsersTo(fn (Request $request) => $request->is('admin/*') ? route('admin.dashboard') : route('dashboard'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // "New kind of error" emails (Monitoring alerts). Runs alongside the
+        // normal log entry, never instead of it, and never throws.
+        $exceptions->reportable(function (Throwable $e): void {
+            app(ErrorAlertNotifier::class)->handle($e);
+        });
+
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );

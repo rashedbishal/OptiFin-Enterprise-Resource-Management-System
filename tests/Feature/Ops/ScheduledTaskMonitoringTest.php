@@ -35,6 +35,7 @@ const OPS_SCHEDULED_COMMANDS = [
     'backup:clean',
     'backup:run',
     'backup:monitor',
+    'integrations:check-meta-tokens',
 ];
 
 /**

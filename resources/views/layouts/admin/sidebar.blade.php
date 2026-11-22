@@ -41,6 +41,9 @@
                         <flux:sidebar.item icon="device-phone-mobile" :href="route('admin.settings.calling-app')" :current="request()->routeIs('admin.settings.calling-app')" wire:navigate>
                             {{ __('Calling app') }}
                         </flux:sidebar.item>
+                        <flux:sidebar.item icon="clipboard-document-list" :href="route('admin.settings.activity-log')" :current="request()->routeIs('admin.settings.activity-log')" wire:navigate>
+                            {{ __('Activity log') }}
+                        </flux:sidebar.item>
                     </flux:sidebar.group>
                 @endif
 
