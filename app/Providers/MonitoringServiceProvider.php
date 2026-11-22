@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Enums\MonitoringTool;
+use App\Health\BackupsCheck;
 use App\Models\PlatformUser;
 use Illuminate\Foundation\DevCommands;
 use Illuminate\Support\Facades\Auth;
@@ -68,6 +69,7 @@ class MonitoringServiceProvider extends ServiceProvider
             ScheduleCheck::new()->heartbeatMaxAgeInMinutes(2),
             ReverbCheck::new()->timeout(2),
             UsedDiskSpaceCheck::new()->warnWhenUsedSpaceIsAbovePercentage(75)->failWhenUsedSpaceIsAbovePercentage(90),
+            BackupsCheck::new()->label('Backups'),
         ];
 
         if (config('database.default') === 'pgsql') {

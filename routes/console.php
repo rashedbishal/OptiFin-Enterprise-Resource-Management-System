@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\BackupSettings;
 use App\Services\ScheduledTaskMonitor;
 use Illuminate\Console\Scheduling\Event;
 use Illuminate\Foundation\Inspiring;
@@ -58,3 +59,12 @@ $monitored('horizon:snapshot')->everyFiveMinutes();
 $monitored('health:check')->everyMinute()->withoutOverlapping();
 $monitored('health:schedule-check-heartbeat')->everyMinute();
 $monitored('health:queue-check-heartbeat')->everyMinute();
+
+// Backups to Backblaze B2 (Admin → Settings → Backups), on Bangladesh time
+// (the server runs on UTC). Skipped entirely until that page is saved: clean
+// old backups at 01:30, back up at 02:00, then at 04:30 check that a backup
+// newer than 26 hours exists (failures are emailed).
+$backupsConfigured = static fn (): bool => app(BackupSettings::class)->isConfigured();
+$monitored('backup:clean')->dailyAt('01:30')->timezone('Asia/Dhaka')->withoutOverlapping()->when($backupsConfigured);
+$monitored('backup:run')->dailyAt('02:00')->timezone('Asia/Dhaka')->withoutOverlapping()->when($backupsConfigured);
+$monitored('backup:monitor')->dailyAt('04:30')->timezone('Asia/Dhaka')->when($backupsConfigured);

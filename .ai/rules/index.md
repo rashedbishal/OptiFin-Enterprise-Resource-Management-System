@@ -10,6 +10,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | resources/views/layouts/app.blade.php,resources/views/layouts/app/sidebar.blade.php,app/Livewire/Tenant/Leads/Index.php | .ai/rules/app-livewire-tenant-leads.md |
 | app/{Models/Deal.php,Models/DealStatusLog.php,Enums/DealStatus.php,Services/LeadMergeService.php} | .ai/rules/app-models.md |
 | app/Services/LeadMergeService.php | .ai/rules/app-services.md |
+| app/{Services/BackupSettings.php,Livewire/Platform/Settings/Backups.php,Health/BackupsCheck.php,Jobs/RunBackup.php,Backups/**,Notifications/Backups/**,Support/BackupAlertNotifiable.php},config/backup.php | .ai/rules/backups.md |
 | app/{Enums/LeadSourceType.php,Models/LeadSource.php,Livewire/Platform/Clients/LeadSources.php}, app/{Enums/LeadSourceType.php,Livewire/Platform/Clients/LeadSources.php} | .ai/rules/clients.md |
 | app/Livewire/Tenant/NotificationBell.php,app/Notifications/*.php,app/Console/Commands/SendLeadAlertNotifications.php | .ai/rules/commands.md |
 | config/calling.php,resources/views/livewire/platform/clients/lead-sources.blade.php | .ai/rules/config-views-livewire-platform-clients.md |

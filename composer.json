@@ -21,12 +21,14 @@
         "laravel/reverb": "^1.11",
         "laravel/sanctum": "^4.5",
         "laravel/tinker": "^3.0",
+        "league/flysystem-aws-s3-v3": "^3.35",
         "livewire/blaze": "^1.0",
         "livewire/flux": "^2.13.1",
         "livewire/livewire": "^4.1",
         "maatwebsite/excel": "^4.0",
         "predis/predis": "^3.7",
         "spatie/laravel-activitylog": "^4.12",
+        "spatie/laravel-backup": "^10.3",
         "spatie/laravel-health": "^1.42"
     },
     "require-dev": {

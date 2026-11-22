@@ -16,6 +16,7 @@ use App\Livewire\Platform\Monitoring\Health as MonitoringHealth;
 use App\Livewire\Platform\Monitoring\Horizon as MonitoringHorizon;
 use App\Livewire\Platform\Monitoring\Pulse as MonitoringPulse;
 use App\Livewire\Platform\Roles\Index as RolesIndex;
+use App\Livewire\Platform\Settings\Backups as SettingsBackups;
 use App\Livewire\Platform\Settings\CallingApp as SettingsCallingApp;
 use App\Livewire\Platform\Settings\Email as SettingsEmail;
 use App\Livewire\Platform\Settings\Password as SettingsPassword;
@@ -44,6 +45,8 @@ Route::prefix('admin')->name('admin.')->group(function () {
         Route::livewire('settings/calling-app', SettingsCallingApp::class)->name('settings.calling-app');
         // Email sending accounts — Mother Admin only (enforced in the component).
         Route::livewire('settings/email', SettingsEmail::class)->name('settings.email');
+        // Backblaze B2 backups — Mother Admin only (enforced in the component).
+        Route::livewire('settings/backups', SettingsBackups::class)->name('settings.backups');
         // Chunked APK upload for the calling app (Mother Admin only, enforced in the controller).
         Route::post('settings/calling-app/apk/uploads', [CallingAppApkUploadController::class, 'start'])->name('settings.calling-app.apk.start');
         Route::put('settings/calling-app/apk/uploads/{upload}/chunks/{index}', [CallingAppApkUploadController::class, 'chunk'])

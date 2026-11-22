@@ -32,6 +32,9 @@ const OPS_SCHEDULED_COMMANDS = [
     'health:check',
     'health:schedule-check-heartbeat',
     'health:queue-check-heartbeat',
+    'backup:clean',
+    'backup:run',
+    'backup:monitor',
 ];
 
 /**
