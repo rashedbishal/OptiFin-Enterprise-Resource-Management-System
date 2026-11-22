@@ -46,8 +46,23 @@ class OpsAlertNotifier
         }
     }
 
-    private function recipient(): ?string
+    /**
+     * The "Monitoring alerts" account saved at Admin → Settings → Email
+     * settings sends to its own recipient list; when it isn't saved, the
+     * single OPS_ALERT_EMAIL address from .env is used exactly as before.
+     *
+     * @return string|list<string>|null
+     */
+    private function recipient(): string|array|null
     {
+        $settings = app(MailSettings::class);
+
+        if ($settings->isConfigured(MailSettings::MONITORING_ALERTS)) {
+            $recipients = $settings->alertRecipients();
+
+            return $recipients === [] ? null : $recipients;
+        }
+
         $email = config('ops.alert_email');
 
         return is_string($email) && filter_var($email, FILTER_VALIDATE_EMAIL) !== false ? $email : null;

@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Services\MailSettings;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
@@ -33,6 +34,14 @@ class OpsAlertNotification extends Notification
         $message = (new MailMessage)
             ->subject('['.config('app.name').' Ops] '.$this->subject)
             ->line($this->subject);
+
+        // Sent through the "Monitoring alerts" account when one is saved at
+        // Admin → Settings → Email settings; otherwise the default mailer.
+        $settings = app(MailSettings::class);
+
+        if ($settings->isConfigured(MailSettings::MONITORING_ALERTS)) {
+            $message->mailer(MailSettings::ALERTS_MAILER);
+        }
 
         foreach ($this->context as $key => $value) {
             $message->line($key.': '.(is_scalar($value) ? (string) $value : ''));

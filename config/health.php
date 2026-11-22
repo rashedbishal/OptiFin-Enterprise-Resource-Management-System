@@ -1,7 +1,7 @@
 <?php
 
-use Spatie\Health\Notifications\CheckFailedNotification;
-use Spatie\Health\Notifications\Notifiable;
+use App\Notifications\HealthCheckFailedNotification;
+use App\Support\HealthAlertNotifiable;
 use Spatie\Health\ResultStores\CacheHealthResultStore;
 
 return [
@@ -27,19 +27,21 @@ return [
         /*
          * Notifications will only get sent if this option is set to `true`.
          */
-        // Mailed to the same ops address as scheduled-task failures (config/ops.php),
-        // and only when one is configured.
-        'enabled' => env('HEALTH_NOTIFICATIONS_ENABLED', filled(env('OPS_ALERT_EMAIL'))),
+        // On by default; who actually receives them is decided by
+        // App\Support\HealthAlertNotifiable: the "Monitoring alerts" list from
+        // Admin → Settings → Email settings, else OPS_ALERT_EMAIL. With neither
+        // set there is no recipient, so no email is sent (as before).
+        'enabled' => env('HEALTH_NOTIFICATIONS_ENABLED', true),
 
         'notifications' => [
-            CheckFailedNotification::class => ['mail'],
+            HealthCheckFailedNotification::class => ['mail'],
         ],
 
         /*
          * Here you can specify the notifiable to which the notifications should be sent. The default
          * notifiable will use the variables specified in this config file.
          */
-        'notifiable' => Notifiable::class,
+        'notifiable' => HealthAlertNotifiable::class,
 
         /*
          * When checks start failing, you could potentially end up getting

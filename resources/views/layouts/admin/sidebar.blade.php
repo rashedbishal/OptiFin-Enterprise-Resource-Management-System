@@ -27,12 +27,19 @@
                     <flux:sidebar.item icon="squares-2x2" :href="route('admin.modules.index')" :current="request()->routeIs('admin.modules.*')" wire:navigate>
                         {{ __('Modules') }}
                     </flux:sidebar.item>
-                    @if (auth('platform')->user()?->isMotherAdmin())
+                </flux:sidebar.group>
+
+                {{-- Settings: platform-wide configuration, Mother Admin only. --}}
+                @if (auth('platform')->user()?->isMotherAdmin())
+                    <flux:sidebar.group :heading="__('Settings')" class="grid">
+                        <flux:sidebar.item icon="envelope" :href="route('admin.settings.email')" :current="request()->routeIs('admin.settings.email')" wire:navigate>
+                            {{ __('Email settings') }}
+                        </flux:sidebar.item>
                         <flux:sidebar.item icon="device-phone-mobile" :href="route('admin.settings.calling-app')" :current="request()->routeIs('admin.settings.calling-app')" wire:navigate>
                             {{ __('Calling app') }}
                         </flux:sidebar.item>
-                    @endif
-                </flux:sidebar.group>
+                    </flux:sidebar.group>
+                @endif
 
                 {{-- Monitoring: each tool shows only for admins whose Role grants its
                 platform module (the Mother Admin sees all). --}}
