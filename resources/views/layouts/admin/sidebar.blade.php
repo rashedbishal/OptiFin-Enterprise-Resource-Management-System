@@ -44,7 +44,7 @@
                 @if ($monitoringTools->isNotEmpty())
                     <flux:sidebar.group :heading="__('Monitoring')" class="grid">
                         @foreach ($monitoringTools as $tool)
-                            <flux:sidebar.item :icon="$tool->icon()" :href="route($tool->routeName())" :current="request()->routeIs($tool->routeName())" wire:navigate>
+                            <flux:sidebar.item :icon="$tool->icon()" :href="route($tool->routeName())" :current="request()->routeIs($tool->routeName(), $tool->routeName().'.*')" wire:navigate>
                                 {{ __($tool->label()) }}
                             </flux:sidebar.item>
                         @endforeach

@@ -11,14 +11,13 @@ use App\Models\PlatformUser;
 use App\Models\Role;
 use App\Models\RoleModulePermission;
 use Database\Seeders\PermissionSeeder;
-use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Laravel\Horizon\Contracts\JobRepository;
 use Laravel\Horizon\Contracts\MasterSupervisorRepository;
 use Laravel\Horizon\Contracts\MetricsRepository;
 use Laravel\Horizon\Contracts\SupervisorRepository;
 use Laravel\Horizon\Contracts\WorkloadRepository;
-use Laravel\Horizon\Jobs\RetryFailedJob;
 use Laravel\Pulse\Facades\Pulse as PulseFacade;
 use Livewire\Livewire;
 use Spatie\Health\Checks\Check;
@@ -141,16 +140,25 @@ test('the sidebar lists only the monitoring tools the admin may open', function 
 
 // ── Horizon ────────────────────────────────────────────────────────────
 
-test('the Horizon page shows status, workload and failed jobs', function () {
+test('the Horizon page shows status, workload and the latest failed jobs with a suggestion', function () {
     fakeHorizonRepositories();
+    DB::table('failed_jobs')->insert([
+        'uuid' => (string) Str::uuid(),
+        'connection' => 'redis',
+        'queue' => 'default',
+        'payload' => json_encode(['displayName' => 'App\\Jobs\\SendOutboundMessage']),
+        'exception' => "Illuminate\\Http\\Client\\ConnectionException: cURL error 28: Operation timed out\n#0 /app/x.php(1)",
+        'failed_at' => now()->subMinutes(3),
+    ]);
     $admin = platformAdminWithMonitoring(['horizon' => ['view']]);
 
     Livewire::actingAs($admin, 'platform')->test(Horizon::class)
         ->assertSee('Running')
         ->assertSee('250')
-        ->assertSee('SendOutboundMessage')
-        ->assertSee('RuntimeException: Meta rejected the message')
-        ->assertDontSeeHtml('wire:click="retry(');
+        ->assertSee('Send a WhatsApp / Messenger / Instagram message')
+        ->assertSee('cURL error 28: Operation timed out')
+        ->assertSee('Retry')
+        ->assertSeeHtml(route('admin.monitoring.horizon.failed-jobs'));
 });
 
 test('the Horizon page explains a Redis outage instead of failing', function () {
@@ -160,30 +168,6 @@ test('the Horizon page explains a Redis outage instead of failing', function () 
     Livewire::actingAs($admin, 'platform')->test(Horizon::class)
         ->assertOk()
         ->assertSee('Connection refused');
-});
-
-test('retrying a failed job needs update permission', function () {
-    fakeHorizonRepositories();
-    Bus::fake([RetryFailedJob::class]);
-    $viewer = platformAdminWithMonitoring(['horizon' => ['view']]);
-
-    Livewire::actingAs($viewer, 'platform')->test(Horizon::class)
-        ->call('retry', 'failed-job-1')
-        ->assertForbidden();
-
-    Bus::assertNotDispatched(RetryFailedJob::class);
-});
-
-test('an admin with update permission can retry a failed job', function () {
-    fakeHorizonRepositories();
-    Bus::fake([RetryFailedJob::class]);
-    $operator = platformAdminWithMonitoring(['horizon' => ['view', 'update']]);
-
-    Livewire::actingAs($operator, 'platform')->test(Horizon::class)
-        ->assertSeeHtml('wire:click="retry(')
-        ->call('retry', 'failed-job-1');
-
-    Bus::assertDispatched(RetryFailedJob::class, fn (RetryFailedJob $job): bool => $job->id === 'failed-job-1');
 });
 
 // ── Health ─────────────────────────────────────────────────────────────

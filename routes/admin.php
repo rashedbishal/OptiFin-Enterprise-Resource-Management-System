@@ -11,6 +11,7 @@ use App\Livewire\Platform\Clients\Show as ClientsShow;
 use App\Livewire\Platform\Dashboard;
 use App\Livewire\Platform\LeadManagement\Settings as LeadManagementSettings;
 use App\Livewire\Platform\Modules\Index as ModulesIndex;
+use App\Livewire\Platform\Monitoring\FailedJobs as MonitoringFailedJobs;
 use App\Livewire\Platform\Monitoring\Health as MonitoringHealth;
 use App\Livewire\Platform\Monitoring\Horizon as MonitoringHorizon;
 use App\Livewire\Platform\Monitoring\Pulse as MonitoringPulse;
@@ -52,6 +53,7 @@ Route::prefix('admin')->name('admin.')->group(function () {
         // live at admin/horizon and admin/pulse (config/horizon.php, config/pulse.php).
         Route::prefix('monitoring')->name('monitoring.')->group(function () {
             Route::livewire('horizon', MonitoringHorizon::class)->name('horizon');
+            Route::livewire('horizon/failed-jobs', MonitoringFailedJobs::class)->name('horizon.failed-jobs');
             Route::livewire('health', MonitoringHealth::class)->name('health');
             Route::livewire('pulse', MonitoringPulse::class)->name('pulse');
         });

@@ -112,35 +112,35 @@
 
     <flux:card>
         <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
-            <flux:heading size="lg">{{ __('Latest failed jobs') }}</flux:heading>
-            <flux:link :href="route('horizon.index', ['view' => 'failed'])" target="_blank" class="text-sm">{{ __('View all in Horizon') }}</flux:link>
+            <div>
+                <flux:heading size="lg">{{ __('Latest failed jobs') }}</flux:heading>
+                <flux:text class="mt-1 text-sm">{{ trans_choice(':count failed job in total.|:count failed jobs in total.', $this->failedJobCount) }}</flux:text>
+            </div>
+            <flux:button :href="route('admin.monitoring.horizon.failed-jobs')" wire:navigate icon-trailing="arrow-right" data-test="review-failed-jobs">
+                {{ __('Review failed jobs') }}
+            </flux:button>
         </div>
         <flux:table>
             <flux:table.columns>
-                <flux:table.column>{{ __('Job') }}</flux:table.column>
-                <flux:table.column>{{ __('Queue') }}</flux:table.column>
-                <flux:table.column>{{ __('Failed') }}</flux:table.column>
-                <flux:table.column>{{ __('Error') }}</flux:table.column>
-                @if ($this->canRetry)
-                    <flux:table.column align="end"></flux:table.column>
-                @endif
+                <flux:table.column>{{ __('What failed') }}</flux:table.column>
+                <flux:table.column>{{ __('When') }}</flux:table.column>
+                <flux:table.column>{{ __('Suggestion') }}</flux:table.column>
             </flux:table.columns>
             <flux:table.rows>
-                @forelse ($snapshot['failedJobs'] as $job)
+                @forelse ($this->latestFailedJobs as $job)
                     <flux:table.row wire:key="failed-{{ $job['id'] }}">
-                        <flux:table.cell class="font-medium">{{ class_basename($job['name']) }}</flux:table.cell>
-                        <flux:table.cell>{{ $job['queue'] }}</flux:table.cell>
-                        <flux:table.cell class="whitespace-nowrap">{{ $job['failedAt']?->diffForHumans() ?? '—' }}</flux:table.cell>
-                        <flux:table.cell class="max-w-md truncate text-zinc-500" :title="$job['exception']">{{ $job['exception'] }}</flux:table.cell>
-                        @if ($this->canRetry)
-                            <flux:table.cell align="end">
-                                <flux:button size="sm" icon="arrow-path" wire:click="retry('{{ $job['id'] }}')" wire:loading.attr="disabled" wire:target="retry('{{ $job['id'] }}')">{{ __('Retry') }}</flux:button>
-                            </flux:table.cell>
-                        @endif
+                        <flux:table.cell class="max-w-md">
+                            <div class="font-medium text-zinc-800 dark:text-white">{{ $job['name'] }}</div>
+                            <div class="truncate text-xs text-zinc-500" title="{{ $job['error'] }}">{{ $job['error'] }}</div>
+                        </flux:table.cell>
+                        <flux:table.cell class="whitespace-nowrap">{{ $job['failedAt']->diffForHumans() }}</flux:table.cell>
+                        <flux:table.cell>
+                            <flux:badge size="sm" :color="$job['advice']->color()" :icon="$job['advice']->icon()">{{ $job['advice']->label() }}</flux:badge>
+                        </flux:table.cell>
                     </flux:table.row>
                 @empty
                     <flux:table.row>
-                        <flux:table.cell :colspan="$this->canRetry ? 5 : 4">{{ __('No failed jobs.') }}</flux:table.cell>
+                        <flux:table.cell colspan="3">{{ __('No failed jobs.') }}</flux:table.cell>
                     </flux:table.row>
                 @endforelse
             </flux:table.rows>
