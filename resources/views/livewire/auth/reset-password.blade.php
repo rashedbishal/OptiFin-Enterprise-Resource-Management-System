@@ -1,54 +1,61 @@
-<x-layouts::auth :title="__('Reset password')">
-    <div class="flex flex-col gap-6">
-        <x-auth-header :title="__('Reset password')" :description="__('Please enter your new password below')" />
+<x-layouts::auth.showcase :title="__('Reset password')">
+    <div class="flex flex-col gap-7">
+        <div>
+            <h1 class="text-2xl font-semibold tracking-tight text-zinc-900 sm:text-[1.7rem] dark:text-white">{{ __('Choose a new password') }}</h1>
+            <p class="mt-1.5 text-sm text-zinc-500 dark:text-zinc-400">{{ __('Pick something strong that you haven\'t used before.') }}</p>
+        </div>
 
-        <!-- Session Status -->
-        <x-auth-session-status class="text-center" :status="session('status')" />
+        <x-auth-session-status class="rounded-xl bg-emerald-50 px-4 py-3 dark:bg-emerald-500/10" :status="session('status')" />
 
-        <form method="POST" action="{{ route('password.update') }}" class="flex flex-col gap-6">
+        <form method="POST" action="{{ route('password.update') }}" class="flex flex-col gap-5" data-auth-form>
             @csrf
-            <!-- Token -->
             <input type="hidden" name="token" value="{{ request()->route('token') }}">
 
-            <!-- Email Address -->
             <flux:input
                 name="email"
                 value="{{ request('email') }}"
-                :label="__('Email')"
+                :label="__('Email address')"
                 type="email"
+                icon="envelope"
                 required
                 autocomplete="email"
             />
 
-            <!-- Password -->
             <flux:input
                 name="password"
-                :label="__('Password')"
+                :label="__('New password')"
                 type="password"
+                icon="lock-closed"
                 required
+                autofocus
                 autocomplete="new-password"
-                :placeholder="__('Password')"
+                :placeholder="__('Enter a new password')"
                 passwordrules="{{ \Illuminate\Validation\Rules\Password::defaults()->toPasswordRulesString() }}"
                 viewable
             />
 
-            <!-- Confirm Password -->
             <flux:input
                 name="password_confirmation"
-                :label="__('Confirm password')"
+                :label="__('Confirm new password')"
                 type="password"
+                icon="lock-closed"
                 required
                 autocomplete="new-password"
-                :placeholder="__('Confirm password')"
+                :placeholder="__('Repeat the new password')"
                 passwordrules="{{ \Illuminate\Validation\Rules\Password::defaults()->toPasswordRulesString() }}"
                 viewable
             />
 
-            <div class="flex items-center justify-end">
-                <flux:button type="submit" variant="primary" class="w-full" data-test="reset-password-button">
-                    {{ __('Reset password') }}
-                </flux:button>
-            </div>
+            <button type="submit" class="auth-submit mt-2" data-test="reset-password-button">
+                <span class="auth-submit-label">{{ __('Reset password') }}</span>
+                <flux:icon.arrow-right variant="mini" class="auth-submit-arrow" />
+                <svg class="auth-submit-spinner" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-opacity=".3" stroke-width="3"/><path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" stroke-width="3" stroke-linecap="round"/></svg>
+            </button>
         </form>
+
+        <a href="{{ route('login') }}" class="group inline-flex items-center justify-center gap-1.5 text-sm text-zinc-500 dark:text-zinc-400" data-auth-aside>
+            <flux:icon.arrow-left variant="micro" class="transition-transform duration-300 group-hover:-translate-x-0.5" />
+            <span>{{ __('Back to') }} <span class="auth-link font-medium">{{ __('sign in') }}</span></span>
+        </a>
     </div>
-</x-layouts::auth>
+</x-layouts::auth.showcase>

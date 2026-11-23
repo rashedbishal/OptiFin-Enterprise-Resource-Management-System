@@ -41,3 +41,10 @@ test('a platform admin can authenticate at the platform login', function () {
 
     expect(Auth::guard('platform')->id())->toBe($platformUser->id);
 });
+
+test('the platform login screen renders in the showcase layout without a remember-me option', function () {
+    $this->get(route('admin.login'))
+        ->assertOk()
+        ->assertSee(__('Platform console'))
+        ->assertDontSee(__('Remember me'));
+});

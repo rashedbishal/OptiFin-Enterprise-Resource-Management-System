@@ -11,14 +11,12 @@ use Livewire\Attributes\Title;
 use Livewire\Component;
 
 #[Title('Platform Admin Login')]
-#[Layout('layouts.auth')]
+#[Layout('layouts.auth.showcase', ['variant' => 'platform'])]
 class Login extends Component
 {
     public string $email = '';
 
     public string $password = '';
-
-    public bool $remember = false;
 
     public function authenticate(): void
     {
@@ -35,7 +33,7 @@ class Login extends Component
             ]);
         }
 
-        if (! Auth::guard('platform')->attempt(['email' => $this->email, 'password' => $this->password, 'is_active' => true], $this->remember)) {
+        if (! Auth::guard('platform')->attempt(['email' => $this->email, 'password' => $this->password, 'is_active' => true])) {
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([
